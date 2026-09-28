@@ -1,0 +1,1384 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presentación Ejecutiva para Inversores | Cotizador DGL IDIEM</title>
+  <style>
+    :root {
+      --primary: #E20000;
+      --primary-dark: #B50000;
+      --navy: #0F172A;
+      --navy-light: #1E293B;
+      --blue: #2563EB;
+      --emerald: #059669;
+      --amber: #D97706;
+      --slate-50: #F8FAFC;
+      --slate-100: #F1F5F9;
+      --slate-200: #E2E8F0;
+      --slate-400: #94A3B8;
+      --slate-700: #334155;
+      --slate-900: #0F172A;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      background: #090D16;
+      color: #F8FAFC;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow-x: hidden;
+    }
+
+    /* Outer Wrapper */
+    .pitch-container {
+      width: 100%;
+      max-width: 1240px;
+      background: #0B1120;
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 40px rgba(226, 0, 0, 0.15);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top Bar */
+    .top-bar {
+      background: #0F172A;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand-section {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-logo {
+      height: 38px;
+      width: auto;
+      object-fit: contain;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+    }
+
+    .brand-divider {
+      width: 1px;
+      height: 24px;
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .brand-info h1 {
+      font-size: 13px;
+      font-weight: 700;
+      color: #FFFFFF;
+      letter-spacing: 0.3px;
+    }
+
+    .brand-info p {
+      font-size: 10px;
+      color: #94A3B8;
+      font-weight: 500;
+    }
+
+    .badge-investors {
+      background: linear-gradient(135deg, rgba(226, 0, 0, 0.2), rgba(37, 99, 235, 0.2));
+      border: 1px solid rgba(226, 0, 0, 0.4);
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #FCA5A5;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #E20000;
+      box-shadow: 0 0 10px #E20000;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+
+    /* Screen / Stage (16:9) */
+    .video-viewport {
+      position: relative;
+      width: 100%;
+      padding-top: 56.25%; /* 16:9 Aspect Ratio */
+      background: #080D1A;
+      overflow: hidden;
+    }
+
+    .screen-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Scenes Container */
+    .scenes-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+
+    .scene {
+      position: absolute;
+      inset: 0;
+      padding: 30px 45px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(0.98);
+      transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .scene.active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: scale(1);
+      z-index: 10;
+    }
+
+    /* Scene Titles & Header */
+    .scene-tag {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #E20000;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .scene-title {
+      font-size: 28px;
+      font-weight: 800;
+      color: #FFFFFF;
+      line-height: 1.2;
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+
+    .scene-subtitle {
+      font-size: 13px;
+      color: #94A3B8;
+      max-width: 780px;
+      line-height: 1.4;
+      margin-bottom: 20px;
+    }
+
+    /* Subtitles / Narrator Banner */
+    .narrator-box {
+      position: absolute;
+      bottom: 20px;
+      left: 30px;
+      right: 30px;
+      background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-left: 4px solid #E20000;
+      border-radius: 12px;
+      padding: 10px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      z-index: 25;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    }
+
+    .narrator-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(226, 0, 0, 0.2);
+      border: 1px solid rgba(226, 0, 0, 0.4);
+      color: #F87171;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    .narrator-text {
+      font-size: 13px;
+      color: #F1F5F9;
+      line-height: 1.35;
+      font-weight: 500;
+    }
+
+    .narrator-highlight {
+      color: #FCA5A5;
+      font-weight: 700;
+    }
+
+    /* Interactive UI Mockup Elements */
+    .mockup-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-top: 10px;
+    }
+
+    .kpi-card {
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi-card::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--card-color, #2563EB);
+    }
+
+    .kpi-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #94A3B8;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .kpi-value {
+      font-size: 24px;
+      font-weight: 800;
+      color: #FFFFFF;
+      font-family: monospace;
+      margin-bottom: 4px;
+    }
+
+    .kpi-desc {
+      font-size: 11px;
+      color: #64748B;
+    }
+
+    /* Comparison Table / Pillars */
+    .pillars-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      margin-top: 10px;
+    }
+
+    .pillar-card {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: transform 0.3s;
+    }
+
+    .pillar-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      background: rgba(226, 0, 0, 0.15);
+      color: #EF4444;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      margin-bottom: 4px;
+    }
+
+    .pillar-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #FFFFFF;
+    }
+
+    .pillar-desc {
+      font-size: 12px;
+      color: #94A3B8;
+      line-height: 1.45;
+    }
+
+    .pillar-badge {
+      align-self: flex-start;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: rgba(16, 185, 129, 0.2);
+      color: #34D399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    /* Workflow Stepper */
+    .flow-steps {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 20px;
+      position: relative;
+    }
+
+    .flow-step {
+      background: rgba(30, 41, 59, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      padding: 16px 20px;
+      width: 30%;
+      position: relative;
+    }
+
+    .flow-step.active-step {
+      border-color: #E20000;
+      box-shadow: 0 0 20px rgba(226, 0, 0, 0.25);
+    }
+
+    .step-num {
+      position: absolute;
+      top: -10px;
+      left: 16px;
+      background: #E20000;
+      color: #FFF;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+
+    .step-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #FFFFFF;
+      margin-top: 4px;
+      margin-bottom: 4px;
+    }
+
+    .step-sub {
+      font-size: 11px;
+      color: #94A3B8;
+      line-height: 1.4;
+    }
+
+    /* Live Document Preview Card */
+    .pdf-card-preview {
+      background: #FFFFFF;
+      color: #0F172A;
+      border-radius: 12px;
+      padding: 22px;
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
+      width: 100%;
+      max-width: 650px;
+      margin: 0 auto;
+      border: 1px solid #CBD5E1;
+    }
+
+    .pdf-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #E20000;
+      padding-bottom: 12px;
+      margin-bottom: 12px;
+    }
+
+    .pdf-doc-code {
+      font-family: monospace;
+      font-size: 12px;
+      font-weight: 800;
+      color: #1E293B;
+      background: #F1F5F9;
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+
+    .pdf-stamp {
+      font-size: 9px;
+      color: #059669;
+      font-weight: 700;
+      border: 1px solid #059669;
+      padding: 2px 6px;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    /* Bottom Player Controls */
+    .controls-bar {
+      background: #0F172A;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 14px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .progress-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .progress-bar-container {
+      flex: 1;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+      position: relative;
+      cursor: pointer;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: #E20000;
+      border-radius: 4px;
+      width: 0%;
+      position: relative;
+      transition: width 0.1s linear;
+    }
+
+    .progress-bar-scrubber {
+      position: absolute;
+      right: -5px;
+      top: -3px;
+      width: 12px;
+      height: 12px;
+      background: #FFFFFF;
+      border-radius: 50%;
+      box-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .progress-bar-container:hover .progress-bar-scrubber {
+      opacity: 1;
+    }
+
+    .time-display {
+      font-family: monospace;
+      font-size: 11px;
+      color: #94A3B8;
+      width: 85px;
+      text-align: right;
+    }
+
+    .buttons-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .left-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn-control {
+      background: transparent;
+      border: none;
+      color: #CBD5E1;
+      cursor: pointer;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+
+    .btn-control:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #FFFFFF;
+    }
+
+    .btn-play {
+      background: #E20000;
+      color: #FFFFFF;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      box-shadow: 0 4px 12px rgba(226, 0, 0, 0.4);
+    }
+
+    .btn-play:hover {
+      background: #C20000;
+      transform: scale(1.05);
+    }
+
+    .chapters-selector {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+
+    .chapter-pill {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #94A3B8;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+
+    .chapter-pill:hover, .chapter-pill.active {
+      background: rgba(226, 0, 0, 0.2);
+      border-color: #E20000;
+      color: #FFFFFF;
+    }
+
+    .right-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn-action-primary {
+      background: #E20000;
+      color: #FFFFFF;
+      border: none;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 8px 16px;
+      border-radius: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 4px 12px rgba(226, 0, 0, 0.35);
+      transition: all 0.2s;
+    }
+
+    .btn-action-primary:hover {
+      background: #C20000;
+      transform: translateY(-1px);
+    }
+
+    .btn-action-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: #E2E8F0;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .btn-action-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+      color: #FFFFFF;
+    }
+
+    /* Recording Indicator */
+    .rec-badge {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      background: rgba(220, 38, 38, 0.2);
+      border: 1px solid #DC2626;
+      color: #F87171;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .rec-badge.recording {
+      display: flex;
+    }
+
+    /* Subtitle Banner Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .animate-in {
+      animation: fadeIn 0.4s ease-out forwards;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="pitch-container" id="playerContainer">
+    <!-- Top Bar -->
+    <div class="top-bar">
+      <div class="brand-section">
+        <img src="data:image/png;base64,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REQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQugwZHREREREQuwsuX/x8PKO56yMnWyAAAAABJRU5ErkJggg==" alt="IDIEM" class="brand-logo">
+        <div class="brand-divider"></div>
+        <div class="brand-info">
+          <h1>Laboratorio Geotécnico DGL (LE-304)</h1>
+          <p>Presentación Ejecutiva & Propuesta de Inversión Tecnológica</p>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <div class="rec-badge" id="recBadge">
+          <span class="pulse-dot"></span>
+          GRABANDO VIDEO HD...
+        </div>
+        <div class="badge-investors">
+          <span class="pulse-dot"></span>
+          Pitch Deck Inversores
+        </div>
+      </div>
+    </div>
+
+    <!-- Video Stage (16:9) -->
+    <div class="video-viewport" id="viewport">
+      <div class="screen-canvas" id="canvasScreen">
+        <div class="scenes-wrapper">
+
+          <!-- ESCENA 1: INTRODUCCIÓN Y PROBLEMA DE MERCADO (0s - 25s) -->
+          <div class="scene active" id="scene-1">
+            <div class="scene-tag">
+              <span>●</span> MÓDULO 01 — VISIÓN ESTRATÉGICA & OPORTUNIDAD
+            </div>
+            <h2 class="scene-title">Digitalización & Automatización Comercial DGL</h2>
+            <p class="scene-subtitle">
+              Transformando el Laboratorio Geotécnico de referencia nacional (INN LE-304) con un ecosistema digital de alta velocidad, eliminando errores de cotización y acelerando el ciclo de cierre comercial.
+            </p>
+
+            <div class="pillars-grid">
+              <div class="pillar-card">
+                <div class="pillar-icon">⏱️</div>
+                <div class="pillar-title">De 45 min a 2 min</div>
+                <p class="pillar-desc">
+                  Reducción del 95% en los tiempos de elaboración de propuestas geotécnicas complejas mediante catálogo inteligente.
+                </p>
+                <span class="pillar-badge">+400% Capacidad Comercial</span>
+              </div>
+
+              <div class="pillar-card">
+                <div class="pillar-icon">🎯</div>
+                <div class="pillar-title">0% Errores de Tarifa</div>
+                <p class="pillar-desc">
+                  Eliminación total de descalces de precios y fórmulas manuales. Integración nativa de UF y USD oficiales al día.
+                </p>
+                <span class="pillar-badge">100% Precisión Matemática</span>
+              </div>
+
+              <div class="pillar-card">
+                <div class="pillar-icon">🔒</div>
+                <div class="pillar-title">Trazabilidad Inviolable</div>
+                <p class="pillar-desc">
+                  Identificador correlativo único PRY-XXXX por obra y control de versiones V1, V2, V3 con firma digital institucional.
+                </p>
+                <span class="pillar-badge">Auditoría INN Total</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ESCENA 2: DASHBOARD COMERCIAL PRINCIPAL & KPIS (25s - 55s) -->
+          <div class="scene" id="scene-2">
+            <div class="scene-tag">
+              <span>●</span> MÓDULO 02 — DASHBOARD COMERCIAL & KPIS EN VIVO
+            </div>
+            <h2 class="scene-title">Control Ejecutivo del Pipeline en Tiempo Real</h2>
+            <p class="scene-subtitle">
+              La pantalla principal recibe al equipo con métricas consolidadas, valorización instantánea en UF/CLP y monitoreo activo de estados comerciales.
+            </p>
+
+            <div class="mockup-grid">
+              <div class="kpi-card" style="--card-color: #2563EB;">
+                <div class="kpi-label">Total Cotizado (UF)</div>
+                <div class="kpi-value" id="kpiTotalUf">1.845,20 UF</div>
+                <div class="kpi-desc">~$75.430.000 CLP en 18 propuestas</div>
+              </div>
+
+              <div class="kpi-card" style="--card-color: #059669;">
+                <div class="kpi-label">Aprobadas / Cierres</div>
+                <div class="kpi-value" id="kpiAprobadas">1.254,80 UF</div>
+                <div class="kpi-desc">68% Tasa de Conversión</div>
+              </div>
+
+              <div class="kpi-card" style="--card-color: #9333EA;">
+                <div class="kpi-label">En Seguimiento Activo</div>
+                <div class="kpi-value" id="kpiSeguimiento">480,40 UF</div>
+                <div class="kpi-desc">Propuestas Enviadas a Decisores</div>
+              </div>
+
+              <div class="kpi-card" style="--card-color: #D97706;">
+                <div class="kpi-label">Borradores en Curso</div>
+                <div class="kpi-value" id="kpiBorradores">3 Propuestas</div>
+                <div class="kpi-desc">En elaboración por asesores</div>
+              </div>
+            </div>
+
+            <div style="margin-top: 18px; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 11px; font-weight: 700; color: #94A3B8; text-transform: uppercase;">Centros de Costo:</span>
+                <span style="background: rgba(37, 99, 235, 0.2); border: 1px solid #2563EB; color: #93C5FD; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 6px;">2339 - Rocas</span>
+                <span style="background: rgba(255, 255, 255, 0.05); color: #CBD5E1; font-size: 10px; padding: 3px 8px; border-radius: 6px;">1817 - Básicos</span>
+                <span style="background: rgba(255, 255, 255, 0.05); color: #CBD5E1; font-size: 10px; padding: 3px 8px; border-radius: 6px;">2340 - Especiales</span>
+                <span style="background: rgba(255, 255, 255, 0.05); color: #CBD5E1; font-size: 10px; padding: 3px 8px; border-radius: 6px;">2344 - Antofagasta</span>
+              </div>
+              <span style="font-size: 11px; color: #10B981; font-weight: 700;">● Sincronizado en tiempo real</span>
+            </div>
+          </div>
+
+          <!-- ESCENA 3: CRM DE CLIENTES, CONTACTOS Y OBRAS (55s - 85s) -->
+          <div class="scene" id="scene-3">
+            <div class="scene-tag">
+              <span>●</span> MÓDULO 03 — CRM COMERCIAL INTELIGENTE
+            </div>
+            <h2 class="scene-title">Directorio Unificado: Empresas, Contactos & Proyectos</h2>
+            <p class="scene-subtitle">
+              Tres bases de datos relacionales integradas en una interfaz de alto rendimiento para reutilizar información comercial y evitar digitación redundante.
+            </p>
+
+            <div class="pillars-grid">
+              <div class="pillar-card">
+                <div class="pillar-icon">🏢</div>
+                <div class="pillar-title">Empresas Clientes</div>
+                <p class="pillar-desc">
+                  Razón Social, RUT validado, giro comercial, dirección y condición de pago preestablecida. Carga masiva desde Excel.
+                </p>
+                <div style="font-size: 11px; font-family: monospace; color: #60A5FA;">✓ +250 Empresas Activas</div>
+              </div>
+
+              <div class="pillar-card">
+                <div class="pillar-icon">👤</div>
+                <div class="pillar-title">Contactos Comerciales</div>
+                <p class="pillar-desc">
+                  Identificación por correo electrónico como ID único. Búsqueda omnicanal predictiva por nombre, teléfono o email.
+                </p>
+                <div style="font-size: 11px; font-family: monospace; color: #34D399;">✓ Auto-registro instantáneo</div>
+              </div>
+
+              <div class="pillar-card">
+                <div class="pillar-icon">🏗️</div>
+                <div class="pillar-title">Obras y Proyectos</div>
+                <p class="pillar-desc">
+                  Código correlativo secuencial e inalterable PRY-XXXX. Agrupa todas las cotizaciones de la misma obra con un clic.
+                </p>
+                <div style="font-size: 11px; font-family: monospace; color: #F87171;">🔒 ID Único e Inmutable</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ESCENA 4: COTIZADOR AUTOMATIZADO (85s - 115s) -->
+          <div class="scene" id="scene-4">
+            <div class="scene-tag">
+              <span>●</span> MÓDULO 04 — GENERADOR OFICIAL DE COTIZACIONES
+            </div>
+            <h2 class="scene-title">Cálculo Preciso con Moneda Dual (UF / USD)</h2>
+            <p class="scene-subtitle">
+              Generación de propuestas técnicas estructuradas en 3 bloques independientes con cálculo dinámico de masa de muestras y precios convertidos al instante.
+            </p>
+
+            <div class="flow-steps">
+              <div class="flow-step active-step">
+                <div class="step-num">PASO 1</div>
+                <div class="step-title">Empresa y Contacto</div>
+                <div class="step-sub">
+                  Búsqueda predictiva con autocompletado en 1 clic de RUT, dirección, atención y teléfono.
+                </div>
+              </div>
+
+              <div class="flow-step active-step">
+                <div class="step-num">PASO 2</div>
+                <div class="step-title">Obra & Sede</div>
+                <div class="step-sub">
+                  Asignación de código correlativo PRY-XXXX y selección de sede (Santiago, Concepción o Terreno).
+                </div>
+              </div>
+
+              <div class="flow-step active-step">
+                <div class="step-num">PASO 3</div>
+                <div class="step-title">Ensayos & Divisa</div>
+                <div class="step-sub">
+                  Catálogo acreditado LE-304, cotización en UF o USD y sumatoria de kilogramos mínimos de muestra.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ESCENA 5: DOCUMENTOS OFICIALES Y FIRMA (115s - 140s) -->
+          <div class="scene" id="scene-5">
+            <div class="scene-tag">
+              <span>●</span> MÓDULO 05 — EMISIÓN DOCUMENTAL OFICIAL
+            </div>
+            <h2 class="scene-title">Generación Instantánea de PDF Institucional & Excel</h2>
+            <p class="scene-subtitle">
+              Cumplimiento riguroso de la imagen institucional de IDIEM con firma digital embebida y control correlativo de versiones.
+            </p>
+
+            <div class="pdf-card-preview">
+              <div class="pdf-header">
+                <div>
+                  <div style="font-size: 13px; font-weight: 800; color: #E20000;">IDIEM — UNIVERSIDAD DE CHILE</div>
+                  <div style="font-size: 10px; color: #64748B;">División Geotecnia Laboratorio | LE-304</div>
+                </div>
+                <div style="text-align: right;">
+                  <div class="pdf-doc-code">PR.DGL.2339.2026.5401</div>
+                  <div class="pdf-stamp" style="margin-top: 4px;">✓ FIRMADO DIGITALMENTE</div>
+                </div>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 12px;">
+                <div>
+                  <span style="font-weight: 700;">Cliente:</span> Constructora Del Sol SpA<br>
+                  <span style="font-weight: 700;">Proyecto:</span> <span style="color: #2563EB; font-family: monospace;">[PRY-0004]</span> Edificio Las Palmeras
+                </div>
+                <div style="text-align: right;">
+                  <span style="font-weight: 700;">Monto Total:</span> <strong style="font-size: 13px; color: #0F172A;">128,50 UF</strong><br>
+                  <span style="color: #64748B;">~$5.250.000 CLP</span>
+                </div>
+              </div>
+
+              <div style="background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 8px; padding: 8px; text-align: center; font-size: 10px; color: #475569;">
+                📄 Documento PDF generado en 0.4 segundos listo para envío comercial al cliente
+              </div>
+            </div>
+          </div>
+
+          <!-- ESCENA 6: SEGURIDAD, ESCALABILIDAD Y ROI (140s - 165s) -->
+          <div class="scene" id="scene-6">
+            <div class="scene-tag">
+              <span>●</span> MÓDULO 06 — SEGURIDAD & RETORNO DE INVERSIÓN
+            </div>
+            <h2 class="scene-title">Arquitectura Empresarial, Seguridad & Escalabilidad</h2>
+            <p class="scene-subtitle">
+              Infraestructura moderna preparada para despliegue en la nube institucional o intranet universitaria con máximo estándar de ciberseguridad.
+            </p>
+
+            <div class="pillars-grid">
+              <div class="pillar-card">
+                <div class="pillar-icon">🛡️</div>
+                <div class="pillar-title">Ciberseguridad Bancaria</div>
+                <p class="pillar-desc">
+                  Rate limiting dual contra fuerza bruta, cifrado de contraseñas Bcrypt, cookies seguras HTTP-only y tokens JWT.
+                </p>
+                <div class="pillar-badge">Zero-Vulnerabilities</div>
+              </div>
+
+              <div class="pillar-card">
+                <div class="pillar-icon">☁️</div>
+                <div class="pillar-title">Nube & On-Premise</div>
+                <p class="pillar-desc">
+                  Desarrollado en Next.js 15 y SQLite/Postgres. Compatible para migración directa a Vercel o servidores internos IDIEM.
+                </p>
+                <div class="pillar-badge">100% Portabilidad</div>
+              </div>
+
+              <div class="pillar-card">
+                <div class="pillar-icon">💼</div>
+                <div class="pillar-title">Retorno de Inversión (ROI)</div>
+                <p class="pillar-desc">
+                  Amortización inmediata de horas/hombre comerciales, aceleración de adjudicaciones y fidelización de clientes clave.
+                </p>
+                <div class="pillar-badge">ROI Estimado &gt; 380%</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Closed Captions / Narrator Box -->
+        <div class="narrator-box">
+          <div class="narrator-icon">🎙️</div>
+          <div class="narrator-text" id="narratorText">
+            Bienvenido a la presentación oficial de la <span class="narrator-highlight">Plataforma Comercial y Cotizador DGL IDIEM</span>.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls Bar -->
+    <div class="controls-bar">
+      <!-- Progress Bar -->
+      <div class="progress-row">
+        <div class="progress-bar-container" id="progressContainer">
+          <div class="progress-bar-fill" id="progressFill">
+            <div class="progress-bar-scrubber"></div>
+          </div>
+        </div>
+        <div class="time-display" id="timeDisplay">00:00 / 02:45</div>
+      </div>
+
+      <!-- Button Row & Chapters -->
+      <div class="buttons-row">
+        <div class="left-controls">
+          <button class="btn-play" id="btnPlay" title="Reproducir / Pausar">▶</button>
+          <button class="btn-control" id="btnPrev" title="Escena anterior">⏮</button>
+          <button class="btn-control" id="btnNext" title="Siguiente escena">⏭</button>
+          <button class="btn-control" id="btnSpeed" title="Velocidad de reproducción" style="font-size: 11px; font-weight: 700; width: 42px;">1.0x</button>
+        </div>
+
+        <div class="chapters-selector">
+          <div class="chapter-pill active" data-scene="1">1. Visión & ROI</div>
+          <div class="chapter-pill" data-scene="2">2. KPIs & Métricas</div>
+          <div class="chapter-pill" data-scene="3">3. CRM Comercial</div>
+          <div class="chapter-pill" data-scene="4">4. Cotizador 1-Clic</div>
+          <div class="chapter-pill" data-scene="5">5. Emisión PDF</div>
+          <div class="chapter-pill" data-scene="6">6. Seguridad & Conclusión</div>
+        </div>
+
+        <div class="right-controls">
+          <button class="btn-action-secondary" id="btnFullscreen" title="Ver en Pantalla Completa">
+            ⛶ Pantalla Completa
+          </button>
+          <button class="btn-action-primary" id="btnRecord" title="Descargar Video en formato WebM">
+            🎥 Descargar Video (.webm)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State & Timings
+    const TOTAL_DURATION = 165; // 2 minutes 45 seconds
+    let currentTime = 0;
+    let isPlaying = true;
+    let playbackSpeed = 1.0;
+    let isRecording = false;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+
+    // Scenes Timeline (in seconds)
+    const scenes = [
+      {
+        id: 1,
+        start: 0,
+        end: 25,
+        subtitle: 'Bienvenido al <span class="narrator-highlight">Cotizador Inteligente DGL IDIEM</span>. Una solución de software corporativa diseñada para transformar radicalmente la gestión comercial del laboratorio geotécnico.'
+      },
+      {
+        id: 2,
+        start: 25,
+        end: 55,
+        subtitle: 'El <span class="narrator-highlight">Dashboard Comercial Principal</span> unifica el historial y presenta métricas ejecutivas: Total cotizado en UF y CLP, tasa de conversión y control de estados comerciales.'
+      },
+      {
+        id: 3,
+        start: 55,
+        end: 85,
+        subtitle: 'El <span class="narrator-highlight">Centro de Gestión Comercial (CRM)</span> organiza Empresas, Contactos Comerciales con correo como ID único, y Obras con correlativo <span class="narrator-highlight">PRY-XXXX inmutable</span>.'
+      },
+      {
+        id: 4,
+        start: 85,
+        end: 115,
+        subtitle: 'El <span class="narrator-highlight">Motor de Cotización</span> permite emitir propuestas en menos de 2 minutos. Búsqueda predictiva de ensayos acreditados, moneda dual UF/USD y cálculo de masa de muestras.'
+      },
+      {
+        id: 5,
+        start: 115,
+        end: 140,
+        subtitle: 'Generación instantánea de <span class="narrator-highlight">documentos PDF oficiales</span> con imagen corporativa de la Universidad de Chile, firma digital institucional y descargas en Excel.'
+      },
+      {
+        id: 6,
+        start: 140,
+        end: 165,
+        subtitle: 'Infraestructura empresarial con <span class="narrator-highlight">seguridad bancaria, roles granulares y alta escalabilidad</span>, garantizando un retorno de inversión superior al 380%.'
+      }
+    ];
+
+    // DOM Elements
+    const btnPlay = document.getElementById('btnPlay');
+    const btnPrev = document.getElementById('btnPrev');
+    const btnNext = document.getElementById('btnNext');
+    const btnSpeed = document.getElementById('btnSpeed');
+    const btnFullscreen = document.getElementById('btnFullscreen');
+    const btnRecord = document.getElementById('btnRecord');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressFill = document.getElementById('progressFill');
+    const timeDisplay = document.getElementById('timeDisplay');
+    const narratorText = document.getElementById('narratorText');
+    const chapterPills = document.querySelectorAll('.chapter-pill');
+    const recBadge = document.getElementById('recBadge');
+
+    // Format mm:ss
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    // Audio Synthesizer for subtle tech sound effects
+    let audioCtx = null;
+    function playBeep(freq = 520, type = 'sine', duration = 0.08) {
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (e) {}
+    }
+
+    let activeSceneId = 1;
+
+    function updateScene() {
+      // Find current scene
+      const cur = scenes.find(s => currentTime >= s.start && currentTime < s.end) || scenes[scenes.length - 1];
+
+      if (cur.id !== activeSceneId) {
+        activeSceneId = cur.id;
+        playBeep(640, 'triangle', 0.12);
+
+        // Switch active scene class
+        document.querySelectorAll('.scene').forEach(sc => sc.classList.remove('active'));
+        const targetEl = document.getElementById('scene-' + cur.id);
+        if (targetEl) targetEl.classList.add('active');
+
+        // Update pills
+        chapterPills.forEach(p => {
+          if (parseInt(p.dataset.scene, 10) === cur.id) {
+            p.classList.add('active');
+          } else {
+            p.classList.remove('active');
+          }
+        });
+
+        // Update narration with animation
+        narratorText.classList.remove('animate-in');
+        void narratorText.offsetWidth; // Trigger reflow
+        narratorText.innerHTML = cur.subtitle;
+        narratorText.classList.add('animate-in');
+      }
+
+      // Update progress bar
+      const pct = (currentTime / TOTAL_DURATION) * 100;
+      progressFill.style.width = pct + '%';
+      timeDisplay.textContent = formatTime(currentTime) + ' / ' + formatTime(TOTAL_DURATION);
+    }
+
+    // Main Clock Loop
+    let lastTimestamp = null;
+    function tick(timestamp) {
+      if (!lastTimestamp) lastTimestamp = timestamp;
+      const delta = (timestamp - lastTimestamp) / 1000;
+      lastTimestamp = timestamp;
+
+      if (isPlaying) {
+        currentTime += delta * playbackSpeed;
+        if (currentTime >= TOTAL_DURATION) {
+          currentTime = TOTAL_DURATION;
+          isPlaying = false;
+          btnPlay.textContent = '▶';
+        }
+        updateScene();
+      }
+
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+
+    // Controls Handlers
+    btnPlay.addEventListener('click', () => {
+      isPlaying = !isPlaying;
+      btnPlay.textContent = isPlaying ? '⏸' : '▶';
+      if (currentTime >= TOTAL_DURATION) {
+        currentTime = 0;
+        isPlaying = true;
+        btnPlay.textContent = '⏸';
+      }
+      playBeep(isPlaying ? 800 : 400, 'sine', 0.05);
+    });
+
+    btnPrev.addEventListener('click', () => {
+      const curIndex = scenes.findIndex(s => s.id === activeSceneId);
+      if (curIndex > 0) {
+        currentTime = scenes[curIndex - 1].start;
+      } else {
+        currentTime = 0;
+      }
+      updateScene();
+      playBeep(500, 'sine', 0.05);
+    });
+
+    btnNext.addEventListener('click', () => {
+      const curIndex = scenes.findIndex(s => s.id === activeSceneId);
+      if (curIndex < scenes.length - 1) {
+        currentTime = scenes[curIndex + 1].start;
+      }
+      updateScene();
+      playBeep(700, 'sine', 0.05);
+    });
+
+    const speeds = [1.0, 1.25, 1.5, 2.0];
+    let speedIdx = 0;
+    btnSpeed.addEventListener('click', () => {
+      speedIdx = (speedIdx + 1) % speeds.length;
+      playbackSpeed = speeds[speedIdx];
+      btnSpeed.textContent = playbackSpeed.toFixed(1) + 'x';
+      playBeep(600, 'sine', 0.05);
+    });
+
+    // Chapter Pills Clicks
+    chapterPills.forEach(pill => {
+      pill.addEventListener('click', () => {
+        const scId = parseInt(pill.dataset.scene, 10);
+        const sc = scenes.find(s => s.id === scId);
+        if (sc) {
+          currentTime = sc.start;
+          updateScene();
+          playBeep(750, 'triangle', 0.08);
+        }
+      });
+    });
+
+    // Progress Bar Scrubber Click
+    progressContainer.addEventListener('click', (e) => {
+      const rect = progressContainer.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+      currentTime = ratio * TOTAL_DURATION;
+      updateScene();
+      playBeep(600, 'sine', 0.04);
+    });
+
+    // Fullscreen Toggle
+    btnFullscreen.addEventListener('click', () => {
+      const container = document.getElementById('playerContainer');
+      if (!document.fullscreenElement) {
+        container.requestFullscreen?.().catch(() => {});
+      } else {
+        document.exitFullscreen?.().catch(() => {});
+      }
+    });
+
+    // Keyboard Shortcuts
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        btnPlay.click();
+      } else if (e.code === 'ArrowRight') {
+        currentTime = Math.min(TOTAL_DURATION, currentTime + 5);
+        updateScene();
+      } else if (e.code === 'ArrowLeft') {
+        currentTime = Math.max(0, currentTime - 5);
+        updateScene();
+      }
+    });
+
+    // WebM Video Recording using Canvas MediaRecorder
+    btnRecord.addEventListener('click', async () => {
+      if (isRecording) {
+        // Stop recording
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();
+        }
+        return;
+      }
+
+      // Start recording
+      try {
+        btnRecord.textContent = '⏹ Detener & Descargar';
+        recBadge.classList.add('recording');
+        isRecording = true;
+        currentTime = 0;
+        isPlaying = true;
+        btnPlay.textContent = '⏸';
+
+        // Capture display or canvas stream
+        const canvas = document.createElement('canvas');
+        canvas.width = 1280;
+        canvas.height = 720;
+        const ctx = canvas.getContext('2d');
+        const stream = canvas.captureStream(30);
+
+        recordedChunks = [];
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'Video_Presentacion_Inversores_DGL_IDIEM.webm';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+
+          btnRecord.textContent = '🎥 Descargar Video (.webm)';
+          recBadge.classList.remove('recording');
+          isRecording = false;
+        };
+
+        mediaRecorder.start();
+
+        // Canvas animation frame drawing loop
+        function drawCanvasFrame() {
+          if (!isRecording) return;
+          // Background
+          ctx.fillStyle = '#0B1120';
+          ctx.fillRect(0, 0, 1280, 720);
+
+          // Top Banner
+          ctx.fillStyle = '#0F172A';
+          ctx.fillRect(0, 0, 1280, 70);
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = 'bold 20px sans-serif';
+          ctx.fillText('IDIEM — DIVISIÓN GEOTECNIA LABORATORIO (LE-304)', 30, 42);
+
+          // Current Scene title
+          const cur = scenes.find(s => currentTime >= s.start && currentTime < s.end) || scenes[0];
+          ctx.fillStyle = '#E20000';
+          ctx.font = 'bold 16px sans-serif';
+          ctx.fillText('MÓDULO ' + cur.id + ' / 06', 50, 130);
+
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = 'bold 32px sans-serif';
+          const sceneTitles = [
+            'Plataforma Comercial Inteligente DGL',
+            'Dashboard Ejecutivo & Control de Ventas',
+            'Centro de Gestión Comercial (CRM)',
+            'Motor de Cotización Automatizado (UF/USD)',
+            'Emisión de Documentos Oficiales con Firma',
+            'Seguridad Bancaria & Retorno de Inversión'
+          ];
+          ctx.fillText(sceneTitles[cur.id - 1] || 'Cotizador DGL', 50, 180);
+
+          // Subtitle
+          ctx.fillStyle = '#94A3B8';
+          ctx.font = '18px sans-serif';
+          const cleanSub = cur.subtitle.replace(/<[^>]*>?/gm, '');
+          ctx.fillText(cleanSub.slice(0, 95), 50, 230);
+          if (cleanSub.length > 95) {
+            ctx.fillText(cleanSub.slice(95, 190), 50, 260);
+          }
+
+          // KPI Box or Visual
+          ctx.fillStyle = '#1E293B';
+          ctx.fillRect(50, 310, 360, 150);
+          ctx.strokeStyle = '#2563EB';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(50, 310, 360, 150);
+          ctx.fillStyle = '#94A3B8';
+          ctx.font = 'bold 14px sans-serif';
+          ctx.fillText('EFICIENCIA OPERATIVA', 75, 350);
+          ctx.fillStyle = '#34D399';
+          ctx.font = 'bold 36px monospace';
+          ctx.fillText('+380% ROI', 75, 410);
+
+          ctx.fillStyle = '#1E293B';
+          ctx.fillRect(440, 310, 360, 150);
+          ctx.strokeStyle = '#059669';
+          ctx.strokeRect(440, 310, 360, 150);
+          ctx.fillStyle = '#94A3B8';
+          ctx.font = 'bold 14px sans-serif';
+          ctx.fillText('TIEMPO POR COTIZACIÓN', 465, 350);
+          ctx.fillStyle = '#60A5FA';
+          ctx.font = 'bold 36px monospace';
+          ctx.fillText('-95% TIEMPO', 465, 410);
+
+          ctx.fillStyle = '#1E293B';
+          ctx.fillRect(830, 310, 360, 150);
+          ctx.strokeStyle = '#E20000';
+          ctx.strokeRect(830, 310, 360, 150);
+          ctx.fillStyle = '#94A3B8';
+          ctx.font = 'bold 14px sans-serif';
+          ctx.fillText('PRECISIÓN NORMATIVA', 855, 350);
+          ctx.fillStyle = '#F87171';
+          ctx.font = 'bold 36px monospace';
+          ctx.fillText('100% AUDITABLE', 855, 410);
+
+          // Subtitle box
+          ctx.fillStyle = '#0F172A';
+          ctx.fillRect(50, 520, 1180, 80);
+          ctx.fillStyle = '#E20000';
+          ctx.fillRect(50, 520, 6, 80);
+          ctx.fillStyle = '#F1F5F9';
+          ctx.font = '16px sans-serif';
+          ctx.fillText('🎙️ ' + cleanSub.slice(0, 110), 75, 565);
+
+          // Bottom Bar
+          ctx.fillStyle = '#0F172A';
+          ctx.fillRect(0, 670, 1280, 50);
+          const pWidth = (currentTime / TOTAL_DURATION) * 1280;
+          ctx.fillStyle = '#E20000';
+          ctx.fillRect(0, 666, pWidth, 4);
+
+          ctx.fillStyle = '#94A3B8';
+          ctx.font = '13px monospace';
+          ctx.fillText(formatTime(currentTime) + ' / ' + formatTime(TOTAL_DURATION), 1150, 698);
+
+          if (currentTime >= TOTAL_DURATION) {
+            mediaRecorder.stop();
+          } else {
+            requestAnimationFrame(drawCanvasFrame);
+          }
+        }
+        requestAnimationFrame(drawCanvasFrame);
+
+      } catch (err) {
+        console.error('Error recording canvas:', err);
+        alert('Grabación no disponible directamente en este navegador. Se recomienda reproducir en modo pantalla completa.');
+        btnRecord.textContent = '🎥 Descargar Video (.webm)';
+        isRecording = false;
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env and secrets
+.env
+.env.local
+.env.*.local
+.env*.local
+
+# cloudflare / wrangler
+.wrangler/
+
+# local database files & backups
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.bak
+scratch/
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts

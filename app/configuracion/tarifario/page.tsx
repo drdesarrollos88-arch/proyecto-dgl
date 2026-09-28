@@ -1,0 +1,1753 @@
+'use client';
+
+import React, { useState, useEffect, Suspense } from 'react';
+import Link from 'next/link';
+import Navbar from '@/components/Navbar';
+import TarifarioExportModal from '@/components/TarifarioExportModal';
+import { CENTROS_DE_COSTO, SessionUser, TarifarioCategoryStructure, TarifarioItem } from '@/lib/types';
+import {
+  FolderTree,
+  FolderPlus,
+  Plus,
+  Edit2,
+  Trash2,
+  Search,
+  ArrowLeft,
+  CheckCircle2,
+  AlertCircle,
+  Layers,
+  FileSpreadsheet,
+  HelpCircle,
+  Sparkles,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Database,
+  Building,
+  Tag,
+  Check,
+  X,
+  FlaskConical,
+  Filter,
+  ArrowRightLeft,
+} from 'lucide-react';
+
+// Natural Roman Numeral and hierarchical sorting
+function parseRomanOrNum(str: string): number[] {
+  const romanMap: Record<string, number> = {
+    I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10,
+    XI: 11, XII: 12, XIII: 13, XIV: 14, XV: 15, XVI: 16, XVII: 17, XVIII: 18, XIX: 19, XX: 20,
+  };
+
+  const match = str.trim().match(/^([IVXLCDM]+|\d+)(?:\.([IVXLCDM]+|\d+))?(?:\.([IVXLCDM]+|\d+))?/i);
+  if (!match) return [999];
+
+  return match.slice(1).filter(Boolean).map((part) => {
+    const upper = part.toUpperCase();
+    if (romanMap[upper]) return romanMap[upper];
+    const n = parseInt(part, 10);
+    return isNaN(n) ? 999 : n;
+  });
+}
+
+function compareHierarchical(a: string, b: string): number {
+  const partsA = parseRomanOrNum(a);
+  const partsB = parseRomanOrNum(b);
+
+  for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
+    const valA = partsA[i] ?? 0;
+    const valB = partsB[i] ?? 0;
+    if (valA !== valB) {
+      return valA - valB;
+    }
+  }
+  return a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' });
+}
+
+function ConfiguracionTarifarioContent() {
+  const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
+  const [structure, setStructure] = useState<TarifarioCategoryStructure[]>([]);
+  const [itemCounts, setItemCounts] = useState<Record<string, number>>({});
+  const [totalItems, setTotalItems] = useState(0);
+  const [items, setItems] = useState<TarifarioItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [selectedCc, setSelectedCc] = useState<string>('todos');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Expand / collapse category essays & filtering state
+  const [expandedCatKeys, setExpandedCatKeys] = useState<Record<string, boolean>>({});
+  const [activeSubcatFilter, setActiveSubcatFilter] = useState<Record<string, string | null>>({});
+  const [catSearchTerm, setCatSearchTerm] = useState<Record<string, string>>({});
+
+  // Reassign / Edit Item Category Modal state
+  const [reassignItem, setReassignItem] = useState<TarifarioItem | null>(null);
+  const [reassignCc, setReassignCc] = useState<string>(CENTROS_DE_COSTO[0]);
+  const [reassignCat, setReassignCat] = useState<string>('');
+  const [isCustomCat, setIsCustomCat] = useState<boolean>(false);
+  const [customCatName, setCustomCatName] = useState<string>('');
+  const [reassignSubcat, setReassignSubcat] = useState<string>('');
+  const [isCustomSubcat, setIsCustomSubcat] = useState<boolean>(false);
+  const [customSubcatName, setCustomSubcatName] = useState<string>('');
+
+  // Modals state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [showCreateCatModal, setShowCreateCatModal] = useState(false);
+  const [newCatCc, setNewCatCc] = useState<string>(CENTROS_DE_COSTO[0]);
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatInitialSubcats, setNewCatInitialSubcats] = useState('');
+
+  const [showCreateSubcatModal, setShowCreateSubcatModal] = useState(false);
+  const [targetCategoryForSubcat, setTargetCategoryForSubcat] = useState<{ cc: string; category: string } | null>(null);
+  const [newSubcatName, setNewSubcatName] = useState('');
+
+  const [renameCatData, setRenameCatData] = useState<{ cc: string; oldCategory: string; newCategory: string } | null>(null);
+  const [renameSubcatData, setRenameSubcatData] = useState<{ cc: string; category: string; oldSubcategory: string; newSubcategory: string } | null>(null);
+
+  const [deleteConfirmData, setDeleteConfirmData] = useState<{
+    type: 'category' | 'subcategory';
+    cc: string;
+    category: string;
+    subcategory?: string;
+    count: number;
+  } | null>(null);
+
+  const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Load structure & user
+  const loadData = async () => {
+    try {
+      const [userRes, structRes] = await Promise.all([
+        fetch('/api/auth/me'),
+        fetch('/api/tarifario/estructura'),
+      ]);
+
+      if (userRes.ok) {
+        const u = await userRes.json();
+        if (u.user) setCurrentUser(u.user);
+      }
+
+      if (structRes.ok) {
+        const s = await structRes.json();
+        setStructure(s.structure || []);
+        setItemCounts(s.itemCounts || {});
+        setTotalItems(s.totalItems || 0);
+        if (s.items && Array.isArray(s.items)) {
+          setItems(s.items);
+        }
+      }
+    } catch (err) {
+      console.error('Error cargando estructura:', err);
+      showAlert('error', 'Error al cargar la estructura del tarifario.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const showAlert = (type: 'success' | 'error', text: string) => {
+    setAlertMessage({ type, text });
+    setTimeout(() => {
+      setAlertMessage(null);
+    }, 5000);
+  };
+
+  const isAdmin = currentUser?.role === 'admin';
+  const canEdit = isAdmin || currentUser?.permissions?.includes('tarifario.editar');
+
+  const toggleCategoryExpand = (catKey: string) => {
+    setExpandedCatKeys((prev) => ({
+      ...prev,
+      [catKey]: !prev[catKey],
+    }));
+  };
+
+  const handleSubcategoryClick = (catKey: string, subcat: string) => {
+    setExpandedCatKeys((prev) => ({ ...prev, [catKey]: true }));
+    setActiveSubcatFilter((prev) => ({
+      ...prev,
+      [catKey]: prev[catKey] === subcat ? null : subcat,
+    }));
+  };
+
+  const openReassignModal = (item: TarifarioItem) => {
+    setReassignItem(item);
+    const itemCc = item.cc || CENTROS_DE_COSTO[0];
+    setReassignCc(itemCc);
+    setReassignCat(item.category || '');
+    setIsCustomCat(false);
+    setCustomCatName('');
+    setReassignSubcat(item.subcategory || '');
+    setIsCustomSubcat(false);
+    setCustomSubcatName('');
+  };
+
+  const handleCcChangeInModal = (newCc: string) => {
+    setReassignCc(newCc);
+    const available = structure.filter((s) => s.cc === newCc);
+    if (available.length > 0) {
+      setReassignCat(available[0].category);
+      setIsCustomCat(false);
+      const subcats = available[0].subcategories || [];
+      if (subcats.length > 0) {
+        setReassignSubcat(subcats[0]);
+        setIsCustomSubcat(false);
+      } else {
+        setReassignSubcat('');
+      }
+    } else {
+      setReassignCat('');
+      setIsCustomCat(true);
+      setCustomCatName('');
+      setReassignSubcat('');
+    }
+  };
+
+  const handleCatChangeInModal = (newCat: string) => {
+    if (newCat === '__CUSTOM__') {
+      setIsCustomCat(true);
+      setCustomCatName('');
+      setReassignSubcat('');
+      setIsCustomSubcat(true);
+      setCustomSubcatName('');
+    } else {
+      setIsCustomCat(false);
+      setReassignCat(newCat);
+      const catObj = structure.find((s) => s.cc === reassignCc && s.category === newCat);
+      const subcats = catObj?.subcategories || [];
+      if (subcats.length > 0) {
+        setReassignSubcat(subcats[0]);
+        setIsCustomSubcat(false);
+      } else {
+        setReassignSubcat('');
+      }
+    }
+  };
+
+  const handleSubcatChangeInModal = (newSub: string) => {
+    if (newSub === '__CUSTOM__') {
+      setIsCustomSubcat(true);
+      setCustomSubcatName('');
+    } else {
+      setIsCustomSubcat(false);
+      setReassignSubcat(newSub);
+    }
+  };
+
+  const handleReassignSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reassignItem) return;
+
+    const finalCategory = (isCustomCat ? customCatName : reassignCat).trim();
+    const finalSubcategory = (isCustomSubcat ? customSubcatName : reassignSubcat).trim();
+
+    if (!finalCategory) {
+      showAlert('error', 'Debes seleccionar o ingresar una categoría destino.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/tarifario', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: reassignItem.id,
+          updates: {
+            cc: reassignCc,
+            category: finalCategory,
+            subcategory: finalSubcategory || finalCategory,
+          },
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al reasignar categoría.');
+      }
+
+      showAlert(
+        'success',
+        `Ensayo "${reassignItem.designation.slice(0, 45)}..." reasignado con éxito a "${finalCategory}".`
+      );
+      setReassignItem(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Error reasignando ensayo:', err);
+      showAlert('error', err.message || 'Error al reasignar el ensayo.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Structure filtered by Centro de Costo and Search
+  const currentCcStructure = selectedCc === 'todos' ? structure : structure.filter((s) => s.cc === selectedCc);
+  const sortedCategories = [...currentCcStructure].sort((a, b) => compareHierarchical(a.category, b.category));
+
+  const filteredCategories = sortedCategories.filter((cat) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    const matchesCat = cat.category.toLowerCase().includes(q);
+    const matchesSub = cat.subcategories.some((s) => s.toLowerCase().includes(q));
+    const catItems = items.filter((it) => it.cc === cat.cc && it.category === cat.category);
+    const matchesItem = catItems.some(
+      (it) =>
+        it.designation.toLowerCase().includes(q) ||
+        (it.sku && it.sku.toLowerCase().includes(q)) ||
+        (it.code && it.code.toLowerCase().includes(q)) ||
+        (it.norm && it.norm.toLowerCase().includes(q))
+    );
+    return matchesCat || matchesSub || matchesItem;
+  });
+
+  // Calculate totals for KPI cards
+  const totalCategoriesCount = structure.length;
+  const totalSubcategoriesCount = structure.reduce((acc, curr) => acc + (curr.subcategories?.length || 0), 0);
+
+  // Handle Create Category
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCatName.trim()) return;
+
+    setSubmitting(true);
+    try {
+      const subcatsList = newCatInitialSubcats
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const res = await fetch('/api/tarifario/estructura', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'category',
+          cc: newCatCc,
+          category: newCatName.trim(),
+          subcategories: subcatsList,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al crear la categoría.');
+      }
+
+      showAlert('success', 'Categoría creada exitosamente.');
+      setShowCreateCatModal(false);
+      setNewCatName('');
+      setNewCatInitialSubcats('');
+      setSelectedCc(newCatCc);
+      await loadData();
+    } catch (err: any) {
+      showAlert('error', err.message || 'Error al crear la categoría.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Handle Create Subcategory
+  const handleCreateSubcategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetCategoryForSubcat || !newSubcatName.trim()) return;
+
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/tarifario/estructura', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'subcategory',
+          cc: targetCategoryForSubcat.cc,
+          category: targetCategoryForSubcat.category,
+          subcategory: newSubcatName.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al agregar la subcategoría.');
+      }
+
+      showAlert('success', 'Subcategoría agregada exitosamente.');
+      setShowCreateSubcatModal(false);
+      setTargetCategoryForSubcat(null);
+      setNewSubcatName('');
+      await loadData();
+    } catch (err: any) {
+      showAlert('error', err.message || 'Error al crear la subcategoría.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Handle Rename Category
+  const handleRenameCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renameCatData || !renameCatData.newCategory.trim()) return;
+
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/tarifario/estructura', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'renameCategory',
+          cc: renameCatData.cc,
+          oldCategory: renameCatData.oldCategory,
+          newCategory: renameCatData.newCategory.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al renombrar categoría.');
+      }
+
+      showAlert('success', data.message || 'Categoría renombrada con éxito.');
+      setRenameCatData(null);
+      await loadData();
+    } catch (err: any) {
+      showAlert('error', err.message || 'Error al renombrar categoría.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Handle Rename Subcategory
+  const handleRenameSubcategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!renameSubcatData || !renameSubcatData.newSubcategory.trim()) return;
+
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/tarifario/estructura', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'renameSubcategory',
+          cc: renameSubcatData.cc,
+          category: renameSubcatData.category,
+          oldSubcategory: renameSubcatData.oldSubcategory,
+          newSubcategory: renameSubcatData.newSubcategory.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al renombrar subcategoría.');
+      }
+
+      showAlert('success', data.message || 'Subcategoría renombrada con éxito.');
+      setRenameSubcatData(null);
+      await loadData();
+    } catch (err: any) {
+      showAlert('error', err.message || 'Error al renombrar subcategoría.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Handle Delete Confirmation
+  const handleDeleteExecute = async () => {
+    if (!deleteConfirmData) return;
+
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/tarifario/estructura', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(deleteConfirmData),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al eliminar.');
+      }
+
+      showAlert('success', data.message || 'Eliminación completada con éxito.');
+      setDeleteConfirmData(null);
+      await loadData();
+    } catch (err: any) {
+      showAlert('error', err.message || 'Error al eliminar.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col">
+      <Navbar />
+
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Navigation Breadcrumb */}
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <Link href="/tarifario" className="hover:text-red-700 flex items-center gap-1 font-medium transition-colors">
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Volver al Tarifado Oficial
+            </Link>
+            <span>/</span>
+            <span className="text-slate-700 font-semibold">Configuración de Estructura</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowExportModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 text-xs font-semibold hover:bg-slate-50 transition-colors shadow-xs cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              Descargar Excel Personalizado
+            </button>
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  setNewCatCc(selectedCc);
+                  setShowCreateCatModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-700 text-white text-xs font-semibold hover:bg-red-800 transition-colors shadow-xs cursor-pointer"
+              >
+                <FolderPlus className="w-3.5 h-3.5" />
+                + Nueva Categoría
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Alert Notification */}
+        {alertMessage && (
+          <div
+            className={`mb-5 p-3.5 rounded-xl border flex items-center gap-3 text-xs shadow-xs animate-in fade-in duration-150 ${
+              alertMessage.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : 'bg-red-50 border-red-200 text-red-800'
+            }`}
+          >
+            {alertMessage.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+            ) : (
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+            )}
+            <span className="font-medium">{alertMessage.text}</span>
+          </div>
+        )}
+
+        {/* Header Title Section */}
+        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs mb-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center text-red-700">
+                  <FolderTree className="w-5 h-5" />
+                </div>
+                <div>
+                  <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+                    Configuración del Tarifario Oficial
+                  </h1>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Define, organiza y administra las categorías y subcategorías oficiales por Centro de Costo
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick KPI stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl px-3.5 py-2">
+                <span className="text-[11px] text-slate-500 font-medium block">Centros de Costo</span>
+                <span className="text-base font-bold text-slate-900">{CENTROS_DE_COSTO.length}</span>
+              </div>
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl px-3.5 py-2">
+                <span className="text-[11px] text-slate-500 font-medium block">Categorías</span>
+                <span className="text-base font-bold text-slate-900">{totalCategoriesCount}</span>
+              </div>
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl px-3.5 py-2">
+                <span className="text-[11px] text-slate-500 font-medium block">Subcategorías</span>
+                <span className="text-base font-bold text-slate-900">{totalSubcategoriesCount}</span>
+              </div>
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl px-3.5 py-2">
+                <span className="text-[11px] text-slate-500 font-medium block">Ensayos en Base</span>
+                <span className="text-base font-bold text-red-700">{totalItems}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* CC Tabs Selector */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-3 mb-6">
+          <div className="flex items-center gap-2 pb-2 mb-2 border-b border-slate-100 overflow-x-auto scrollbar-thin">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-2 shrink-0">
+              Centro de Costo:
+            </span>
+
+            {/* Tab: Todos los CC */}
+            <button
+              onClick={() => setSelectedCc('todos')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                selectedCc === 'todos'
+                  ? 'bg-red-700 text-white shadow-xs'
+                  : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
+              }`}
+            >
+              <Layers className={`w-3.5 h-3.5 ${selectedCc === 'todos' ? 'text-red-200' : 'text-slate-400'}`} />
+              <span>Todos los CC</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                  selectedCc === 'todos' ? 'bg-red-800 text-white' : 'bg-slate-200 text-slate-700'
+                }`}
+              >
+                {structure.length} cat. · {totalItems} ens.
+              </span>
+            </button>
+
+            {CENTROS_DE_COSTO.map((cc) => {
+              const isActive = selectedCc === cc;
+              const ccEssaysCount = itemCounts[cc] || 0;
+              const ccCats = structure.filter((s) => s.cc === cc);
+
+              return (
+                <button
+                  key={cc}
+                  onClick={() => setSelectedCc(cc)}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-red-700 text-white shadow-xs'
+                      : 'bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  <Building className={`w-3.5 h-3.5 ${isActive ? 'text-red-200' : 'text-slate-400'}`} />
+                  <span>{cc}</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                      isActive ? 'bg-red-800 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {ccCats.length} cat. · {ccEssaysCount} ens.
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Search bar within current CC */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
+            <div className="relative w-full sm:w-80">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Buscar categoría, subcategoría o ensayo..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-600 focus:border-transparent transition-all"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <div className="text-xs text-slate-500 font-medium">
+              Mostrando <strong className="text-slate-800">{filteredCategories.length}</strong> categorías para{' '}
+              <span className="text-red-700 font-semibold">
+                {selectedCc === 'todos' ? 'Todos los Centros de Costo' : selectedCc}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Categories Tree Grid */}
+        {loading ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
+            <div className="inline-block w-8 h-8 border-3 border-red-700 border-t-transparent rounded-full animate-spin mb-3"></div>
+            <p className="text-xs text-slate-500 font-medium">Cargando estructura oficial...</p>
+          </div>
+        ) : filteredCategories.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
+            <FolderTree className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+            <h3 className="text-sm font-bold text-slate-800">
+              {searchQuery ? 'No se encontraron coincidencias' : 'No hay categorías creadas para este Centro de Costo'}
+            </h3>
+            <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+              {searchQuery
+                ? 'Intenta con otro término de búsqueda o limpia el filtro.'
+                : 'Puedes crear la primera categoría para organizar los ensayos de este centro de costo.'}
+            </p>
+            {isAdmin && !searchQuery && (
+              <button
+                onClick={() => {
+                  setNewCatCc(selectedCc === 'todos' ? CENTROS_DE_COSTO[0] : selectedCc);
+                  setShowCreateCatModal(true);
+                }}
+                className="mt-4 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-red-700 text-white text-xs font-semibold hover:bg-red-800 transition-colors shadow-xs cursor-pointer"
+              >
+                <FolderPlus className="w-4 h-4" />
+                Crear Categoría en {selectedCc === 'todos' ? 'Tarifario' : selectedCc.split('-')[0].trim()}
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredCategories.map((cat) => {
+              const catKey = `${cat.cc}:::${cat.category}`;
+              const catEssaysCount = itemCounts[catKey] || 0;
+              const sortedSubcats = [...(cat.subcategories || [])].sort(compareHierarchical);
+              const isExpanded = !!expandedCatKeys[catKey];
+              const activeSubcat = activeSubcatFilter[catKey] || null;
+
+              // Items belonging to this category
+              const catAllItems = items.filter(
+                (it) => it.cc === cat.cc && it.category === cat.category
+              );
+
+              // Filtered by active subcategory if selected
+              const filteredBySubcat = activeSubcat
+                ? catAllItems.filter((it) => (it.subcategory || '').trim() === activeSubcat.trim())
+                : catAllItems;
+
+              // Filtered by local search in this category
+              const localSearch = (catSearchTerm[catKey] || '').toLowerCase().trim();
+              const displayedItems = filteredBySubcat.filter((it) => {
+                if (!localSearch) return true;
+                return (
+                  it.designation.toLowerCase().includes(localSearch) ||
+                  (it.code && it.code.toLowerCase().includes(localSearch)) ||
+                  (it.sku && it.sku.toLowerCase().includes(localSearch)) ||
+                  (it.norm && it.norm.toLowerCase().includes(localSearch)) ||
+                  (it.subcategory && it.subcategory.toLowerCase().includes(localSearch))
+                );
+              });
+
+              return (
+                <div
+                  key={catKey}
+                  className={`bg-white rounded-2xl border transition-all overflow-hidden ${
+                    isExpanded ? 'border-red-200 shadow-md ring-1 ring-red-100' : 'border-slate-200 shadow-xs hover:border-slate-300'
+                  }`}
+                >
+                  {/* Category Header */}
+                  <div className="bg-slate-50/90 px-5 py-3.5 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div
+                      onClick={() => toggleCategoryExpand(catKey)}
+                      className="flex items-center gap-3 cursor-pointer select-none group/title flex-1 min-w-0"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-red-100/70 border border-red-200 flex items-center justify-center text-red-700 shrink-0 font-bold text-xs group-hover/title:bg-red-200/70 transition-colors">
+                        <FolderTree className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h2 className="text-sm font-bold text-slate-900 tracking-tight group-hover/title:text-red-700 transition-colors truncate">
+                            {cat.category}
+                          </h2>
+                          {selectedCc === 'todos' && (
+                            <span className="text-[10px] bg-slate-200 text-slate-800 px-2 py-0.5 rounded-md font-bold flex items-center gap-1 border border-slate-300/80">
+                              <Building className="w-3 h-3 text-slate-500" />
+                              {cat.cc}
+                            </span>
+                          )}
+                          <span className="text-[10px] bg-slate-200/80 text-slate-700 px-2 py-0.5 rounded-full font-semibold">
+                            {cat.subcategories?.length || 0} subcategorías
+                          </span>
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                              catEssaysCount > 0
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {catEssaysCount} {catEssaysCount === 1 ? 'ensayo' : 'ensayos'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Category Action Buttons */}
+                    <div className="flex items-center gap-1.5 self-end sm:self-auto shrink-0">
+                      {/* Toggle View Essays Button */}
+                      <button
+                        onClick={() => toggleCategoryExpand(catKey)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-2xs ${
+                          isExpanded
+                            ? 'bg-red-700 text-white hover:bg-red-800'
+                            : 'bg-white text-slate-700 hover:text-red-700 hover:border-red-200 border border-slate-200'
+                        }`}
+                        title={isExpanded ? 'Ocultar ensayos de esta categoría' : 'Ver ensayos alojados en esta categoría'}
+                      >
+                        <FlaskConical className={`w-3.5 h-3.5 ${isExpanded ? 'text-white' : 'text-red-600'}`} />
+                        <span>{isExpanded ? 'Ocultar Ensayos' : `Ver Ensayos (${catEssaysCount})`}</span>
+                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </button>
+
+                      {isAdmin && (
+                        <>
+                          <button
+                            onClick={() => {
+                              setTargetCategoryForSubcat({ cc: cat.cc, category: cat.category });
+                              setShowCreateSubcatModal(true);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 hover:text-red-700 hover:border-red-200 text-xs font-medium transition-colors shadow-2xs cursor-pointer"
+                            title="Agregar subcategoría dentro de esta categoría"
+                          >
+                            <Plus className="w-3.5 h-3.5 text-red-600" />
+                            <span className="hidden sm:inline">+ Subcategoría</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setRenameCatData({
+                                cc: cat.cc,
+                                oldCategory: cat.category,
+                                newCategory: cat.category,
+                              });
+                            }}
+                            className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-blue-700 hover:border-blue-200 transition-colors shadow-2xs cursor-pointer"
+                            title="Renombrar categoría"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setDeleteConfirmData({
+                                type: 'category',
+                                cc: cat.cc,
+                                category: cat.category,
+                                count: catEssaysCount,
+                              });
+                            }}
+                            className={`p-1.5 rounded-lg bg-white border border-slate-200 transition-colors shadow-2xs ${
+                              catEssaysCount > 0
+                                ? 'text-slate-300 hover:text-slate-400 cursor-not-allowed'
+                                : 'text-slate-600 hover:text-red-700 hover:border-red-200 cursor-pointer'
+                            }`}
+                            title={
+                              catEssaysCount > 0
+                                ? `No se puede eliminar: tiene ${catEssaysCount} ensayo(s) asociado(s)`
+                                : 'Eliminar categoría vacía'
+                            }
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Subcategories Grid */}
+                  <div className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        Subcategorías ({sortedSubcats.length})
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        {sortedSubcats.length > 0 ? 'Pincha una subcategoría para filtrar sus ensayos' : ''}
+                      </span>
+                    </div>
+
+                    {sortedSubcats.length === 0 ? (
+                      <div className="p-4 rounded-xl bg-slate-50 border border-dashed border-slate-200 text-center">
+                        <p className="text-xs text-slate-500">
+                          Esta categoría no tiene subcategorías aún.
+                        </p>
+                        {isAdmin && (
+                          <button
+                            onClick={() => {
+                              setTargetCategoryForSubcat({ cc: cat.cc, category: cat.category });
+                              setShowCreateSubcatModal(true);
+                            }}
+                            className="mt-2 inline-flex items-center gap-1 text-xs text-red-700 hover:text-red-800 font-semibold cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            Agregar la primera subcategoría
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                        {sortedSubcats.map((subcat) => {
+                          const subKey = `${cat.cc}:::${cat.category}:::${subcat}`;
+                          const subEssaysCount = itemCounts[subKey] || 0;
+                          const isSubActive = activeSubcat === subcat && isExpanded;
+
+                          return (
+                            <div
+                              key={subKey}
+                              onClick={() => handleSubcategoryClick(catKey, subcat)}
+                              className={`group flex items-center justify-between gap-2 p-2.5 rounded-xl border transition-all cursor-pointer ${
+                                isSubActive
+                                  ? 'bg-red-50/90 border-red-400 shadow-xs ring-1 ring-red-300'
+                                  : 'border-slate-200 bg-slate-50/50 hover:bg-white hover:border-slate-300 hover:shadow-2xs'
+                              }`}
+                              title={`Pincha para ver los ensayos de ${subcat}`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <span
+                                  className={`w-2 h-2 rounded-full shrink-0 transition-colors ${
+                                    isSubActive
+                                      ? 'bg-red-600 ring-2 ring-red-200'
+                                      : 'bg-slate-400 group-hover:bg-red-600'
+                                  }`}
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <p
+                                    className={`text-xs font-semibold truncate ${
+                                      isSubActive ? 'text-red-900' : 'text-slate-800'
+                                    }`}
+                                    title={subcat}
+                                  >
+                                    {subcat}
+                                  </p>
+                                  <span
+                                    className={`text-[10px] font-medium ${
+                                      subEssaysCount > 0 ? 'text-emerald-700' : 'text-slate-400'
+                                    }`}
+                                  >
+                                    {subEssaysCount} {subEssaysCount === 1 ? 'ensayo' : 'ensayos'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1 shrink-0">
+                                {isAdmin && (
+                                  <div
+                                    className="flex items-center gap-0.5 opacity-80 group-hover:opacity-100 transition-opacity"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <button
+                                      onClick={() => {
+                                        setRenameSubcatData({
+                                          cc: cat.cc,
+                                          category: cat.category,
+                                          oldSubcategory: subcat,
+                                          newSubcategory: subcat,
+                                        });
+                                      }}
+                                      className="p-1 rounded-md text-slate-500 hover:text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer"
+                                      title="Renombrar subcategoría"
+                                    >
+                                      <Edit2 className="w-3 h-3" />
+                                    </button>
+
+                                    <button
+                                      onClick={() => {
+                                        setDeleteConfirmData({
+                                          type: 'subcategory',
+                                          cc: cat.cc,
+                                          category: cat.category,
+                                          subcategory: subcat,
+                                          count: subEssaysCount,
+                                        });
+                                      }}
+                                      className={`p-1 rounded-md transition-colors ${
+                                        subEssaysCount > 0
+                                          ? 'text-slate-300 hover:text-slate-400 cursor-not-allowed'
+                                          : 'text-slate-500 hover:text-red-700 hover:bg-red-50 cursor-pointer'
+                                      }`}
+                                      title={
+                                        subEssaysCount > 0
+                                          ? `Tiene ${subEssaysCount} ensayo(s) asociado(s)`
+                                          : 'Eliminar subcategoría vacía'
+                                      }
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Expanded Ensayos Drawer / Table */}
+                  {isExpanded && (
+                    <div className="border-t border-slate-200 bg-slate-50/70 p-4 sm:p-5">
+                      {/* Filter & Search Toolbar */}
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+                        {/* Subcategory Filter Pills */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1">
+                            <Filter className="w-3.5 h-3.5 text-slate-400" />
+                            Filtro:
+                          </span>
+                          <button
+                            onClick={() => setActiveSubcatFilter((prev) => ({ ...prev, [catKey]: null }))}
+                            className={`px-2.5 py-1 rounded-lg text-xs transition-all cursor-pointer ${
+                              activeSubcat === null
+                                ? 'bg-slate-800 text-white shadow-xs font-semibold'
+                                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 font-medium'
+                            }`}
+                          >
+                            Todos ({catAllItems.length})
+                          </button>
+                          {sortedSubcats.map((subcat) => {
+                            const subKey = `${cat.cc}:::${cat.category}:::${subcat}`;
+                            const count = itemCounts[subKey] || 0;
+                            const isSubActive = activeSubcat === subcat;
+                            return (
+                              <button
+                                key={subcat}
+                                onClick={() =>
+                                  setActiveSubcatFilter((prev) => ({
+                                    ...prev,
+                                    [catKey]: isSubActive ? null : subcat,
+                                  }))
+                                }
+                                className={`px-2.5 py-1 rounded-lg text-xs transition-all truncate max-w-[240px] cursor-pointer ${
+                                  isSubActive
+                                    ? 'bg-red-700 text-white shadow-xs font-semibold'
+                                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 font-medium'
+                                }`}
+                                title={subcat}
+                              >
+                                {subcat} ({count})
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Local Search Input */}
+                        <div className="relative w-full sm:w-64 shrink-0">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            placeholder="Filtrar ensayos en categoría..."
+                            value={catSearchTerm[catKey] || ''}
+                            onChange={(e) =>
+                              setCatSearchTerm((prev) => ({ ...prev, [catKey]: e.target.value }))
+                            }
+                            className="w-full pl-8 pr-6 py-1 text-xs rounded-lg border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-red-600"
+                          />
+                          {catSearchTerm[catKey] && (
+                            <button
+                              onClick={() => setCatSearchTerm((prev) => ({ ...prev, [catKey]: '' }))}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Table of Essays */}
+                      {displayedItems.length === 0 ? (
+                        <div className="bg-white rounded-xl border border-dashed border-slate-300 p-8 text-center">
+                          <FlaskConical className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                          <p className="text-xs text-slate-600 font-semibold">
+                            {catAllItems.length === 0
+                              ? 'Esta categoría no tiene ensayos alojados todavía.'
+                              : 'No se encontraron ensayos con los filtros aplicados.'}
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-1">
+                            {catAllItems.length === 0
+                              ? 'Puedes reasignar ensayos hacia esta categoría editándolos desde otra categoría o agregándolos al tarifario.'
+                              : 'Prueba limpiando la búsqueda o el filtro de subcategoría.'}
+                          </p>
+                          {activeSubcat && (
+                            <button
+                              onClick={() => setActiveSubcatFilter((prev) => ({ ...prev, [catKey]: null }))}
+                              className="mt-3 text-xs text-red-700 hover:underline font-semibold"
+                            >
+                              Quitar filtro de subcategoría
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead>
+                                <tr className="bg-slate-100/80 border-b border-slate-200 text-slate-600 font-semibold uppercase text-[10px] tracking-wider">
+                                  <th className="py-2.5 px-3">Código / SKU</th>
+                                  <th className="py-2.5 px-3">Designación del Ensayo</th>
+                                  <th className="py-2.5 px-3">Norma</th>
+                                  <th className="py-2.5 px-3">Subcategoría</th>
+                                  <th className="py-2.5 px-3 text-right">Precio Oficial</th>
+                                  <th className="py-2.5 px-3 text-center">Acciones</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {displayedItems.map((item) => (
+                                  <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                                    <td className="py-2.5 px-3 whitespace-nowrap align-top">
+                                      <span className="font-mono text-[11px] font-semibold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                        {item.code || item.sku || 'S/C'}
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 align-top">
+                                      <p className="font-medium text-slate-900 leading-snug" title={item.designation}>
+                                        {item.designation}
+                                      </p>
+                                    </td>
+                                    <td className="py-2.5 px-3 whitespace-nowrap align-top">
+                                      {item.norm ? (
+                                        <span className="text-[11px] text-slate-700 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded font-medium">
+                                          {item.norm}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400 text-[11px]">-</span>
+                                      )}
+                                    </td>
+                                    <td className="py-2.5 px-3 align-top">
+                                      <span
+                                        className="text-[11px] text-slate-700 bg-slate-100/80 px-2 py-0.5 rounded-md inline-block font-medium max-w-[220px] truncate"
+                                        title={item.subcategory}
+                                      >
+                                        {item.subcategory || '-'}
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right whitespace-nowrap align-top">
+                                      <span className="font-bold text-red-700 font-mono text-xs">
+                                        {item.ufPrice !== undefined ? Number(item.ufPrice).toFixed(2) : '0.00'} UF
+                                      </span>
+                                      <span className="text-[10px] text-slate-400 block font-normal">
+                                        / {item.unit || 'c/u'}
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center whitespace-nowrap align-top">
+                                      {canEdit && (
+                                        <button
+                                          onClick={() => openReassignModal(item)}
+                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:text-red-700 hover:border-red-200 hover:bg-red-50/50 transition-colors shadow-2xs cursor-pointer"
+                                          title="Cambiar/editar la categoría de este ensayo"
+                                        >
+                                          <Edit2 className="w-3 h-3 text-red-600" />
+                                          <span>Editar Categoría</span>
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          <div className="bg-slate-50 px-3 py-2 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-slate-500">
+                            <span>
+                              Mostrando <strong>{displayedItems.length}</strong> de <strong>{catAllItems.length}</strong> ensayos alojados en esta categoría
+                            </span>
+                            {activeSubcat && (
+                              <button
+                                onClick={() => setActiveSubcatFilter((prev) => ({ ...prev, [catKey]: null }))}
+                                className="text-red-700 hover:underline font-semibold self-start sm:self-auto cursor-pointer"
+                              >
+                                Ver todos los ensayos de la categoría
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Modal 1: Create Category */}
+        {showCreateCatModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-700">
+                    <FolderPlus className="w-4 h-4" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-900">Crear Nueva Categoría</h3>
+                </div>
+                <button
+                  onClick={() => setShowCreateCatModal(false)}
+                  className="text-slate-400 hover:text-slate-600 text-sm p-1 rounded-lg"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateCategory} className="p-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Centro de Costo <span className="text-red-600">*</span>
+                  </label>
+                  <select
+                    value={newCatCc}
+                    onChange={(e) => setNewCatCc(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-red-600 focus:border-transparent"
+                    required
+                  >
+                    {CENTROS_DE_COSTO.map((cc) => (
+                      <option key={cc} value={cc}>
+                        {cc}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Nombre de la Categoría <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newCatName}
+                    onChange={(e) => setNewCatName(e.target.value)}
+                    placeholder="Ej: VII - ENSAYOS AMBIENTALES Y QUÍMICOS"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-red-600 focus:border-transparent font-medium"
+                    required
+                    autoFocus
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Recomendación: usa numeración romana (ej. I, II, III...) si deseas mantener el orden estándar de los tarifados oficiales.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Subcategorías Iniciales (Opcional, una por línea)
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={newCatInitialSubcats}
+                    onChange={(e) => setNewCatInitialSubcats(e.target.value)}
+                    placeholder="VII.1 Ensayos de lixiviación&#10;VII.2 Análisis de pH y conductividad&#10;VII.3 Contenido de sulfatos"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-red-600 focus:border-transparent font-mono"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Puedes agregar varias subcategorías de una vez escribiendo cada una en una línea nueva.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateCatModal(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold bg-red-700 text-white hover:bg-red-800 transition-colors shadow-xs disabled:opacity-50"
+                  >
+                    {submitting ? 'Guardando...' : 'Crear Categoría'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal 2: Create Subcategory */}
+        {showCreateSubcatModal && targetCategoryForSubcat && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-700">
+                    <Plus className="w-4 h-4" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-900">Agregar Subcategoría</h3>
+                </div>
+                <button
+                  onClick={() => setShowCreateSubcatModal(false)}
+                  className="text-slate-400 hover:text-slate-600 text-sm p-1 rounded-lg"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateSubcategory} className="p-6 space-y-4">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+                  <span className="text-slate-500 block font-medium">Categoría Destino:</span>
+                  <span className="text-slate-900 font-bold block mt-0.5">{targetCategoryForSubcat.category}</span>
+                  <span className="text-[11px] text-slate-500 font-normal">{targetCategoryForSubcat.cc}</span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Nombre de la Subcategoría <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newSubcatName}
+                    onChange={(e) => setNewSubcatName(e.target.value)}
+                    placeholder="Ej: I.5 Ensayos de permeabilidad especial"
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-red-600 focus:border-transparent font-medium"
+                    required
+                    autoFocus
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Usa numeración correlativa subordinada a la categoría (ej. I.1, I.2...).
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateSubcatModal(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold bg-red-700 text-white hover:bg-red-800 transition-colors shadow-xs disabled:opacity-50"
+                  >
+                    {submitting ? 'Agregando...' : 'Agregar Subcategoría'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal 3: Rename Category */}
+        {renameCatData && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700">
+                    <Edit2 className="w-4 h-4" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-900">Renombrar Categoría</h3>
+                </div>
+                <button
+                  onClick={() => setRenameCatData(null)}
+                  className="text-slate-400 hover:text-slate-600 text-sm p-1 rounded-lg"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleRenameCategory} className="p-6 space-y-4">
+                <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-xs text-amber-900">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Actualización en cascada:</span>
+                      <p className="mt-0.5 text-[11px] text-amber-800">
+                        Al cambiar este nombre, se actualizará automáticamente en todos los ensayos de la base de datos pertenecientes a esta categoría.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="block text-[11px] text-slate-500 font-medium">Nombre Actual:</span>
+                  <p className="text-xs font-semibold text-slate-700 bg-slate-100 p-2 rounded-lg mt-0.5">
+                    {renameCatData.oldCategory}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Nuevo Nombre <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={renameCatData.newCategory}
+                    onChange={(e) =>
+                      setRenameCatData((prev) => (prev ? { ...prev, newCategory: e.target.value } : null))
+                    }
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-blue-600 focus:border-transparent font-medium"
+                    required
+                    autoFocus
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setRenameCatData(null)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold bg-blue-700 text-white hover:bg-blue-800 transition-colors shadow-xs disabled:opacity-50"
+                  >
+                    {submitting ? 'Actualizando...' : 'Guardar Nuevo Nombre'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal 4: Rename Subcategory */}
+        {renameSubcatData && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700">
+                    <Edit2 className="w-4 h-4" />
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-900">Renombrar Subcategoría</h3>
+                </div>
+                <button
+                  onClick={() => setRenameSubcatData(null)}
+                  className="text-slate-400 hover:text-slate-600 text-sm p-1 rounded-lg"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleRenameSubcategory} className="p-6 space-y-4">
+                <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-xs text-amber-900">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Actualización en cascada:</span>
+                      <p className="mt-0.5 text-[11px] text-amber-800">
+                        Al cambiar este nombre, todos los ensayos asignados a esta subcategoría se actualizarán automáticamente.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="block text-[11px] text-slate-500 font-medium">Categoría:</span>
+                  <p className="text-xs font-semibold text-slate-700 mt-0.5">{renameSubcatData.category}</p>
+                </div>
+
+                <div>
+                  <span className="block text-[11px] text-slate-500 font-medium">Nombre Actual:</span>
+                  <p className="text-xs font-semibold text-slate-700 bg-slate-100 p-2 rounded-lg mt-0.5">
+                    {renameSubcatData.oldSubcategory}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Nuevo Nombre <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={renameSubcatData.newSubcategory}
+                    onChange={(e) =>
+                      setRenameSubcatData((prev) => (prev ? { ...prev, newSubcategory: e.target.value } : null))
+                    }
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-blue-600 focus:border-transparent font-medium"
+                    required
+                    autoFocus
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setRenameSubcatData(null)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold bg-blue-700 text-white hover:bg-blue-800 transition-colors shadow-xs disabled:opacity-50"
+                  >
+                    {submitting ? 'Actualizando...' : 'Guardar Nuevo Nombre'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal 5: Delete Confirmation */}
+        {deleteConfirmData && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-red-50">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-700">
+                    <Trash2 className="w-4 h-4" />
+                  </div>
+                  <h3 className="text-sm font-bold text-red-900">
+                    Eliminar {deleteConfirmData.type === 'category' ? 'Categoría' : 'Subcategoría'}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setDeleteConfirmData(null)}
+                  className="text-slate-400 hover:text-slate-600 text-sm p-1 rounded-lg"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                {deleteConfirmData.count > 0 ? (
+                  <div className="bg-red-50 p-4 rounded-xl border border-red-200 text-xs text-red-800 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold text-red-900 text-sm block">Acción Bloqueada</span>
+                        <p className="mt-1">
+                          No es posible eliminar esta {deleteConfirmData.type === 'category' ? 'categoría' : 'subcategoría'} porque contiene{' '}
+                          <strong>{deleteConfirmData.count} ensayo(s)</strong> asociado(s) en la base de datos oficial.
+                        </p>
+                        <p className="mt-2 text-[11px] text-red-700">
+                          Para eliminarla, primero debes reasignar o eliminar esos ensayos en el Tarifario.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3 text-xs text-slate-700">
+                    <p>
+                      ¿Estás seguro de que deseas eliminar permanentemente la{' '}
+                      <strong>{deleteConfirmData.type === 'category' ? 'categoría' : 'subcategoría'}</strong>:
+                    </p>
+                    <p className="p-2.5 rounded-lg bg-slate-100 font-mono text-xs font-semibold text-slate-900">
+                      {deleteConfirmData.type === 'category'
+                        ? deleteConfirmData.category
+                        : deleteConfirmData.subcategory}
+                    </p>
+                    <p className="text-slate-500 text-[11px]">
+                      Esta acción no afecta a ningún ensayo porque actualmente no tiene ítems asignados.
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setDeleteConfirmData(null)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                  >
+                    {deleteConfirmData.count > 0 ? 'Entendido' : 'Cancelar'}
+                  </button>
+                  {deleteConfirmData.count === 0 && (
+                    <button
+                      type="button"
+                      onClick={handleDeleteExecute}
+                      disabled={submitting}
+                      className="px-4 py-2 rounded-xl text-xs font-semibold bg-red-700 text-white hover:bg-red-800 transition-colors shadow-xs disabled:opacity-50"
+                    >
+                      {submitting ? 'Eliminando...' : 'Sí, Eliminar'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal 6: Reassign / Edit Item Category */}
+        {reassignItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden">
+              {/* Modal Header */}
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-700">
+                    <Edit2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Editar Categoría de Ensayo</h3>
+                    <p className="text-[11px] text-slate-500">Reasigna este ensayo a otra categoría o subcategoría</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setReassignItem(null)}
+                  className="text-slate-400 hover:text-slate-600 text-sm p-1 rounded-lg cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleReassignSubmit} className="p-6 space-y-4">
+                {/* Essay Overview Banner */}
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5 text-xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-mono text-[11px] bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded font-semibold">
+                      {reassignItem.code || reassignItem.sku || 'Sin código'}
+                    </span>
+                    <span className="font-bold text-red-700 font-mono text-xs">
+                      {reassignItem.ufPrice !== undefined ? Number(reassignItem.ufPrice).toFixed(2) : '0.00'} UF
+                    </span>
+                  </div>
+                  <p className="font-bold text-slate-900 text-xs leading-snug">
+                    {reassignItem.designation}
+                  </p>
+                  <div className="flex items-center gap-3 text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
+                    {reassignItem.norm && <span>Norma: <strong>{reassignItem.norm}</strong></span>}
+                    <span>Ubicación actual: <strong>{reassignItem.category}</strong></span>
+                  </div>
+                </div>
+
+                {/* Centro de Costo Destino */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Centro de Costo Destino <span className="text-red-600">*</span>
+                  </label>
+                  <select
+                    value={reassignCc}
+                    onChange={(e) => handleCcChangeInModal(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-red-600 focus:border-transparent font-medium cursor-pointer"
+                    required
+                  >
+                    {CENTROS_DE_COSTO.map((cc) => (
+                      <option key={cc} value={cc}>
+                        {cc}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Categoría Destino */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Categoría Destino <span className="text-red-600">*</span>
+                  </label>
+                  {!isCustomCat ? (
+                    <div className="space-y-1.5">
+                      <select
+                        value={reassignCat}
+                        onChange={(e) => handleCatChangeInModal(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-red-600 focus:border-transparent font-medium cursor-pointer"
+                        required
+                      >
+                        {structure
+                          .filter((s) => s.cc === reassignCc)
+                          .map((s) => s.category)
+                          .sort(compareHierarchical)
+                          .map((catName) => (
+                            <option key={catName} value={catName}>
+                              {catName}
+                            </option>
+                          ))}
+                        <option value="__CUSTOM__">+ Nueva categoría personalizada...</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <input
+                        type="text"
+                        value={customCatName}
+                        onChange={(e) => setCustomCatName(e.target.value)}
+                        placeholder="Escribe el nombre de la nueva categoría..."
+                        className="w-full px-3 py-2 rounded-lg border border-red-300 text-xs bg-white focus:ring-2 focus:ring-red-600 focus:border-transparent font-medium"
+                        required
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomCat(false)}
+                        className="text-[11px] text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                      >
+                        ← Volver a seleccionar categoría existente
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Subcategoría Destino */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Subcategoría Destino
+                  </label>
+                  {!isCustomSubcat && !isCustomCat ? (
+                    <div className="space-y-1.5">
+                      <select
+                        value={reassignSubcat}
+                        onChange={(e) => handleSubcatChangeInModal(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-red-600 focus:border-transparent font-medium cursor-pointer"
+                      >
+                        <option value="">(Misma que categoría principal)</option>
+                        {(
+                          structure.find((s) => s.cc === reassignCc && s.category === reassignCat)
+                            ?.subcategories || []
+                        )
+                          .sort(compareHierarchical)
+                          .map((subName) => (
+                            <option key={subName} value={subName}>
+                              {subName}
+                            </option>
+                          ))}
+                        <option value="__CUSTOM__">+ Nueva subcategoría personalizada...</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <input
+                        type="text"
+                        value={customSubcatName}
+                        onChange={(e) => setCustomSubcatName(e.target.value)}
+                        placeholder="Escribe el nombre de la nueva subcategoría..."
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-red-600 focus:border-transparent font-medium"
+                      />
+                      {!isCustomCat && (
+                        <button
+                          type="button"
+                          onClick={() => setIsCustomSubcat(false)}
+                          className="text-[11px] text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                        >
+                          ← Volver a seleccionar subcategoría existente
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setReassignItem(null)}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold bg-red-700 text-white hover:bg-red-800 transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
+                  >
+                    {submitting ? 'Guardando...' : 'Guardar Cambios'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Custom Download Excel */}
+        <TarifarioExportModal
+          isOpen={showExportModal}
+          onClose={() => setShowExportModal(false)}
+        />
+      </main>
+    </div>
+  );
+}
+
+export default function ConfiguracionTarifarioPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+          <div className="text-center">
+            <div className="inline-block w-8 h-8 border-3 border-red-700 border-t-transparent rounded-full animate-spin mb-3"></div>
+            <p className="text-xs text-slate-500 font-medium">Cargando módulo de configuración...</p>
+          </div>
+        </div>
+      }
+    >
+      <ConfiguracionTarifarioContent />
+    </Suspense>
+  );
+}

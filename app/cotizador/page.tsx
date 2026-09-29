@@ -72,10 +72,10 @@ function updateCodeWithCc(currentCode: string, newCc: string): string {
   const ccNum = extractCcCode(newCc);
   const year = new Date().getFullYear();
   if (!currentCode) {
-    return `PR.DGL.${ccNum}.${year}.0598`;
+    return `PR.DGL.${ccNum}.${year}.0598-V1`;
   }
 
-  // Preserve version suffix if present: e.g. "-V2" or "_V2"
+  // Preserve version suffix if present: e.g. "-V1", "-V2" or "_V2"
   const versionMatch = currentCode.match(/([-_.\s]+V\d+)$/i);
   const versionSuffix = versionMatch ? versionMatch[1] : '';
   const baseWithoutVersion = currentCode.slice(0, currentCode.length - versionSuffix.length);
@@ -90,7 +90,7 @@ function updateCodeWithCc(currentCode: string, newCc: string): string {
     return baseWithoutVersion.replace(/PR\.DGL\.\w+\./i, `PR.DGL.${ccNum}.`) + versionSuffix;
   }
 
-  return `PR.DGL.${ccNum}.${year}.0598${versionSuffix}`;
+  return `PR.DGL.${ccNum}.${year}.0598${versionSuffix || '-V1'}`;
 }
 
 function getNextVersionCode(currentCode: string): string {
@@ -157,7 +157,7 @@ function CotizadorContent() {
   const [currency, setCurrency] = useState<'UF' | 'USD'>('UF');
   const [code, setCode] = useState(() => {
     const year = new Date().getFullYear();
-    return `PR.DGL.2339.${year}.0598`;
+    return `PR.DGL.2339.${year}.0598-V1`;
   });
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [city, setCity] = useState('Santiago');
@@ -457,10 +457,33 @@ function CotizadorContent() {
         if (data?.cotizacion) {
           const c: Cotizacion = data.cotizacion;
           setOriginalQuote(c);
-          setIsVersionMode(true);
-          const nextCode = getNextVersionCode(c.code);
-          setCode(nextCode);
-          setDate(new Date().toISOString().slice(0, 10)); // Today's date automatically
+
+          const isAlreadyFinalized =
+            c.status === 'Finalizada' || c.status === 'Enviada' || c.status === 'Aprobada';
+
+          if (isAlreadyFinalized) {
+            // Solo si ya fue finalizada/oficial se crea una nueva versión de trabajo
+            setIsVersionMode(true);
+            const nextCode = getNextVersionCode(c.code);
+            setCode(nextCode);
+            setSavedId(null);
+            setDate(new Date().toISOString().slice(0, 10)); // Nueva fecha de emisión para nueva versión
+            setStatusMessage({
+              type: 'success',
+              text: `Cotización oficial "${c.code}" (${c.status}) cargada. Se ha generado la nueva versión de trabajo "${nextCode}". Las modificaciones se guardarán como una nueva propuesta sin alterar el registro oficial original.`,
+            });
+          } else {
+            // Si es un borrador en proceso, se continúa editando exactamente el mismo borrador sin incrementar versión
+            setIsVersionMode(false);
+            setCode(c.code);
+            setSavedId(c.id);
+            if (c.date) setDate(c.date);
+            setStatusMessage({
+              type: 'success',
+              text: `Borrador "${c.code}" cargado para edición continua. Los cambios se actualizarán sobre este mismo documento.`,
+            });
+          }
+
           if (c.city) setCity(c.city);
           if (c.clientName) setClientName(c.clientName);
           if (c.clientRut) setClientRut(c.clientRut);
@@ -498,11 +521,6 @@ function CotizadorContent() {
             setShowIndicatorsInPdf(c.showEconomicIndicators !== false);
           }
           if (Array.isArray(c.items)) setItems(c.items);
-          setSavedId(null);
-          setStatusMessage({
-            type: 'success',
-            text: `Cotización base "${c.code}" cargada. Se ha generado la versión "${nextCode}". Puedes agregar, eliminar o modificar ensayos y cantidades.`,
-          });
         }
       })
       .catch((err) => {
@@ -517,7 +535,7 @@ function CotizadorContent() {
 
   const handleCentroCostoChange = (newCc: string) => {
     setCentroCosto(newCc);
-    if (!isVersionMode) {
+    if (!isVersionMode && !savedId) {
       fetch(`/api/cotizaciones/next-code?centroCosto=${encodeURIComponent(newCc)}`)
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
@@ -1131,6 +1149,7 @@ function CotizadorContent() {
         }
         if (isVersionMode) {
           setOriginalQuote(d.cotizacion);
+          setIsVersionMode(false);
         }
         setModalMode('draft');
         setShowSuccessModal(true);
@@ -1233,6 +1252,7 @@ function CotizadorContent() {
           }
           if (isVersionMode) {
             setOriginalQuote(d.cotizacion);
+            setIsVersionMode(false);
           }
         }
       } catch (saveErr) {
@@ -1317,6 +1337,7 @@ function CotizadorContent() {
           }
           if (isVersionMode) {
             setOriginalQuote(d.cotizacion);
+            setIsVersionMode(false);
           }
         }
       } catch (saveErr) {
@@ -1404,7 +1425,7 @@ function CotizadorContent() {
     const rand = Math.floor(1000 + Math.random() * 9000);
     const defaultCc = '2339 - Ensayos Rocas';
     setCentroCosto(defaultCc);
-    setCode(`PR.DGL.2339.${year}.${rand}`);
+    setCode(`PR.DGL.2339.${year}.${rand}-V1`);
     setDate(new Date().toISOString().slice(0, 10));
     setCity('Santiago');
     setCurrency('UF');
@@ -1647,7 +1668,7 @@ function CotizadorContent() {
           </div>
         </div>
 
-        {/* Edit / Version Mode Banner */}
+        {/* Edit / Version Mode Banner (Creating new version from finalized quote) */}
         {isVersionMode && originalQuote && (
           <div className="mb-3.5 p-3.5 bg-amber-50/90 border border-amber-300 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-xs text-xs text-amber-950">
             <div className="flex items-center gap-2 flex-wrap">
@@ -1656,7 +1677,7 @@ function CotizadorContent() {
                 Modo Edición / Nueva Versión
               </span>
               <span>
-                Editando propuesta base <strong className="font-mono">{originalQuote.code}</strong>. Al guardar se registrará como <strong className="font-mono text-blue-900 bg-white px-1.5 py-0.5 rounded border border-amber-300 font-bold">{code}</strong> manteniendo el original en el historial.
+                Editando a partir de la propuesta oficial <strong className="font-mono">{originalQuote.code}</strong> ({originalQuote.status}). Al guardar se registrará una nueva versión con código <strong className="font-mono text-blue-900 bg-white px-1.5 py-0.5 rounded border border-amber-300 font-bold">{code}</strong> manteniendo el original oficial intacto en el historial.
               </span>
             </div>
             <div className="flex items-center gap-3 self-end sm:self-auto">
@@ -1670,6 +1691,36 @@ function CotizadorContent() {
                 type="button"
                 onClick={handleReset}
                 className="text-amber-800 hover:text-amber-950 font-medium underline cursor-pointer"
+              >
+                Crear en Blanco
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Draft Edit Mode Banner (Editing existing draft in-place) */}
+        {!isVersionMode && originalQuote && originalQuote.status === 'Borrador' && (
+          <div className="mb-3.5 p-3.5 bg-blue-50/90 border border-blue-200 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-xs text-xs text-blue-950">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded text-[10px] uppercase tracking-wider flex items-center gap-1">
+                <FileText className="w-3 h-3" />
+                Modo Edición de Borrador
+              </span>
+              <span>
+                Editando cotización en borrador <strong className="font-mono text-blue-900 bg-white px-1.5 py-0.5 rounded border border-blue-300 font-bold">{code}</strong>. Todas las modificaciones se actualizarán directamente sobre este mismo documento.
+              </span>
+            </div>
+            <div className="flex items-center gap-3 self-end sm:self-auto">
+              <Link
+                href="/cotizaciones"
+                className="text-blue-900 hover:text-blue-950 font-semibold underline"
+              >
+                Ver Historial
+              </Link>
+              <button
+                type="button"
+                onClick={handleReset}
+                className="text-blue-800 hover:text-blue-950 font-medium underline cursor-pointer"
               >
                 Crear en Blanco
               </button>

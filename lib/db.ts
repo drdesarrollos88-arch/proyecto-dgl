@@ -757,7 +757,7 @@ export function getNextCorrelativo(
       : config.defaultInitialNumber || 598;
 
   const fullNumber = String(currentAssigned).padStart(4, '0');
-  const code = `PR.DGL.${ccNum}.${currentYear}.${fullNumber}`;
+  const code = `PR.DGL.${ccNum}.${currentYear}.${fullNumber}-V1`;
 
   return { code, correlativo: currentAssigned, fullNumber };
 }

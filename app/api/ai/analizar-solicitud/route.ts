@@ -3,6 +3,10 @@ import { getCurrentUser } from '@/lib/auth';
 import { analizarSolicitudConIa } from '@/lib/ai-service';
 import { parseExcelToText, parseWordToText } from '@/lib/document-parser';
 
+if (typeof process !== 'undefined' && typeof (process as any).umask !== 'function') {
+  (process as any).umask = () => 0;
+}
+
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
@@ -96,7 +100,10 @@ export async function POST(req: NextRequest) {
           fileBuffer = undefined;
           fileMimeType = undefined;
         }
-        // 4. Si es PDF, se mantiene fileBuffer y fileMimeType para procesamiento multimodal de Gemini
+        // 4. Si es PDF, se mantiene fileBuffer y se asegura mimeType 'application/pdf'
+        else if (lowerName.endsWith('.pdf')) {
+          fileMimeType = 'application/pdf';
+        }
       }
     } else {
       const body = await req.json();

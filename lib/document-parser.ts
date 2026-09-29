@@ -1,5 +1,7 @@
-import ExcelJS from 'exceljs';
-import * as mammoth from 'mammoth';
+// Polyfill for process.umask in serverless / Edge runtimes (Cloudflare Workers)
+if (typeof process !== 'undefined' && typeof (process as any).umask !== 'function') {
+  (process as any).umask = () => 0;
+}
 
 /**
  * Extrae el contenido tabular y textual de un archivo Excel (.xlsx, .xls)
@@ -7,15 +9,20 @@ import * as mammoth from 'mammoth';
  */
 export async function parseExcelToText(buffer: Buffer): Promise<string> {
   try {
+    if (typeof process !== 'undefined' && typeof (process as any).umask !== 'function') {
+      (process as any).umask = () => 0;
+    }
+    const ExcelJSModule = await import('exceljs');
+    const ExcelJS = (ExcelJSModule as any).default || ExcelJSModule;
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer as any);
 
     const sheetsText: string[] = [];
 
-    workbook.eachSheet((worksheet) => {
+    workbook.eachSheet((worksheet: any) => {
       const rows: string[] = [];
 
-      worksheet.eachRow({ includeEmpty: false }, (row) => {
+      worksheet.eachRow({ includeEmpty: false }, (row: any) => {
         const rawValues = row.values as any[];
         if (Array.isArray(rawValues)) {
           // row.values en ExcelJS es 1-indexed
@@ -59,6 +66,11 @@ export async function parseExcelToText(buffer: Buffer): Promise<string> {
  */
 export async function parseWordToText(buffer: Buffer): Promise<string> {
   try {
+    if (typeof process !== 'undefined' && typeof (process as any).umask !== 'function') {
+      (process as any).umask = () => 0;
+    }
+    const mammothModule = await import('mammoth');
+    const mammoth = (mammothModule as any).default || mammothModule;
     const result = await mammoth.extractRawText({ buffer });
     const text = result.value ? result.value.trim() : '';
 

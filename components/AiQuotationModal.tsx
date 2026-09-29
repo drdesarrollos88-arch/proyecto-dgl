@@ -222,7 +222,18 @@ export default function AiQuotationModal({
         });
       }
 
-      const data = await res.json();
+      const resText = await res.text();
+      let data: any;
+      try {
+        data = JSON.parse(resText);
+      } catch {
+        throw new Error(
+          !res.ok
+            ? `El servidor de IA respondió con un error (código ${res.status}). Por favor intenta nuevamente o sube el archivo en otro formato.`
+            : 'Respuesta inválida del servidor.'
+        );
+      }
+
       if (!res.ok) {
         throw new Error(data.error || 'Error al procesar la solicitud con IA.');
       }

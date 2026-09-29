@@ -201,7 +201,7 @@ INSTRUCCIONES CLAVE DE INSPECCIÓN:
       contentsParts.push({ text: promptUser });
 
       // Multi-Model Failover Cascade with automatic retry
-      const candidateModels = ['gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemini-3.8-flash'];
+      const candidateModels = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.8-flash', 'gemini-3.5-flash'];
       let response: any = null;
       let lastError: any = null;
 
@@ -829,7 +829,7 @@ Máximo 8 resultados ordenados del más relevante al menos relevante.`;
     }
   }
 
-  const fallbackModels = ['gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemini-3.8-flash'];
+  const fallbackModels = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.8-flash'];
   const ai = new GoogleGenAI({ apiKey });
 
   for (const modelName of fallbackModels) {
@@ -1028,7 +1028,7 @@ FORMATO DE SALIDA OBLIGATORIO (JSON ESTRICTO):
   ]
 }`;
 
-  const fallbackModels = ['gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemini-3.8-flash'];
+  const fallbackModels = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.8-flash'];
   const ai = new GoogleGenAI({ apiKey });
 
   for (const modelName of fallbackModels) {

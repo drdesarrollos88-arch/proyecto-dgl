@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getClienteById, updateCliente, deleteCliente } from '@/lib/clientes-db';
+import { isAdminRole } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,7 +53,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const user = await getCurrentUser();
-  if (!user || user.role !== 'admin') {
+  if (!user || !isAdminRole(user.role)) {
     return NextResponse.json(
       { error: 'Solo administradores pueden eliminar clientes.' },
       { status: 403 }

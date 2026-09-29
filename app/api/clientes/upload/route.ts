@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { importClientesFromExcel } from '@/lib/clientes-db';
+import { isAdminRole } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
-  if (!user || user.role !== 'admin') {
+  if (!user || !isAdminRole(user.role)) {
     return NextResponse.json(
       { error: 'Solo administradores pueden cargar bases de datos de clientes.' },
       { status: 403 }

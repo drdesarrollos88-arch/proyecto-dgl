@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { isAdminRole } from '@/lib/permissions';
 import {
   getTarifarioStructure,
   getTarifario,
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
   if (!currentUser) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
-  if (currentUser.role !== 'admin') {
+  if (!isAdminRole(currentUser.role)) {
     return NextResponse.json({ error: 'Permisos insuficientes. Se requiere rol administrador.' }, { status: 403 });
   }
 
@@ -94,7 +95,7 @@ export async function PUT(req: NextRequest) {
   if (!currentUser) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
-  if (currentUser.role !== 'admin') {
+  if (!isAdminRole(currentUser.role)) {
     return NextResponse.json({ error: 'Permisos insuficientes. Se requiere rol administrador.' }, { status: 403 });
   }
 
@@ -149,7 +150,7 @@ export async function DELETE(req: NextRequest) {
   if (!currentUser) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
-  if (currentUser.role !== 'admin') {
+  if (!isAdminRole(currentUser.role)) {
     return NextResponse.json({ error: 'Permisos insuficientes. Se requiere rol administrador.' }, { status: 403 });
   }
 

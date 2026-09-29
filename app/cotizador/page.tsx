@@ -25,7 +25,7 @@ import {
 } from '@/lib/default-conditions';
 import { AiDatosProyecto, AiEnsayoSugerido, AiChatAction } from '@/lib/ai-service';
 import { smartSearchTarifario } from '@/lib/search-utils';
-import { hasPermission } from '@/lib/permissions';
+import { hasPermission, isAdminRole } from '@/lib/permissions';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -1172,7 +1172,7 @@ function CotizadorContent() {
     // Finalizar cotización: guardar con estado 'Finalizada' y descargar PDF oficial limpio
   const handleFinalize = async () => {
     // Validar autorización del usuario para finalizar
-    if (user && user.role !== 'admin' && !hasPermission(user, 'cotizador.descargar_definitivo')) {
+    if (user && !isAdminRole(user.role) && !hasPermission(user, 'cotizador.descargar_definitivo')) {
       alert(
         'Tu perfil de usuario no cuenta con autorización para finalizar y emitir cotizaciones definitivas. Por favor utiliza la opción "Descargar Borrador (PDF)" para revisión técnica de jefatura.'
       );

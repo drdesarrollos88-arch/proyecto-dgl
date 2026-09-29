@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getCorrelativoConfig, saveCorrelativoConfig } from '@/lib/db';
-import { hasPermission } from '@/lib/permissions';
+import { hasPermission, isAdminRole } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +26,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const isAdmin = user.role === 'admin' || hasPermission(user, 'usuarios.administrar');
+  const isAdmin = isAdminRole(user.role) || hasPermission(user, 'usuarios.administrar');
   if (!isAdmin) {
     return NextResponse.json(
       { error: 'No tienes permisos administrativos para modificar la secuencia de correlativos.' },

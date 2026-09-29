@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { hasPermission } from '@/lib/permissions';
+import { hasPermission, isAdminRole } from '@/lib/permissions';
 import {
   getReglasAprendidas,
   saveReglaAprendida,
@@ -97,7 +97,7 @@ export async function PUT(req: NextRequest) {
   }
 
   // Verificar permiso de administración
-  const canAdmin = hasPermission(user, 'configuracion.formato') || user.role === 'admin';
+  const canAdmin = hasPermission(user, 'configuracion.formato') || isAdminRole(user.role);
   if (!canAdmin) {
     return NextResponse.json(
       { error: 'No tienes permisos para modificar reglas de aprendizaje.' },
@@ -148,7 +148,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const canAdmin = hasPermission(user, 'configuracion.formato') || user.role === 'admin';
+  const canAdmin = hasPermission(user, 'configuracion.formato') || isAdminRole(user.role);
   if (!canAdmin) {
     return NextResponse.json(
       { error: 'No tienes permisos para eliminar reglas de aprendizaje.' },

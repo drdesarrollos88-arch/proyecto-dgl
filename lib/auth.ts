@@ -1,7 +1,7 @@
 import { SignJWT, jwtVerify } from 'jose';
 import bcrypt from 'bcryptjs';
 import { cookies } from 'next/headers';
-import { SessionUser } from './types';
+import { SessionUser, UserRole } from './types';
 import { getUserByEmail, getUserByRut, getUserById, getProfiles } from './db';
 import { computeEffectivePermissions } from './permissions';
 
@@ -52,7 +52,7 @@ export async function verifySessionToken(token: string): Promise<SessionUser | n
       rut: payload.rut as string,
       name: payload.name as string,
       email: payload.email as string,
-      role: payload.role as 'admin' | 'comercial',
+      role: payload.role as UserRole,
       profileId: payload.profileId as string | undefined,
     };
   } catch {
@@ -176,7 +176,7 @@ export async function findUserByIdentifier(identifier: string) {
           name: data.name,
           email: data.email,
           passwordHash: data.password_hash,
-          role: data.role as 'admin' | 'comercial',
+          role: (data.role as UserRole) || 'comercial',
           createdAt: data.created_at,
           commercialTitle: data.commercial_title,
           phone: data.phone,

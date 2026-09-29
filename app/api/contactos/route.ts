@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { searchContactos, upsertContacto, deleteContacto } from '@/lib/contactos-db';
-import { hasPermission } from '@/lib/permissions';
+import { hasPermission, isAdminRole } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,7 +66,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const canManage = user.role === 'admin' || hasPermission(user, 'clientes.gestionar');
+  const canManage = isAdminRole(user.role) || hasPermission(user, 'clientes.gestionar');
   if (!canManage) {
     return NextResponse.json(
       { error: 'Acceso denegado: No tienes permisos para eliminar contactos comerciales.' },

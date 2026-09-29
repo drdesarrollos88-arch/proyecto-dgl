@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getFormatoSettings, saveFormatoSettings } from '@/lib/db';
+import { isAdminRole } from '@/lib/permissions';
 
 export async function GET() {
   const currentUser = await getCurrentUser();
@@ -19,7 +20,7 @@ export async function PUT(req: NextRequest) {
   }
 
   // Authorization check: Admin only
-  if (currentUser.role !== 'admin') {
+  if (!isAdminRole(currentUser.role)) {
     return NextResponse.json(
       { error: 'Acceso denegado: solo administradores pueden modificar el formato oficial.' },
       { status: 403 }

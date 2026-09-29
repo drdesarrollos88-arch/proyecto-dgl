@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getTarifario, updateTarifarioItem, createTarifarioItem } from '@/lib/db';
+import { isAdminRole } from '@/lib/permissions';
 
 export async function GET() {
   const currentUser = await getCurrentUser();
@@ -14,7 +15,7 @@ export async function GET() {
 
 export async function PUT(req: NextRequest) {
   const currentUser = await getCurrentUser();
-  const canEdit = currentUser && (currentUser.role === 'admin' || currentUser.permissions?.includes('tarifario.editar'));
+  const canEdit = currentUser && (isAdminRole(currentUser.role) || currentUser.permissions?.includes('tarifario.editar'));
   if (!canEdit) {
     return NextResponse.json(
       { error: 'No tienes permisos para modificar el tarifario oficial.' },
@@ -42,7 +43,7 @@ export async function PUT(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const currentUser = await getCurrentUser();
-  if (!currentUser || currentUser.role !== 'admin') {
+  if (!currentUser || !isAdminRole(currentUser.role)) {
     return NextResponse.json(
       { error: 'Solo administradores pueden agregar ítems al tarifario oficial.' },
       { status: 403 }

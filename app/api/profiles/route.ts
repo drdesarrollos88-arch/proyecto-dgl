@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getProfiles, saveProfile, deleteProfile } from '@/lib/db';
-import { hasPermission } from '@/lib/permissions';
+import { hasPermission, isAdminRole } from '@/lib/permissions';
 
 // GET: Obtener lista de todos los perfiles de usuario y sus permisos configurados
 export async function GET() {
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Verificar que el usuario tenga permiso de administración de usuarios
-  if (currentUser.role !== 'admin' && !hasPermission(currentUser, 'usuarios.administrar')) {
+  if (!isAdminRole(currentUser.role) && !hasPermission(currentUser, 'usuarios.administrar')) {
     return NextResponse.json(
       { error: 'No tienes permisos suficientes para administrar perfiles de usuario.' },
       { status: 403 }
@@ -63,7 +63,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  if (currentUser.role !== 'admin' && !hasPermission(currentUser, 'usuarios.administrar')) {
+  if (!isAdminRole(currentUser.role) && !hasPermission(currentUser, 'usuarios.administrar')) {
     return NextResponse.json(
       { error: 'No tienes permisos para eliminar perfiles de usuario.' },
       { status: 403 }

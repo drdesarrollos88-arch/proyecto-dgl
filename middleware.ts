@@ -58,10 +58,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Admin-only routes
+  // Admin-only routes (Permite roles 'admin' y 'superadmin')
   if (
     (pathname.startsWith('/usuarios') || pathname.startsWith('/configuracion')) &&
-    user.role !== 'admin'
+    user.role !== 'admin' &&
+    user.role !== 'superadmin'
   ) {
     return NextResponse.redirect(new URL('/cotizador', request.url));
   }

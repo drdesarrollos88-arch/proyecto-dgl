@@ -3,10 +3,11 @@ import ExcelJS from 'exceljs';
 import { getCurrentUser } from '@/lib/auth';
 import { replaceTarifario } from '@/lib/db';
 import { TarifarioItem } from '@/lib/types';
+import { isAdminRole } from '@/lib/permissions';
 
 export async function POST(req: NextRequest) {
   const currentUser = await getCurrentUser();
-  if (!currentUser || currentUser.role !== 'admin') {
+  if (!currentUser || !isAdminRole(currentUser.role)) {
     return NextResponse.json(
       { error: 'Solo administradores pueden cargar un nuevo archivo de tarifario.' },
       { status: 403 }

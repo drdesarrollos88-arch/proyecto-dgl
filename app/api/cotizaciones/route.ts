@@ -9,7 +9,7 @@ import {
 } from '@/lib/cotizaciones-db';
 import { upsertContacto } from '@/lib/contactos-db';
 import { createOrGetProyecto } from '@/lib/proyectos-db';
-import { hasPermission } from '@/lib/permissions';
+import { hasPermission, isAdminRole } from '@/lib/permissions';
 
 export async function GET() {
   const currentUser = await getCurrentUser();
@@ -17,7 +17,7 @@ export async function GET() {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const canSeeAll = currentUser.role === 'admin' || hasPermission(currentUser, 'cotizaciones.ver_todas');
+  const canSeeAll = isAdminRole(currentUser.role) || hasPermission(currentUser, 'cotizaciones.ver_todas');
   let cotizaciones = await getCotizacionesAsync();
   if (!canSeeAll) {
     cotizaciones = cotizaciones.filter(
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     // 0. Permission check for finalized / official quotes
     if (data.status === 'Finalizada' || data.status === 'Enviada' || data.status === 'Aprobada') {
       const canFinalize =
-        currentUser.role === 'admin' || hasPermission(currentUser, 'cotizador.descargar_definitivo');
+        isAdminRole(currentUser.role) || hasPermission(currentUser, 'cotizador.descargar_definitivo');
       if (!canFinalize) {
         return NextResponse.json(
           { error: 'Acceso denegado: No tienes permisos para emitir o finalizar cotizaciones oficiales.' },
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
           existing.createdBy === currentUser.name ||
           existing.commercialName === currentUser.name;
 
-        if (currentUser.role !== 'admin' && !isOwner) {
+        if (!isAdminRole(currentUser.role) && !isOwner) {
           return NextResponse.json(
             { error: 'Acceso denegado: No tienes permisos para modificar esta cotización.' },
             { status: 403 }
@@ -80,32 +80,32 @@ export async function POST(req: NextRequest) {
     // 2. Anti-Impersonation: Bind signature and commercial data to authenticated user
     const userProfile = getUserById(currentUser.id);
     const commercialName =
-      currentUser.role === 'admin' && data.commercialName
+      isAdminRole(currentUser.role) && data.commercialName
         ? data.commercialName
         : userProfile?.name || currentUser.name;
 
     const commercialTitle =
-      currentUser.role === 'admin' && data.commercialTitle !== undefined
+      isAdminRole(currentUser.role) && data.commercialTitle !== undefined
         ? data.commercialTitle
         : userProfile?.commercialTitle || data.commercialTitle || '';
 
     const commercialInitials =
-      currentUser.role === 'admin' && data.commercialInitials !== undefined
+      isAdminRole(currentUser.role) && data.commercialInitials !== undefined
         ? data.commercialInitials
         : userProfile?.commercialInitials || data.commercialInitials || '';
 
     const commercialPhone =
-      currentUser.role === 'admin' && data.commercialPhone !== undefined
+      isAdminRole(currentUser.role) && data.commercialPhone !== undefined
         ? data.commercialPhone
         : userProfile?.phone || data.commercialPhone || '';
 
     const commercialEmail =
-      currentUser.role === 'admin' && data.commercialEmail !== undefined
+      isAdminRole(currentUser.role) && data.commercialEmail !== undefined
         ? data.commercialEmail
         : userProfile?.email || currentUser.email;
 
     const commercialSignature =
-      currentUser.role === 'admin' && data.commercialSignature !== undefined
+      isAdminRole(currentUser.role) && data.commercialSignature !== undefined
         ? data.commercialSignature
         : userProfile?.signature || data.commercialSignature || '';
 
@@ -167,7 +167,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const canDelete = currentUser.role === 'admin' || hasPermission(currentUser, 'cotizaciones.eliminar');
+  const canDelete = isAdminRole(currentUser.role) || hasPermission(currentUser, 'cotizaciones.eliminar');
   if (!canDelete) {
     return NextResponse.json(
       { error: 'No tienes permisos para eliminar cotizaciones.' },
@@ -183,7 +183,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'Debe especificar un listado de IDs a eliminar.' }, { status: 400 });
     }
 
-    const isAdmin = currentUser.role === 'admin';
+    const isAdmin = isAdminRole(currentUser.role);
     const result = await deleteCotizacionesBatchAsync(
       ids,
       currentUser.name,

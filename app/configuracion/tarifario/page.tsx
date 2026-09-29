@@ -156,7 +156,7 @@ function ConfiguracionTarifarioContent() {
     }, 5000);
   };
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'superadmin';
   const canEdit = isAdmin || currentUser?.permissions?.includes('tarifario.editar');
 
   const toggleCategoryExpand = (catKey: string) => {

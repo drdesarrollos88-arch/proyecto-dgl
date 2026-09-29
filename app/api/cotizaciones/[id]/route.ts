@@ -5,6 +5,7 @@ import {
   saveCotizacionAsync,
   deleteCotizacionAsync,
 } from '@/lib/cotizaciones-db';
+import { isAdminRole } from '@/lib/permissions';
 
 export async function GET(
   req: NextRequest,
@@ -45,7 +46,7 @@ export async function PATCH(
     cotizacion.createdBy === currentUser.name ||
     cotizacion.commercialName === currentUser.name;
 
-  if (currentUser.role !== 'admin' && !isOwner) {
+  if (!isAdminRole(currentUser.role) && !isOwner) {
     return NextResponse.json(
       { error: 'No tienes permisos para modificar esta cotización.' },
       { status: 403 }
@@ -96,14 +97,14 @@ export async function DELETE(
     cotizacion.createdBy === currentUser.name ||
     cotizacion.commercialName === currentUser.name;
 
-  if (currentUser.role !== 'admin' && !isOwner) {
+  if (!isAdminRole(currentUser.role) && !isOwner) {
     return NextResponse.json(
       { error: 'No tienes permisos para eliminar esta cotización. Solo administradores o el ejecutivo emisor pueden eliminarla.' },
       { status: 403 }
     );
   }
 
-  const result = await deleteCotizacionAsync(id, currentUser.name, currentUser.id, currentUser.role === 'admin');
+  const result = await deleteCotizacionAsync(id, currentUser.name, currentUser.id, isAdminRole(currentUser.role));
 
   if (!result.success) {
     return NextResponse.json(

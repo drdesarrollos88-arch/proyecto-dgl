@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import { Cliente, Contacto, Proyecto, SessionUser } from '@/lib/types';
+import { isAdminRole } from '@/lib/permissions';
 import {
   Building2,
   Search,
@@ -526,7 +527,7 @@ function ClientesContent() {
               <span>Ir al Cotizador</span>
             </Link>
 
-            {activeTab === 'empresas' && user?.role === 'admin' && (
+            {activeTab === 'empresas' && isAdminRole(user?.role) && (
               <button
                 onClick={() => setShowUploadModal(true)}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors shadow-xs cursor-pointer"
@@ -747,7 +748,7 @@ function ClientesContent() {
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
-                              {user?.role === 'admin' && (
+                              {isAdminRole(user?.role) && (
                                 <button
                                   onClick={() => handleDeleteCliente(c.id, c.name)}
                                   title="Eliminar empresa"

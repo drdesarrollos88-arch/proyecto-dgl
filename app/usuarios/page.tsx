@@ -3,18 +3,21 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Navbar from '@/components/Navbar';
-import { User, SessionUser, UserProfile, PermissionKey } from '@/lib/types';
+import { User, SessionUser, UserProfile, PermissionKey, UserRole } from '@/lib/types';
 import {
   PERMISSION_DEFINITIONS,
   PermissionDefinition,
   computeEffectivePermissions,
   hasPermission,
+  isAdminRole,
+  isSuperAdminRole,
 } from '@/lib/permissions';
 import {
   Users,
   UserPlus,
   Trash2,
   Shield,
+  ShieldCheck,
   UserCheck,
   AlertCircle,
   CheckCircle2,
@@ -65,7 +68,7 @@ function UsuariosContent() {
   const [editUserFormData, setEditUserFormData] = useState({
     name: '',
     email: '',
-    role: 'comercial' as 'admin' | 'comercial',
+    role: 'comercial' as UserRole,
     profileId: 'comercial_senior',
     password: '',
   });
@@ -76,7 +79,7 @@ function UsuariosContent() {
     name: '',
     email: '',
     password: '',
-    role: 'comercial' as 'admin' | 'comercial',
+    role: 'comercial' as UserRole,
     profileId: 'comercial_senior',
   });
   const [createPermissions, setCreatePermissions] = useState<PermissionKey[]>([]);
@@ -195,7 +198,7 @@ function UsuariosContent() {
   const usersCountByProfile = useMemo(() => {
     const map: Record<string, number> = {};
     users.forEach((u) => {
-      const pId = u.profileId || (u.role === 'admin' ? 'admin' : 'comercial_senior');
+      const pId = u.profileId || (u.role === 'superadmin' ? 'superadmin' : u.role === 'admin' ? 'admin' : 'comercial_senior');
       map[pId] = (map[pId] || 0) + 1;
     });
     return map;
@@ -205,6 +208,10 @@ function UsuariosContent() {
 
   // Abrir modal de configuración de permisos para un usuario específico
   const handleOpenConfigurePermissions = (user: Omit<User, 'passwordHash'>) => {
+    if (user.role === 'superadmin' && currentUser?.role !== 'superadmin') {
+      alert('Acceso protegido: Los permisos de un Administrador / Soporte están blindados y no pueden ser modificados por un Administrador.');
+      return;
+    }
     setPermConfigUser(user);
     // Si tiene permisos personalizados explícitos, usar esos. Si no, calcular los permisos efectivos de su perfil.
     const effective = computeEffectivePermissions(user, profiles);
@@ -328,7 +335,11 @@ function UsuariosContent() {
         throw new Error(data.error || 'Error al registrar el usuario.');
       }
 
-      setSuccess(`Usuario ${createUserData.name} creado exitosamente con sus permisos asignados.`);
+      if (data.emailNotification?.delivered) {
+        setSuccess(`Usuario ${createUserData.name} creado exitosamente. Se ha despachado la notificación con su contraseña provisoria al correo ${createUserData.email}.`);
+      } else {
+        setSuccess(`Usuario ${createUserData.name} creado exitosamente. Las credenciales de acceso fueron generadas.`);
+      }
       setCreateUserData({
         rut: '',
         name: '',
@@ -351,12 +362,16 @@ function UsuariosContent() {
   // ==================== EDICIÓN BÁSICA DE USUARIO ====================
 
   const handleOpenEditBasicUser = (u: Omit<User, 'passwordHash'>) => {
+    if (u.role === 'superadmin' && currentUser?.role !== 'superadmin') {
+      alert('Acceso protegido: Los datos de un Administrador / Soporte solo pueden ser modificados por otro Administrador / Soporte.');
+      return;
+    }
     setEditingBasicUser(u);
     setEditUserFormData({
       name: u.name,
       email: u.email,
       role: u.role,
-      profileId: u.profileId || (u.role === 'admin' ? 'admin' : 'comercial_senior'),
+      profileId: u.profileId || (u.role === 'superadmin' ? 'superadmin' : u.role === 'admin' ? 'admin' : 'comercial_senior'),
       password: '',
     });
     setError(null);
@@ -405,6 +420,12 @@ function UsuariosContent() {
 
   // Eliminar usuario
   const handleDeleteUser = async (id: string, name: string) => {
+    const target = users.find((u) => u.id === id);
+    if (target?.role === 'superadmin' && currentUser?.role !== 'superadmin') {
+      alert('Acceso protegido: No es posible eliminar a un usuario con rol Administrador / Soporte.');
+      return;
+    }
+
     if (!confirm(`¿Está seguro de revocar el acceso y eliminar permanentemente a ${name}?`)) return;
 
     try {
@@ -699,7 +720,10 @@ function UsuariosContent() {
                     ) : (
                       filteredUsers.map((u) => {
                         const isSelf = currentUser?.id === u.id;
-                        const assignedProfile = profileMap[u.profileId || (u.role === 'admin' ? 'admin' : 'comercial_senior')];
+                        const isTargetSuperAdmin = u.role === 'superadmin';
+                        const isActorSuperAdmin = currentUser?.role === 'superadmin';
+                        const canModifyTarget = isActorSuperAdmin || !isTargetSuperAdmin;
+                        const assignedProfile = profileMap[u.profileId || (u.role === 'superadmin' ? 'superadmin' : u.role === 'admin' ? 'admin' : 'comercial_senior')];
                         const effectivePerms = computeEffectivePermissions(u, profiles);
                         const totalPerms = PERMISSION_DEFINITIONS.length;
                         const activePermsCount = effectivePerms.length;
@@ -756,48 +780,61 @@ function UsuariosContent() {
 
                             {/* Rol */}
                             <td className="py-3.5 px-4 text-center">
-                              <span
-                                className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
-                                  u.role === 'admin'
-                                    ? 'bg-slate-800 text-white'
-                                    : 'bg-blue-50 text-blue-700 border border-blue-200'
-                                }`}
-                              >
-                                {u.role === 'admin' ? 'Admin' : 'Comercial'}
-                              </span>
+                              {u.role === 'superadmin' ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-gradient-to-r from-purple-900 to-indigo-900 text-white shadow-xs border border-purple-800">
+                                  <ShieldCheck className="w-3 h-3 text-purple-300" />
+                                  <span>Admin / Soporte</span>
+                                </span>
+                              ) : u.role === 'admin' ? (
+                                <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-slate-800 text-white">
+                                  Administrador
+                                </span>
+                              ) : (
+                                <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-blue-50 text-blue-700 border border-blue-200">
+                                  Comercial
+                                </span>
+                              )}
                             </td>
 
                             {/* Acciones */}
                             <td className="py-3.5 px-4 text-center">
                               <div className="flex items-center justify-center gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenConfigurePermissions(u)}
-                                  title="Configurar casillas de verificación de permisos"
-                                  className="flex items-center gap-1 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer"
-                                >
-                                  <CheckSquare className="w-3.5 h-3.5 text-purple-600" />
-                                  <span>Permisos</span>
-                                </button>
+                                {canModifyTarget ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenConfigurePermissions(u)}
+                                      title="Configurar casillas de verificación de permisos"
+                                      className="flex items-center gap-1 bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer"
+                                    >
+                                      <CheckSquare className="w-3.5 h-3.5 text-purple-600" />
+                                      <span>Permisos</span>
+                                    </button>
 
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenEditBasicUser(u)}
-                                  title="Editar datos básicos (Nombre, Correo, Clave)"
-                                  className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenEditBasicUser(u)}
+                                      title="Editar datos básicos (Nombre, Correo, Clave)"
+                                      className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5" />
+                                    </button>
 
-                                {!isSelf && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteUser(u.id, u.name)}
-                                    title="Eliminar usuario"
-                                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                    {!isSelf && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteUser(u.id, u.name)}
+                                        title="Eliminar usuario"
+                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="text-[11px] font-medium text-slate-400 italic flex items-center gap-1">
+                                    <Shield className="w-3 h-3 text-purple-400" /> Protegido
+                                  </span>
                                 )}
                               </div>
                             </td>
@@ -883,7 +920,7 @@ function UsuariosContent() {
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                    Contraseña Inicial *
+                    Contraseña Provisoria *
                   </label>
                   <div className="relative">
                     <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -896,6 +933,10 @@ function UsuariosContent() {
                       className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-600 focus:outline-none"
                     />
                   </div>
+                  <p className="text-[11px] text-purple-700 mt-1.5 flex items-center gap-1 font-medium">
+                    <Mail className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                    <span>Se enviará automáticamente un correo al usuario con esta contraseña provisoria y el enlace al login.</span>
+                  </p>
                 </div>
 
                 <div>
@@ -907,13 +948,16 @@ function UsuariosContent() {
                     onChange={(e) =>
                       setCreateUserData({
                         ...createUserData,
-                        role: e.target.value as 'admin' | 'comercial',
+                        role: e.target.value as UserRole,
                       })
                     }
                     className="w-full p-2 text-xs sm:text-sm border border-slate-300 rounded-xl bg-white focus:ring-2 focus:ring-purple-600 focus:outline-none font-medium"
                   >
                     <option value="comercial">Comercial (Personal de Cotizaciones / Laboratorio)</option>
-                    <option value="admin">Administrador (Control Total del Sistema)</option>
+                    <option value="admin">Administrador (Gestión del Sistema)</option>
+                    {currentUser?.role === 'superadmin' && (
+                      <option value="superadmin">Administrador / Soporte (Control Total Absoluto)</option>
+                    )}
                   </select>
                 </div>
 
@@ -1186,7 +1230,12 @@ function UsuariosContent() {
                     </span>
                   </h3>
                   <p className="text-xs text-slate-500 font-mono">
-                    {permConfigUser.email} • Rol: {permConfigUser.role === 'admin' ? 'Administrador' : 'Comercial'}
+                    {permConfigUser.email} • Rol:{' '}
+                    {permConfigUser.role === 'superadmin'
+                      ? 'Administrador / Soporte'
+                      : permConfigUser.role === 'admin'
+                      ? 'Administrador'
+                      : 'Comercial'}
                   </p>
                 </div>
               </div>
@@ -1399,13 +1448,16 @@ function UsuariosContent() {
                   onChange={(e) =>
                     setEditUserFormData({
                       ...editUserFormData,
-                      role: e.target.value as 'admin' | 'comercial',
+                      role: e.target.value as UserRole,
                     })
                   }
                   className="w-full p-2 text-sm border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-purple-600 focus:outline-none font-medium"
                 >
                   <option value="comercial">Comercial</option>
                   <option value="admin">Administrador</option>
+                  {currentUser?.role === 'superadmin' && (
+                    <option value="superadmin">Administrador / Soporte</option>
+                  )}
                 </select>
               </div>
 

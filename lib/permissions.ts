@@ -91,9 +91,29 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
 // Perfiles base predeterminados del sistema
 export const DEFAULT_PROFILES: UserProfile[] = [
   {
+    id: 'superadmin',
+    name: 'Administrador / Soporte',
+    description: 'Control absoluto de la plataforma, roles protegidos, usuarios y configuraciones maestras.',
+    isSystem: true,
+    permissions: [
+      'cotizador.ver',
+      'cotizador.descargar_borrador',
+      'cotizador.descargar_definitivo',
+      'cotizaciones.ver_todas',
+      'cotizaciones.eliminar',
+      'tarifario.ver',
+      'tarifario.descargar',
+      'tarifario.editar',
+      'clientes.gestionar',
+      'configuracion.formato',
+      'usuarios.administrar',
+    ],
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
     id: 'admin',
-    name: 'Administrador de Sistema',
-    description: 'Control total de la plataforma, configuración, usuarios, tarifas y cotizaciones.',
+    name: 'Administrador',
+    description: 'Control total de cotizaciones, tarifas, clientes y gestión de usuarios.',
     isSystem: true,
     permissions: [
       'cotizador.ver',
@@ -169,19 +189,33 @@ export const DEFAULT_PROFILES: UserProfile[] = [
 ];
 
 /**
+ * Valida si un rol corresponde a nivel administrativo (superadmin o admin).
+ */
+export function isAdminRole(role: string | undefined | null): boolean {
+  return role === 'superadmin' || role === 'admin';
+}
+
+/**
+ * Valida si un rol corresponde exclusivamente al Administrador / Soporte.
+ */
+export function isSuperAdminRole(role: string | undefined | null): boolean {
+  return role === 'superadmin';
+}
+
+/**
  * Calcula los permisos efectivos de un usuario combinando su rol heredado,
  * su perfil asignado y cualquier permiso personalizado individual.
  */
 export function computeEffectivePermissions(
   user: {
-    role: 'admin' | 'comercial';
+    role: any;
     profileId?: string;
     customPermissions?: PermissionKey[];
   },
   availableProfiles: UserProfile[] = DEFAULT_PROFILES
 ): PermissionKey[] {
-  // Los administradores por rol siempre tienen todos los permisos
-  if (user.role === 'admin' && (!user.profileId || user.profileId === 'admin')) {
+  // Los administradores (superadmin y admin) por rol siempre tienen todos los permisos
+  if (isAdminRole(user.role) && (!user.profileId || user.profileId === 'admin' || user.profileId === 'superadmin')) {
     return DEFAULT_PROFILES[0].permissions;
   }
 
@@ -196,9 +230,9 @@ export function computeEffectivePermissions(
     return profile.permissions;
   }
 
-  return user.role === 'admin'
+  return isAdminRole(user.role)
     ? DEFAULT_PROFILES[0].permissions
-    : DEFAULT_PROFILES[2].permissions; // Por defecto comercial_junior
+    : DEFAULT_PROFILES[3].permissions; // Por defecto comercial_junior
 }
 
 /**
@@ -209,7 +243,7 @@ export function hasPermission(
   permission: PermissionKey
 ): boolean {
   if (!user) return false;
-  if (user.role === 'admin' && (!user.profileId || user.profileId === 'admin')) return true;
+  if (isAdminRole(user.role) && (!user.profileId || user.profileId === 'admin' || user.profileId === 'superadmin')) return true;
 
   if ('permissions' in user && Array.isArray((user as SessionUser).permissions)) {
     return (user as SessionUser).permissions!.includes(permission);

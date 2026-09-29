@@ -998,7 +998,7 @@ function TarifarioContent() {
                   </th>
 
                   <th className="py-2.5 px-2 w-20 text-center bg-slate-100">SKU</th>
-                  {user?.role === 'admin' && (
+                  {hasPermission(user, 'tarifario.editar') && (
                     <th className="py-2.5 px-2 w-14 text-center bg-slate-100">Acción</th>
                   )}
                 </tr>

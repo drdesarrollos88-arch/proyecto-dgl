@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'comercial';
+export type UserRole = 'superadmin' | 'admin' | 'comercial';
 
 // Lista oficial de permisos granulares del sistema
 export const PERMISSION_KEYS = [

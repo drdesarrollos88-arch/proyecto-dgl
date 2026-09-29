@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { SessionUser, EconomicIndicators } from '@/lib/types';
+import { isAdminRole } from '@/lib/permissions';
 import ProfileModal from '@/components/ProfileModal';
 import FormatoModal from '@/components/FormatoModal';
 import {
@@ -32,6 +33,7 @@ import {
   Sliders,
   CheckSquare,
   Hash,
+  ShieldCheck,
 } from 'lucide-react';
 
 export default function Navbar() {
@@ -299,7 +301,7 @@ export default function Navbar() {
                     </a>
                   </div>
 
-                  {user?.role === 'admin' && (
+                  {isAdminRole(user?.role) && (
                     <div className="py-1">
                       <Link
                         href="/tarifario?action=upload"
@@ -450,7 +452,7 @@ export default function Navbar() {
                     </Link>
                   </div>
 
-                  {user?.role === 'admin' && (
+                  {isAdminRole(user?.role) && (
                     <div className="py-1">
                       <Link
                         href="/clientes?action=upload"
@@ -504,7 +506,7 @@ export default function Navbar() {
                 >
                   <div className="py-1">
                     {/* Usuarios (Admin only) */}
-                    {user?.role === 'admin' && (
+                    {isAdminRole(user?.role) && (
                       <div className="border-b border-slate-100 pb-1.5 mb-1">
                         <Link
                           href="/usuarios"
@@ -642,15 +644,22 @@ export default function Navbar() {
                       {user.name}
                     </span>
                     <div className="flex items-center gap-1 mt-0.5">
-                      <span
-                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
-                          user.role === 'admin'
-                            ? 'bg-purple-100 text-purple-800'
-                            : 'bg-emerald-100 text-emerald-800'
-                        }`}
-                      >
-                        {user.role === 'admin' ? 'Administrador' : 'Comercial'}
-                      </span>
+                      {user.role === 'superadmin' ? (
+                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-gradient-to-r from-purple-900 to-indigo-900 text-white flex items-center gap-1 shadow-2xs">
+                          <ShieldCheck className="w-2.5 h-2.5 text-purple-300" />
+                          <span>Admin / Soporte</span>
+                        </span>
+                      ) : (
+                        <span
+                          className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                            user.role === 'admin'
+                              ? 'bg-purple-100 text-purple-800'
+                              : 'bg-emerald-100 text-emerald-800'
+                          }`}
+                        >
+                          {user.role === 'admin' ? 'Administrador' : 'Comercial'}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -717,7 +726,7 @@ export default function Navbar() {
           <TableProperties className="w-3.5 h-3.5" />
           <span>Tarifario</span>
         </Link>
-        {user?.role === 'admin' && (
+        {isAdminRole(user?.role) && (
           <Link
             href="/usuarios"
             className={`flex items-center gap-1 py-1 ${

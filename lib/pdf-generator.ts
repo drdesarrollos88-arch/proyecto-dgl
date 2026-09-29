@@ -222,7 +222,7 @@ export function generateCotizacionPdf(
 
   autoTable(doc, {
     startY: currentY,
-    margin: { left: marginX, right: marginX, bottom: 26 },
+    margin: { top: 28, left: marginX, right: marginX, bottom: 26 },
     head: [
       [
         'Item',
@@ -295,8 +295,11 @@ export function generateCotizacionPdf(
   const lastTable = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable;
   currentY = (lastTable ? lastTable.finalY : currentY) + 5;
 
-  // Comprobar si las observaciones y firmas caben en la página actual (~65 mm antes del margen inferior de 26 mm)
-  if (currentY > pageHeight - 90) {
+  const maxContentY = pageHeight - 26; // 253.4 mm: margen inferior seguro antes del pie de página
+
+  // Comprobar si las observaciones de geotécnica caben en la página actual (~36 mm requeridas)
+  const requiredObsHeight = 36;
+  if (currentY + requiredObsHeight > maxContentY) {
     doc.addPage();
     currentY = 28;
   }
@@ -370,6 +373,10 @@ export function generateCotizacionPdf(
   condY += 5;
 
   const renderSectionHeader = (title: string) => {
+    if (condY + 10 > maxContentY) {
+      doc.addPage();
+      condY = 28;
+    }
     doc.setFontSize(7.8);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(226, 0, 0); // IDIEM Red section headings
@@ -389,6 +396,10 @@ export function generateCotizacionPdf(
     const textWidth = pageWidth - marginX * 2 - indent;
 
     if (highlightPrefix && highlightValue) {
+      if (condY + 6 > maxContentY) {
+        doc.addPage();
+        condY = 28;
+      }
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(30, 30, 30);
       const prefixWidth = doc.getTextWidth(highlightPrefix);
@@ -403,8 +414,13 @@ export function generateCotizacionPdf(
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(45, 45, 45);
     const lines = doc.splitTextToSize(bulletSymbol + text, textWidth);
+    const neededH = lines.length * 2.8 + 0.8;
+    if (condY + neededH > maxContentY) {
+      doc.addPage();
+      condY = 28;
+    }
     doc.text(lines, marginX + indent, condY);
-    condY += lines.length * 2.8 + 0.8;
+    condY += neededH;
   };
 
   const customCond = cotizacion.condicionesComerciales;
@@ -525,7 +541,7 @@ export function generateCotizacionPdf(
   // ==========================================
   condY += 6;
   const estimatedSigHeight = 46;
-  if (condY + estimatedSigHeight > pageHeight - 20) {
+  if (condY + estimatedSigHeight > maxContentY) {
     doc.addPage();
     condY = 28;
   }
@@ -664,8 +680,28 @@ export function generateCotizacionPdf(
       doc.text('125 años', marginX + 15, 15);
     }
 
-    // 9.2. Pie de página en tres columnas institucionales
-    const footerBaseY = pageHeight - 14;
+    // 9.1.1 Encabezado superior derecho en páginas 2 en adelante para mantener identidad y trazabilidad
+    if (p > 1) {
+      doc.setFontSize(8.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 30, 30);
+      doc.text(displayCode, pageWidth - marginX, 12, { align: 'right' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(80, 80, 80);
+      doc.text(`Fecha: ${dateFormatted}`, pageWidth - marginX, 16.5, { align: 'right' });
+      if (cotizacion.city) {
+        doc.text(`Sede: ${cotizacion.city}`, pageWidth - marginX, 21, { align: 'right' });
+      }
+    }
+
+    // 9.2. Línea divisoria superior del pie de página para delimitar claramente el contenido
+    doc.setDrawColor(220, 220, 220);
+    doc.setLineWidth(0.2);
+    doc.line(marginX, pageHeight - 16, pageWidth - marginX, pageHeight - 16);
+
+    // 9.3. Pie de página en tres columnas institucionales
+    const footerBaseY = pageHeight - 13.5;
 
     doc.setFontSize(6.8);
     doc.setTextColor(60, 60, 60);

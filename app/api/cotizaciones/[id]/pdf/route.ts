@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { getCurrentUser } from '@/lib/auth';
-import { getCotizacionById, getFormatoSettings, getUsers } from '@/lib/db';
+import { getFormatoSettings, getUsers } from '@/lib/db';
+import { getCotizacionByIdAsync } from '@/lib/cotizaciones-db';
 import { generateCotizacionPdf } from '@/lib/pdf-generator';
 
 export async function GET(
@@ -15,7 +16,7 @@ export async function GET(
   }
 
   const { id } = await context.params;
-  const cotizacion = getCotizacionById(id);
+  const cotizacion = await getCotizacionByIdAsync(id);
 
   if (!cotizacion) {
     return NextResponse.json({ error: 'Cotización no encontrada' }, { status: 404 });

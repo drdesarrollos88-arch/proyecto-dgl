@@ -25,6 +25,12 @@ import {
   TableProperties,
   ExternalLink,
   FileText,
+  FileSpreadsheet,
+  Download,
+  Database,
+  Calendar,
+  Layers,
+  Sparkles,
 } from 'lucide-react';
 
 function CotizacionesContent() {
@@ -68,6 +74,7 @@ function CotizacionesContent() {
   }, []);
 
   const loadData = () => {
+    setLoading(true);
     fetch('/api/auth/me')
       .then((res) => (res.ok ? res.json() : null))
       .then((d) => {
@@ -77,9 +84,17 @@ function CotizacionesContent() {
     fetch('/api/cotizaciones')
       .then((res) => res.json())
       .then((d) => {
-        if (d.cotizaciones) setCotizaciones(d.cotizaciones);
+        if (d.cotizaciones && Array.isArray(d.cotizaciones)) {
+          // Ordenar explícitamente de la más reciente a la más antigua
+          const sorted = [...d.cotizaciones].sort((a, b) => {
+            const timeA = new Date(a.createdAt || a.date).getTime();
+            const timeB = new Date(b.createdAt || b.date).getTime();
+            return timeB - timeA;
+          });
+          setCotizaciones(sorted);
+        }
       })
-      .catch((err) => console.error(err))
+      .catch((err) => console.error('Error cargando cotizaciones:', err))
       .finally(() => setLoading(false));
   };
 
@@ -87,11 +102,11 @@ function CotizacionesContent() {
     loadData();
   }, []);
 
-  // Conjunto de datos filtrados
+  // Conjunto de datos filtrados y rigurosamente ordenados por fecha descendente
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
 
-    return cotizaciones.filter((c) => {
+    const result = cotizaciones.filter((c) => {
       // Filtro por Centro de Costo (CC)
       if (selectedCc !== 'todos') {
         const quoteCcNum = c.centroCosto ? c.centroCosto.slice(0, 4) : c.code.split('.')[2] || '';
@@ -126,11 +141,17 @@ function CotizacionesContent() {
 
       return true;
     });
+
+    // Ordenar explícitamente: más reciente primero (createdAt descendente)
+    return result.sort((a, b) => {
+      const timeA = new Date(a.createdAt || a.date).getTime();
+      const timeB = new Date(b.createdAt || b.date).getTime();
+      return timeB - timeA;
+    });
   }, [cotizaciones, search, selectedCc, statusFilter, selectedProject]);
 
   // Métricas ejecutivas y comerciales
   const metrics = useMemo(() => {
-    // Calcular métricas según el CC seleccionado (o todos)
     const baseList = selectedCc === 'todos'
       ? cotizaciones
       : cotizaciones.filter((c) => {
@@ -208,7 +229,7 @@ function CotizacionesContent() {
   };
 
   const handleDelete = async (id: string, code: string) => {
-    if (!confirm(`¿Estás seguro de eliminar la cotización ${code}?`)) return;
+    if (!confirm(`¿Estás seguro de eliminar la cotización ${code}? Esta acción es permanente.`)) return;
 
     try {
       const res = await fetch(`/api/cotizaciones/${id}`, { method: 'DELETE' });
@@ -223,72 +244,88 @@ function CotizacionesContent() {
     }
   };
 
+  const hasActiveFilters = search || selectedCc !== 'todos' || statusFilter !== 'todos' || selectedProject;
+
+  const clearAllFilters = () => {
+    setSearch('');
+    setSelectedCc('todos');
+    setStatusFilter('todos');
+    setSelectedProject('');
+  };
+
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
+    <div className="min-h-screen bg-slate-50/60 flex flex-col font-sans">
       <Navbar />
 
-      <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1">
-        {/* Header Card */}
-        <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-                Historial de Cotizaciones
-              </h1>
-              <span className="bg-red-50 text-red-700 text-xs font-bold px-2.5 py-1 rounded-full border border-red-200">
-                {cotizaciones.length} registradas
-              </span>
+      <main className="w-full max-w-[98vw] 2xl:max-w-[1720px] mx-auto px-3 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col">
+        {/* Zona Superior: Encabezado Minimalista Ampliado */}
+        <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-xs mb-6">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+            <div>
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+                  Historial de Cotizaciones
+                </h1>
+                <span className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-slate-200">
+                  <Database className="w-3.5 h-3.5 text-blue-600" />
+                  <span>{cotizaciones.length} propuestas registradas</span>
+                </span>
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Persistencia Supabase Activa
+                </span>
+              </div>
+              <p className="text-sm text-slate-500 mt-1.5">
+                Gestión, emisión oficial y seguimiento comercial de propuestas IDIEM DGL. Ordenadas cronológicamente por emisión reciente.
+              </p>
             </div>
-            <p className="text-sm text-slate-500 mt-1">
-              Registro y seguimiento comercial centralizado de propuestas emitidas por el equipo DGL.
-            </p>
-          </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <Link
-              href="/clientes"
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors shadow-xs"
-              title="Directorio unificado de Empresas, Contactos y Proyectos"
-            >
-              <Building2 className="w-3.5 h-3.5" />
-              <span>Clientes & CRM</span>
-            </Link>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <Link
+                href="/clientes"
+                className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 border border-slate-200 transition-all shadow-xs"
+                title="Directorio unificado de Empresas, Contactos y Proyectos"
+              >
+                <Building2 className="w-4 h-4 text-blue-600" />
+                <span>Clientes CRM</span>
+              </Link>
 
-            <Link
-              href="/tarifario"
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 transition-colors shadow-xs"
-              title="Consultar Catálogo de Ensayos Acreditados"
-            >
-              <TableProperties className="w-3.5 h-3.5" />
-              <span>Tarifario</span>
-            </Link>
+              <Link
+                href="/tarifario"
+                className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 border border-slate-200 transition-all shadow-xs"
+                title="Consultar Catálogo de Ensayos Acreditados"
+              >
+                <TableProperties className="w-4 h-4 text-slate-600" />
+                <span>Tarifario Ensayos</span>
+              </Link>
 
-            <Link
-              href="/cotizador"
-              className="flex items-center gap-2 bg-[#E20000] hover:bg-[#C20000] text-white px-4 py-2.5 rounded-xl text-sm font-semibold shadow-xs transition-all"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Nueva Cotización</span>
-            </Link>
+              <Link
+                href="/cotizador"
+                className="flex items-center gap-2 bg-[#E20000] hover:bg-[#C20000] text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs hover:shadow-sm transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Nueva Cotización</span>
+              </Link>
+            </div>
           </div>
         </div>
 
-        {/* Dashboard de Métricas y KPIs */}
+        {/* Zona de Métricas y KPIs Ejecutivos Minimalistas */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           {/* Card 1: Total Cotizado */}
-          <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs flex flex-col justify-between">
+          <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Cotizado</span>
-              <span className="p-1.5 bg-blue-50 text-blue-700 rounded-lg">
+              <span className="p-2 bg-blue-50 text-blue-700 rounded-xl">
                 <TrendingUp className="w-4 h-4" />
               </span>
             </div>
-            <div className="mt-2">
-              <div className="text-xl font-extrabold text-slate-900 font-mono">
-                {metrics.totalUf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF
+            <div className="mt-3">
+              <div className="text-2xl font-black text-slate-900 font-mono tracking-tight">
+                {metrics.totalUf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm font-semibold text-slate-500">UF</span>
               </div>
-              <div className="text-xs text-slate-500 mt-0.5">
-                ~${metrics.totalClp.toLocaleString('es-CL')} CLP ({metrics.totalCount} propuestas)
+              <div className="text-xs text-slate-500 mt-1 font-mono font-medium">
+                ~${metrics.totalClp.toLocaleString('es-CL')} CLP <span className="text-slate-400 font-sans">({metrics.totalCount} propuestas)</span>
               </div>
             </div>
           </div>
@@ -296,111 +333,112 @@ function CotizacionesContent() {
           {/* Card 2: Aprobadas */}
           <div
             onClick={() => setStatusFilter(statusFilter === 'Aprobada' ? 'todos' : 'Aprobada')}
-            className={`bg-white rounded-xl p-4 border shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:border-emerald-300 ${
-              statusFilter === 'Aprobada' ? 'ring-2 ring-emerald-500 border-emerald-500 bg-emerald-50/20' : 'border-slate-200'
+            className={`bg-white rounded-2xl p-5 border shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:border-emerald-300 ${
+              statusFilter === 'Aprobada' ? 'ring-2 ring-emerald-500 border-emerald-500 bg-emerald-50/20' : 'border-slate-200/90'
             }`}
-            title="Clic para filtrar solo aprobadas"
+            title="Filtrar solo cotizaciones aprobadas"
           >
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Aprobadas / Éxito</span>
-              <span className="p-1.5 bg-emerald-50 text-emerald-700 rounded-lg">
+              <span className="p-2 bg-emerald-50 text-emerald-700 rounded-xl">
                 <CheckCircle2 className="w-4 h-4" />
               </span>
             </div>
-            <div className="mt-2">
-              <div className="text-xl font-extrabold text-emerald-800 font-mono">
-                {metrics.aprobadasUf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF
+            <div className="mt-3">
+              <div className="text-2xl font-black text-emerald-800 font-mono tracking-tight">
+                {metrics.aprobadasUf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm font-semibold text-emerald-600">UF</span>
               </div>
-              <div className="text-xs text-emerald-700/90 mt-0.5 flex items-center justify-between">
+              <div className="text-xs text-emerald-700 mt-1 flex items-center justify-between">
                 <span>{metrics.aprobadasCount} aprobadas</span>
-                <span className="font-semibold">
+                <span className="font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded text-[10px]">
                   {metrics.totalCount > 0 ? `${Math.round((metrics.aprobadasCount / metrics.totalCount) * 100)}% tasa` : '0%'}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Card 3: En Seguimiento */}
+          {/* Card 3: En Seguimiento (Enviadas y Finalizadas) */}
           <div
             onClick={() => setStatusFilter(statusFilter === 'Enviada' ? 'todos' : 'Enviada')}
-            className={`bg-white rounded-xl p-4 border shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:border-purple-300 ${
-              statusFilter === 'Enviada' ? 'ring-2 ring-purple-500 border-purple-500 bg-purple-50/20' : 'border-slate-200'
+            className={`bg-white rounded-2xl p-5 border shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:border-blue-300 ${
+              statusFilter === 'Enviada' ? 'ring-2 ring-blue-500 border-blue-500 bg-blue-50/20' : 'border-slate-200/90'
             }`}
-            title="Clic para filtrar cotizaciones enviadas"
+            title="Filtrar cotizaciones en seguimiento enviadas"
           >
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider">En Seguimiento</span>
-              <span className="p-1.5 bg-purple-50 text-purple-700 rounded-lg">
+              <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">En Seguimiento</span>
+              <span className="p-2 bg-blue-50 text-blue-700 rounded-xl">
                 <Send className="w-4 h-4" />
               </span>
             </div>
-            <div className="mt-2">
-              <div className="text-xl font-extrabold text-purple-900 font-mono">
-                {metrics.enviadasUf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF
+            <div className="mt-3">
+              <div className="text-2xl font-black text-blue-900 font-mono tracking-tight">
+                {metrics.enviadasUf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm font-semibold text-blue-600">UF</span>
               </div>
-              <div className="text-xs text-purple-700/80 mt-0.5">
-                {metrics.enviadasCount} enviadas / {metrics.finalizadasCount} finalizadas
+              <div className="text-xs text-blue-700 mt-1">
+                {metrics.enviadasCount} enviadas / {metrics.finalizadasCount} emitidas
               </div>
             </div>
           </div>
 
-          {/* Card 4: Borradores y Rechazadas */}
+          {/* Card 4: Borradores */}
           <div
             onClick={() => setStatusFilter(statusFilter === 'Borrador' ? 'todos' : 'Borrador')}
-            className={`bg-white rounded-xl p-4 border shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:border-amber-300 ${
-              statusFilter === 'Borrador' ? 'ring-2 ring-amber-500 border-amber-500 bg-amber-50/20' : 'border-slate-200'
+            className={`bg-white rounded-2xl p-5 border shadow-xs flex flex-col justify-between cursor-pointer transition-all hover:border-amber-300 ${
+              statusFilter === 'Borrador' ? 'ring-2 ring-amber-500 border-amber-500 bg-amber-50/20' : 'border-slate-200/90'
             }`}
-            title="Clic para filtrar borradores"
+            title="Filtrar borradores de cotización"
           >
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider">Borradores</span>
-              <span className="p-1.5 bg-amber-50 text-amber-700 rounded-lg">
+              <span className="p-2 bg-amber-50 text-amber-700 rounded-xl">
                 <Clock className="w-4 h-4" />
               </span>
             </div>
-            <div className="mt-2">
-              <div className="text-xl font-extrabold text-amber-900 font-mono">
-                {metrics.borradoresCount} pendientes
+            <div className="mt-3">
+              <div className="text-2xl font-black text-amber-900 font-mono tracking-tight">
+                {metrics.borradoresCount} <span className="text-sm font-semibold text-amber-700">en edición</span>
               </div>
-              <div className="text-xs text-slate-500 mt-0.5">
-                {metrics.rechazadasCount > 0 ? `${metrics.rechazadasCount} descartadas / rechazadas` : 'Sin cotizaciones descartadas'}
+              <div className="text-xs text-slate-500 mt-1">
+                {metrics.rechazadasCount > 0 ? `${metrics.rechazadasCount} descartadas / rechazadas` : 'Propuestas en preparación'}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Search & Filters Bar */}
-        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm mb-6 space-y-3">
-          <div className="flex flex-col md:flex-row items-center gap-3">
-            {/* Search input */}
+        {/* Barra de Búsqueda y Filtros Minimalista */}
+        <div className="bg-white rounded-2xl p-4 border border-slate-200/90 shadow-xs mb-5">
+          <div className="flex flex-col lg:flex-row items-center gap-3">
+            {/* Input de Búsqueda Principal */}
             <div className="relative flex-1 w-full">
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Buscar por código, cliente, proyecto, PRY-XXXX o comercial..."
+                placeholder="Buscar por código (ej: 0587), cliente (BHP, WSP...), obra, RUT o asesor comercial..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                className="w-full pl-10 pr-9 py-2.5 text-xs rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all placeholder:text-slate-400"
               />
               {search && (
                 <button
                   type="button"
                   onClick={() => setSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                  title="Limpiar búsqueda"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
 
-            {/* Centro de Costo Filter */}
-            <div className="w-full md:w-64">
+            {/* Selector de Centro de Costo */}
+            <div className="w-full lg:w-72">
               <select
                 value={selectedCc}
                 onChange={(e) => setSelectedCc(e.target.value)}
-                className="w-full py-2 px-3 text-xs rounded-lg border border-slate-300 bg-white font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                className="w-full py-2.5 px-3 text-xs rounded-xl border border-slate-200 bg-white font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all cursor-pointer"
               >
-                <option value="todos">Todos los Centros de Costo</option>
+                <option value="todos">🏢 Todos los Centros de Costo</option>
                 {CENTROS_DE_COSTO.map((cc) => (
                   <option key={cc} value={cc}>
                     {cc}
@@ -409,14 +447,14 @@ function CotizacionesContent() {
               </select>
             </div>
 
-            {/* Status Filter */}
-            <div className="w-full md:w-48">
+            {/* Selector de Estado Comercial */}
+            <div className="w-full lg:w-56">
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full py-2 px-3 text-xs rounded-lg border border-slate-300 bg-white font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                className="w-full py-2.5 px-3 text-xs rounded-xl border border-slate-200 bg-white font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 transition-all cursor-pointer"
               >
-                <option value="todos">Todos los Estados</option>
+                <option value="todos">📌 Todos los Estados</option>
                 <option value="Borrador">🟡 Borrador</option>
                 <option value="Finalizada">🔵 Finalizada</option>
                 <option value="Enviada">📨 Enviada</option>
@@ -424,17 +462,30 @@ function CotizacionesContent() {
                 <option value="Rechazada">🔴 Rechazada</option>
               </select>
             </div>
+
+            {/* Botón de Limpiar Filtros */}
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="w-full lg:w-auto px-3 py-2 text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors flex items-center justify-center gap-1.5"
+                title="Limpiar todos los filtros aplicados"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Restablecer</span>
+              </button>
+            )}
           </div>
 
-          {/* Active Project Filter Tag */}
+          {/* Tag de Filtro de Proyecto Activo */}
           {selectedProject && (
-            <div className="flex items-center gap-2 pt-2 border-t border-slate-100 text-xs">
+            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100 text-xs">
               <span className="text-slate-500 flex items-center gap-1 font-medium">
                 <Filter className="w-3.5 h-3.5 text-blue-600" />
-                Filtrando por obra/proyecto:
+                Filtrando exclusivamente por proyecto:
               </span>
-              <span className="inline-flex items-center gap-1.5 font-mono text-xs font-bold bg-blue-100 text-blue-900 px-2.5 py-0.5 rounded-full border border-blue-200">
-                <Lock className="w-3 h-3 text-blue-700" />
+              <span className="inline-flex items-center gap-1.5 font-mono text-xs font-bold bg-blue-50 text-blue-900 px-3 py-1 rounded-full border border-blue-200">
+                <Lock className="w-3 h-3 text-blue-600" />
                 {selectedProject}
                 <button
                   type="button"
@@ -449,201 +500,252 @@ function CotizacionesContent() {
           )}
         </div>
 
-        {/* Table */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        {/* Tabla Minimalista Ampliada */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex-1 flex flex-col">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-700">
-              <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 text-xs uppercase tracking-wider">
+            <table className="w-full text-left text-sm text-slate-700 border-collapse">
+              <thead className="bg-slate-50/90 text-slate-600 font-semibold border-b border-slate-200 text-[11px] uppercase tracking-wider">
                 <tr>
-                  <th className="py-3.5 px-4 w-44">Código</th>
-                  <th className="py-3.5 px-4">Cliente / Razón Social</th>
-                  <th className="py-3.5 px-4">Proyecto / Obra</th>
-                  <th className="py-3.5 px-3 w-24 text-center">Fecha</th>
-                  <th className="py-3.5 px-4 w-28 text-right">Total UF</th>
-                  <th className="py-3.5 px-4 w-32 text-right">Total CLP</th>
+                  <th className="py-3.5 px-4 w-48 font-semibold">Código / Versión</th>
+                  <th className="py-3.5 px-4 min-w-[220px]">Cliente / Razón Social</th>
+                  <th className="py-3.5 px-4 min-w-[200px]">Proyecto / Obra</th>
+                  <th className="py-3.5 px-3 min-w-[140px]">Centro de Costo</th>
+                  <th className="py-3.5 px-3 w-28 text-center">Fecha</th>
+                  <th className="py-3.5 px-4 w-32 text-right">Neto (UF)</th>
+                  <th className="py-3.5 px-4 w-36 text-right">Total (CLP)</th>
                   <th className="py-3.5 px-4 w-36 text-center">Estado Comercial</th>
-                  <th className="py-3.5 px-4 w-32">Comercial</th>
-                  <th className="py-3.5 px-4 w-32 text-center">Acciones</th>
+                  <th className="py-3.5 px-4 w-36">Asesor DGL</th>
+                  <th className="py-3.5 px-4 w-36 text-center">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100/90">
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-400">
-                      <div className="flex flex-col items-center gap-2">
-                        <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                        <span>Cargando cotizaciones...</span>
+                    <td colSpan={10} className="py-16 text-center text-slate-400">
+                      <div className="flex flex-col items-center justify-center gap-3">
+                        <Loader2 className="w-7 h-7 text-[#E20000] animate-spin" />
+                        <span className="text-xs font-medium text-slate-500">Cargando cotizaciones desde Supabase...</span>
                       </div>
                     </td>
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-slate-500">
-                      No se encontraron cotizaciones con los filtros aplicados.
+                    <td colSpan={10} className="py-16 text-center text-slate-400">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <FileText className="w-8 h-8 text-slate-300" />
+                        <span className="text-sm font-medium text-slate-600">No se encontraron cotizaciones</span>
+                        <span className="text-xs text-slate-400">Prueba ajustando los términos de búsqueda o filtros.</span>
+                        {hasActiveFilters && (
+                          <button
+                            type="button"
+                            onClick={clearAllFilters}
+                            className="mt-2 text-xs font-semibold text-blue-600 hover:underline"
+                          >
+                            Limpiar todos los filtros
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((c) => (
-                    <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* Código */}
-                      <td className="py-3.5 px-4 font-mono text-xs">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <Link
-                            href={`/cotizador?edit=${c.id}`}
-                            className="font-bold text-blue-950 hover:text-blue-700 hover:underline cursor-pointer"
-                            title="Editar cotización / Crear nueva versión"
-                          >
-                            {c.code}
-                          </Link>
-                          {c.code.match(/[-_.\s]V\d+$/i) && (
-                            <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-bold text-[10px] tracking-tight">
-                              {c.code.match(/V\d+$/i)?.[0].toUpperCase()}
-                            </span>
-                          )}
-                        </div>
-                      </td>
+                  filtered.map((c) => {
+                    const isV2 = c.code.match(/[-_.\s]V(\d+)$/i);
+                    const vNum = isV2 ? isV2[1] : null;
+                    const dateObj = c.date ? new Date(c.date) : (c.createdAt ? new Date(c.createdAt) : null);
+                    const dateFormatted = dateObj && !isNaN(dateObj.getTime())
+                      ? dateObj.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                      : '-';
 
-                      {/* Cliente */}
-                      <td className="py-3.5 px-4">
-                        <div className="font-semibold text-slate-900">{c.clientName}</div>
-                        {c.clientRut && (
-                          <div className="text-xs text-slate-400 font-mono">RUT: {c.clientRut}</div>
-                        )}
-                      </td>
-
-                      {/* Proyecto con Badge PRY-XXXX */}
-                      <td className="py-3.5 px-4 text-xs">
-                        <div className="font-medium text-slate-800">
-                          {c.projectName || <span className="text-slate-400 italic">No indicado</span>}
-                        </div>
-                        {c.projectId && (
-                          <div className="flex items-center gap-1 mt-1">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedProject(c.projectId === selectedProject ? '' : c.projectId!)}
-                              title="Filtrar todas las cotizaciones de este proyecto"
-                              className="inline-flex items-center gap-1 font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
-                            >
-                              <Lock className="w-2.5 h-2.5 text-blue-600" />
-                              <span>{c.projectId}</span>
-                            </button>
-
+                    return (
+                      <tr key={c.id} className="hover:bg-slate-50/70 transition-colors group">
+                        {/* Código con Pill de Versión */}
+                        <td className="py-3.5 px-4 font-mono text-xs">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <Link
-                              href={`/clientes?tab=proyectos`}
-                              title="Ver directorio de proyectos en el CRM"
-                              className="p-0.5 text-slate-400 hover:text-blue-700 transition-colors inline-flex items-center"
+                              href={`/cotizador?edit=${c.id}`}
+                              className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors hover:underline cursor-pointer"
+                              title="Editar cotización / Generar nueva versión"
                             >
-                              <ExternalLink className="w-2.5 h-2.5" />
+                              {c.code}
                             </Link>
+                            {vNum && (
+                              <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-bold text-[10px] tracking-tight">
+                                V{vNum}
+                              </span>
+                            )}
                           </div>
-                        )}
-                      </td>
+                        </td>
 
-                      {/* Fecha */}
-                      <td className="py-3.5 px-3 text-center text-xs text-slate-500">
-                        {c.date ? new Date(c.date).toLocaleDateString('es-CL') : '-'}
-                      </td>
-
-                      {/* Total UF */}
-                      <td className="py-3.5 px-4 text-right font-bold font-mono text-slate-900">
-                        {c.currency === 'USD'
-                          ? `${(c.totalUsd || 0).toFixed(2)} USD`
-                          : `${c.totalUf.toFixed(2)} UF`}
-                      </td>
-
-                      {/* Total CLP */}
-                      <td className="py-3.5 px-4 text-right font-mono text-slate-600 text-xs">
-                        ${c.totalClp.toLocaleString('es-CL')}
-                      </td>
-
-                      {/* Estado Comercial Interactivo */}
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="relative inline-block">
-                          <select
-                            value={c.status || 'Borrador'}
-                            disabled={updatingStatusId === c.id}
-                            onChange={(e) => handleStatusChange(c.id, e.target.value as Cotizacion['status'])}
-                            className={`appearance-none pl-2 pr-6 py-1 rounded-lg text-[10px] font-bold border cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-600 transition-colors ${
-                              c.status === 'Aprobada'
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                                : c.status === 'Finalizada'
-                                ? 'bg-blue-50 text-blue-800 border-blue-300 hover:bg-blue-100'
-                                : c.status === 'Enviada'
-                                ? 'bg-purple-50 text-purple-800 border-purple-300 hover:bg-purple-100'
-                                : c.status === 'Rechazada'
-                                ? 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
-                                : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
-                            }`}
-                          >
-                            <option value="Borrador">🟡 Borrador</option>
-                            <option value="Finalizada">🔵 Finalizada</option>
-                            <option value="Enviada">📨 Enviada</option>
-                            <option value="Aprobada">🟢 Aprobada</option>
-                            <option value="Rechazada">🔴 Rechazada</option>
-                          </select>
-                          {updatingStatusId === c.id ? (
-                            <Loader2 className="w-2.5 h-2.5 text-slate-500 animate-spin absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                          ) : (
-                            <ChevronDown className="w-2.5 h-2.5 text-slate-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        {/* Cliente / Razón Social */}
+                        <td className="py-3.5 px-4">
+                          <div className="font-semibold text-slate-900 truncate max-w-xs xl:max-w-sm" title={c.clientName}>
+                            {c.clientName}
+                          </div>
+                          {c.clientRut && (
+                            <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                              RUT: {c.clientRut}
+                            </div>
                           )}
-                        </div>
-                      </td>
+                        </td>
 
-                      {/* Comercial */}
-                      <td className="py-3.5 px-4 text-xs text-slate-600">
-                        <span className="font-medium text-slate-800">{c.createdBy}</span>
-                      </td>
+                        {/* Proyecto / Obra */}
+                        <td className="py-3.5 px-4 text-xs">
+                          <div className="font-medium text-slate-800 truncate max-w-xs xl:max-w-sm" title={c.projectName || ''}>
+                            {c.projectName || <span className="text-slate-400 italic">No especificado</span>}
+                          </div>
+                          {c.projectId && (
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedProject(c.projectId === selectedProject ? '' : c.projectId!)}
+                                title="Filtrar todas las cotizaciones asociadas a este proyecto"
+                                className="inline-flex items-center gap-1 font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200/80 hover:bg-blue-100 transition-colors cursor-pointer"
+                              >
+                                <Lock className="w-2.5 h-2.5 text-blue-600" />
+                                <span>{c.projectId}</span>
+                              </button>
 
-                      {/* Acciones */}
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          {/* Editar */}
-                          <Link
-                            href={`/cotizador?edit=${c.id}`}
-                            title="Editar cotización (crear versión V2/V3)"
-                            className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer inline-flex items-center"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </Link>
+                              <Link
+                                href={`/clientes?tab=proyectos`}
+                                title="Ver ficha en el Directorio de Proyectos"
+                                className="text-slate-400 hover:text-blue-600 transition-colors"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                              </Link>
+                            </div>
+                          )}
+                        </td>
 
-                          {/* Visualizar */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPreviewLoading(true);
-                              setPreviewCotizacion(c);
-                            }}
-                            title="Visualizar PDF (Vista previa)"
-                            className="p-1.5 text-blue-700 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer inline-flex items-center"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
+                        {/* Centro de Costo */}
+                        <td className="py-3.5 px-3 text-xs">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md font-medium text-[11px] bg-slate-100 text-slate-700 border border-slate-200">
+                            {c.centroCosto ? c.centroCosto.split(' - ')[0] : '1817'}
+                          </span>
+                        </td>
 
-                          {/* Eliminar (protegido por permiso) */}
-                          {hasPermission(user, 'cotizaciones.eliminar') && (
+                        {/* Fecha */}
+                        <td className="py-3.5 px-3 text-center text-xs text-slate-600 font-mono">
+                          {dateFormatted}
+                        </td>
+
+                        {/* Total UF */}
+                        <td className="py-3.5 px-4 text-right font-black font-mono text-slate-900 text-xs">
+                          {c.currency === 'USD'
+                            ? `${(c.totalUsd || 0).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
+                            : `${c.totalUf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF`}
+                        </td>
+
+                        {/* Total CLP */}
+                        <td className="py-3.5 px-4 text-right font-mono text-slate-600 text-xs font-semibold">
+                          ${c.totalClp.toLocaleString('es-CL')}
+                        </td>
+
+                        {/* Estado Comercial Interactivo */}
+                        <td className="py-3.5 px-4 text-center">
+                          <div className="relative inline-block">
+                            <select
+                              value={c.status || 'Borrador'}
+                              disabled={updatingStatusId === c.id}
+                              onChange={(e) => handleStatusChange(c.id, e.target.value as Cotizacion['status'])}
+                              className={`appearance-none pl-2.5 pr-6 py-1 rounded-lg text-[10px] font-bold border cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-600/20 transition-all ${
+                                c.status === 'Aprobada'
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                                  : c.status === 'Finalizada'
+                                  ? 'bg-blue-50 text-blue-800 border-blue-300 hover:bg-blue-100'
+                                  : c.status === 'Enviada'
+                                  ? 'bg-purple-50 text-purple-800 border-purple-300 hover:bg-purple-100'
+                                  : c.status === 'Rechazada'
+                                  ? 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
+                                  : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                              }`}
+                            >
+                              <option value="Borrador">🟡 Borrador</option>
+                              <option value="Finalizada">🔵 Finalizada</option>
+                              <option value="Enviada">📨 Enviada</option>
+                              <option value="Aprobada">🟢 Aprobada</option>
+                              <option value="Rechazada">🔴 Rechazada</option>
+                            </select>
+                            {updatingStatusId === c.id ? (
+                              <Loader2 className="w-2.5 h-2.5 text-slate-500 animate-spin absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                            ) : (
+                              <ChevronDown className="w-2.5 h-2.5 text-slate-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Comercial / Asesor DGL */}
+                        <td className="py-3.5 px-4 text-xs text-slate-700">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold text-[9px] flex items-center justify-center border border-slate-200">
+                              {c.commercialInitials || 'DGL'}
+                            </span>
+                            <span className="font-medium truncate max-w-[100px]" title={c.commercialName || c.createdBy}>
+                              {c.commercialName || c.createdBy}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Acciones Rápidas */}
+                        <td className="py-3.5 px-4 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            {/* Visualizar PDF */}
                             <button
                               type="button"
-                              onClick={() => handleDelete(c.id, c.code)}
-                              title="Eliminar cotización"
-                              className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg transition-colors cursor-pointer inline-flex items-center"
+                              onClick={() => {
+                                setPreviewLoading(true);
+                                setPreviewCotizacion(c);
+                              }}
+                              title="Visualizar documento PDF (Vista previa)"
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer inline-flex items-center"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Eye className="w-4 h-4" />
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+
+                            {/* Editar */}
+                            <Link
+                              href={`/cotizador?edit=${c.id}`}
+                              title="Editar o generar nueva versión"
+                              className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer inline-flex items-center"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </Link>
+
+                            {/* Descargar Excel Oficial */}
+                            <a
+                              href={`/api/cotizaciones/${c.id}/excel`}
+                              download={`Cotizacion_${c.code}.xlsx`}
+                              title="Exportar hoja de cálculo Excel"
+                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer inline-flex items-center"
+                            >
+                              <FileSpreadsheet className="w-4 h-4" />
+                            </a>
+
+                            {/* Eliminar (Protegido por permisos) */}
+                            {hasPermission(user, 'cotizaciones.eliminar') && (
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(c.id, c.code)}
+                                title="Eliminar cotización"
+                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer inline-flex items-center"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* Modal Vista Previa PDF Embebido */}
+        {/* Modal de Vista Previa de PDF Embebido Ampliado */}
         {previewCotizacion && (
           <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150">
-            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-6xl h-[94vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
               {/* Modal Header */}
               <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-3">
@@ -681,7 +783,7 @@ function CotizacionesContent() {
                         href={`/api/cotizaciones/${previewCotizacion.id}/pdf?draft=true`}
                         download={`Borrador_${previewCotizacion.code}.pdf`}
                         className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-                        title="Descargar documento preliminar con marca de agua BORRADOR (estado permanece Borrador)"
+                        title="Descargar documento preliminar con marca de agua BORRADOR"
                       >
                         <FileText className="w-3.5 h-3.5" />
                         <span>Descargar Borrador (PDF)</span>
@@ -717,12 +819,23 @@ function CotizacionesContent() {
                     </a>
                   )}
 
+                  {/* Descargar Excel */}
+                  <a
+                    href={`/api/cotizaciones/${previewCotizacion.id}/excel`}
+                    download={`Cotizacion_${previewCotizacion.code}.xlsx`}
+                    className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                    title="Descargar Excel"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Excel</span>
+                  </a>
+
                   <Link
                     href={`/cotizador?edit=${previewCotizacion.id}`}
                     className="hidden sm:flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
-                    <span>Editar Versión</span>
+                    <span>Editar</span>
                   </Link>
 
                   <button

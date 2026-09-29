@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getCotizaciones, getCotizacionById, saveCotizacion, getUserById } from '@/lib/db';
+import { getUserById } from '@/lib/db';
+import { getCotizacionesAsync, getCotizacionByIdAsync, saveCotizacionAsync } from '@/lib/cotizaciones-db';
 import { upsertContacto } from '@/lib/contactos-db';
 import { createOrGetProyecto } from '@/lib/proyectos-db';
 import { hasPermission } from '@/lib/permissions';
@@ -12,7 +13,7 @@ export async function GET() {
   }
 
   const canSeeAll = currentUser.role === 'admin' || hasPermission(currentUser, 'cotizaciones.ver_todas');
-  let cotizaciones = getCotizaciones();
+  let cotizaciones = await getCotizacionesAsync();
   if (!canSeeAll) {
     cotizaciones = cotizaciones.filter(
       (c) =>
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
     let originalCreatedBy = currentUser.name;
     let originalCreatedById = currentUser.id;
     if (data.id) {
-      const existing = getCotizacionById(data.id);
+      const existing = await getCotizacionByIdAsync(data.id);
       if (existing) {
         const isOwner =
           existing.createdById === currentUser.id ||
@@ -134,7 +135,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const saved = saveCotizacion({
+    const saved = await saveCotizacionAsync({
       ...data,
       projectId: assignedProjectId || data.projectId,
       commercialName,

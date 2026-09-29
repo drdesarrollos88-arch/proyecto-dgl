@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getCotizacionById, saveCotizacion, deleteCotizacion } from '@/lib/db';
+import {
+  getCotizacionByIdAsync,
+  saveCotizacionAsync,
+  deleteCotizacionAsync,
+} from '@/lib/cotizaciones-db';
 
 export async function GET(
   req: NextRequest,
@@ -12,7 +16,7 @@ export async function GET(
   }
 
   const { id } = await context.params;
-  const cotizacion = getCotizacionById(id);
+  const cotizacion = await getCotizacionByIdAsync(id);
 
   if (!cotizacion) {
     return NextResponse.json({ error: 'Cotización no encontrada' }, { status: 404 });
@@ -31,7 +35,7 @@ export async function PATCH(
   }
 
   const { id } = await context.params;
-  const cotizacion = getCotizacionById(id);
+  const cotizacion = await getCotizacionByIdAsync(id);
 
   if (!cotizacion) {
     return NextResponse.json({ error: 'Cotización no encontrada' }, { status: 404 });
@@ -57,7 +61,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Estado no válido' }, { status: 400 });
     }
 
-    const updated = saveCotizacion({
+    const updated = await saveCotizacionAsync({
       ...cotizacion,
       status: status || cotizacion.status,
       updatedBy: currentUser.name,
@@ -80,7 +84,7 @@ export async function DELETE(
   }
 
   const { id } = await context.params;
-  const cotizacion = getCotizacionById(id);
+  const cotizacion = await getCotizacionByIdAsync(id);
 
   if (!cotizacion) {
     return NextResponse.json({ error: 'Cotización no encontrada' }, { status: 404 });
@@ -99,7 +103,7 @@ export async function DELETE(
     );
   }
 
-  const result = deleteCotizacion(id, currentUser.name, currentUser.id);
+  const result = await deleteCotizacionAsync(id, currentUser.name, currentUser.id);
 
   if (!result.success) {
     return NextResponse.json(
@@ -110,5 +114,3 @@ export async function DELETE(
 
   return NextResponse.json({ success: true });
 }
-
-

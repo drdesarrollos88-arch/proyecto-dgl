@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getCotizacionById } from '@/lib/db';
+import { getCotizacionByIdAsync } from '@/lib/cotizaciones-db';
 import { generateCotizacionExcel } from '@/lib/excel-generator';
 
 export async function GET(
@@ -13,7 +13,7 @@ export async function GET(
   }
 
   const { id } = await context.params;
-  const cotizacion = getCotizacionById(id);
+  const cotizacion = await getCotizacionByIdAsync(id);
 
   if (!cotizacion) {
     return NextResponse.json({ error: 'Cotización no encontrada' }, { status: 404 });

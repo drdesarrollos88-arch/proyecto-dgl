@@ -127,6 +127,8 @@ export interface Cotizacion {
   commercialName: string;
   commercialTitle: string;
   commercialInitials: string;
+  commercialPhone?: string;
+  commercialEmail?: string;
   commercialSignature?: string;
   ufValue: number;
   dollarValue: number;

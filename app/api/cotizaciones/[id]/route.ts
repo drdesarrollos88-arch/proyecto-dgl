@@ -103,7 +103,7 @@ export async function DELETE(
     );
   }
 
-  const result = await deleteCotizacionAsync(id, currentUser.name, currentUser.id);
+  const result = await deleteCotizacionAsync(id, currentUser.name, currentUser.id, currentUser.role === 'admin');
 
   if (!result.success) {
     return NextResponse.json(

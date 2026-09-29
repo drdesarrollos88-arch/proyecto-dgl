@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserById } from '@/lib/db';
-import { getCotizacionesAsync, getCotizacionByIdAsync, saveCotizacionAsync } from '@/lib/cotizaciones-db';
+import {
+  getCotizacionesAsync,
+  getCotizacionByIdAsync,
+  saveCotizacionAsync,
+  deleteCotizacionesBatchAsync,
+} from '@/lib/cotizaciones-db';
 import { upsertContacto } from '@/lib/contactos-db';
 import { createOrGetProyecto } from '@/lib/proyectos-db';
 import { hasPermission } from '@/lib/permissions';
@@ -153,5 +158,42 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error('Error saving cotizacion:', err);
     return NextResponse.json({ error: 'Error al guardar la cotización' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const currentUser = await getCurrentUser();
+  if (!currentUser) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
+
+  const canDelete = currentUser.role === 'admin' || hasPermission(currentUser, 'cotizaciones.eliminar');
+  if (!canDelete) {
+    return NextResponse.json(
+      { error: 'No tienes permisos para eliminar cotizaciones.' },
+      { status: 403 }
+    );
+  }
+
+  try {
+    const body = await req.json();
+    const { ids } = body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json({ error: 'Debe especificar un listado de IDs a eliminar.' }, { status: 400 });
+    }
+
+    const isAdmin = currentUser.role === 'admin';
+    const result = await deleteCotizacionesBatchAsync(
+      ids,
+      currentUser.name,
+      currentUser.id,
+      isAdmin
+    );
+
+    return NextResponse.json(result);
+  } catch (err) {
+    console.error('Error batch deleting cotizaciones:', err);
+    return NextResponse.json({ error: 'Error interno al eliminar cotizaciones' }, { status: 500 });
   }
 }

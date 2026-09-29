@@ -26,11 +26,8 @@ import {
   ExternalLink,
   FileText,
   FileSpreadsheet,
-  Download,
   Database,
-  Calendar,
-  Layers,
-  Sparkles,
+  CheckSquare,
 } from 'lucide-react';
 
 function CotizacionesContent() {
@@ -43,6 +40,10 @@ function CotizacionesContent() {
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [selectedProject, setSelectedProject] = useState<string>('');
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+
+  // Selección múltiple para eliminación en bloque
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isDeletingBatch, setIsDeletingBatch] = useState(false);
 
   const [previewCotizacion, setPreviewCotizacion] = useState<Cotizacion | null>(null);
   const [previewLoading, setPreviewLoading] = useState(true);
@@ -150,7 +151,15 @@ function CotizacionesContent() {
     });
   }, [cotizaciones, search, selectedCc, statusFilter, selectedProject]);
 
-  // Métricas ejecutivas y comerciales
+  // Limpiar seleccionados que ya no existan en el filtro
+  useEffect(() => {
+    if (selectedIds.length > 0) {
+      const validIds = new Set(cotizaciones.map((c) => c.id));
+      setSelectedIds((prev) => prev.filter((id) => validIds.has(id)));
+    }
+  }, [cotizaciones]);
+
+  // Métricas ejecutivas y comerciales globales
   const metrics = useMemo(() => {
     const baseList = selectedCc === 'todos'
       ? cotizaciones
@@ -204,6 +213,43 @@ function CotizacionesContent() {
     };
   }, [cotizaciones, selectedCc]);
 
+  // Métricas de las cotizaciones actualmente seleccionadas con checkbox
+  const selectedMetrics = useMemo(() => {
+    if (selectedIds.length === 0) return { count: 0, uf: 0, clp: 0 };
+    const selectedCots = cotizaciones.filter((c) => selectedIds.includes(c.id));
+    let uf = 0;
+    let clp = 0;
+    selectedCots.forEach((c) => {
+      uf += c.totalUf || 0;
+      clp += c.totalClp || 0;
+    });
+    return {
+      count: selectedCots.length,
+      uf: Math.round(uf * 100) / 100,
+      clp: Math.round(clp),
+    };
+  }, [selectedIds, cotizaciones]);
+
+  // Manejador de cambio individual de selección
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  // Manejador de selección total de la vista filtrada
+  const toggleSelectAll = () => {
+    if (selectedIds.length === filtered.length && filtered.length > 0) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filtered.map((c) => c.id));
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedIds([]);
+  };
+
   // Manejador de cambio de estado comercial
   const handleStatusChange = async (id: string, newStatus: Cotizacion['status']) => {
     setUpdatingStatusId(id);
@@ -228,6 +274,7 @@ function CotizacionesContent() {
     }
   };
 
+  // Eliminación individual
   const handleDelete = async (id: string, code: string) => {
     if (!confirm(`¿Estás seguro de eliminar la cotización ${code}? Esta acción es permanente.`)) return;
 
@@ -236,11 +283,55 @@ function CotizacionesContent() {
       const data = await res.json().catch(() => null);
       if (res.ok) {
         setCotizaciones((prev) => prev.filter((c) => c.id !== id));
+        setSelectedIds((prev) => prev.filter((itemId) => itemId !== id));
       } else {
         alert(data?.error || 'Error al eliminar la cotización.');
       }
     } catch {
       alert('Error de conexión.');
+    }
+  };
+
+  // Eliminación múltiple en bloque (Batch Delete)
+  const handleBatchDelete = async () => {
+    if (selectedIds.length === 0) return;
+
+    const count = selectedIds.length;
+    const msg =
+      count === 1
+        ? '¿Estás seguro de eliminar la cotización seleccionada? Esta acción es permanente.'
+        : `¿Estás seguro de eliminar las ${count} cotizaciones seleccionadas? Esta acción es permanente e irreversible.`;
+
+    if (!confirm(msg)) return;
+
+    setIsDeletingBatch(true);
+    try {
+      const res = await fetch('/api/cotizaciones', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (res.ok && data?.success) {
+        const deletedIds: string[] = data.deletedIds || [];
+        setCotizaciones((prev) => prev.filter((c) => !deletedIds.includes(c.id)));
+        setSelectedIds([]);
+
+        if (data.failed && data.failed.length > 0) {
+          const failureReasons = data.failed.map((f: any) => `• ${f.reason}`).join('\n');
+          alert(
+            `Se eliminaron ${deletedIds.length} cotizaciones exitosamente.\n\nNo se pudieron eliminar ${data.failed.length}:\n${failureReasons}`
+          );
+        }
+      } else {
+        alert(data?.error || 'Error al eliminar las cotizaciones seleccionadas.');
+      }
+    } catch {
+      alert('Error de conexión con el servidor.');
+    } finally {
+      setIsDeletingBatch(false);
     }
   };
 
@@ -254,7 +345,7 @@ function CotizacionesContent() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/60 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-50/60 flex flex-col font-sans pb-16">
       <Navbar />
 
       <main className="w-full max-w-[98vw] 2xl:max-w-[1720px] mx-auto px-3 sm:px-6 lg:px-8 py-6 flex-1 flex flex-col">
@@ -276,7 +367,7 @@ function CotizacionesContent() {
                 </span>
               </div>
               <p className="text-sm text-slate-500 mt-1.5">
-                Gestión, emisión oficial y seguimiento comercial de propuestas IDIEM DGL. Ordenadas cronológicamente por emisión reciente.
+                Gestión, emisión oficial y seguimiento comercial de propuestas IDIEM DGL. Selecciona una o varias cotizaciones para administrarlas o eliminarlas.
               </p>
             </div>
 
@@ -502,14 +593,69 @@ function CotizacionesContent() {
 
         {/* Tabla Minimalista Ampliada */}
         <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex-1 flex flex-col">
+          {/* Barra informativa superior si hay cotizaciones seleccionadas con checkbox */}
+          {selectedIds.length > 0 && (
+            <div className="bg-red-50/90 border-b border-red-200 px-4 py-2.5 flex items-center justify-between gap-3 text-xs text-red-950 animate-in fade-in duration-150">
+              <div className="flex items-center gap-2 flex-wrap">
+                <CheckSquare className="w-4 h-4 text-[#E20000]" />
+                <span className="font-bold">
+                  {selectedIds.length} {selectedIds.length === 1 ? 'cotización seleccionada' : 'cotizaciones seleccionadas'}
+                </span>
+                <span className="text-red-800 font-mono text-[11px]">
+                  ({selectedMetrics.uf.toLocaleString('es-CL', { minimumFractionDigits: 2 })} UF · ~${selectedMetrics.clp.toLocaleString('es-CL')} CLP)
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="text-slate-600 hover:text-slate-900 px-2.5 py-1 rounded-lg hover:bg-white/80 font-medium transition-colors cursor-pointer"
+                >
+                  Deseleccionar todas
+                </button>
+                {hasPermission(user, 'cotizaciones.eliminar') && (
+                  <button
+                    type="button"
+                    disabled={isDeletingBatch}
+                    onClick={handleBatchDelete}
+                    className="flex items-center gap-1.5 bg-[#E20000] hover:bg-[#C20000] text-white px-3 py-1 rounded-lg font-bold shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    {isDeletingBatch ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    <span>Eliminar seleccionadas ({selectedIds.length})</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm text-slate-700 border-collapse">
-              <thead className="bg-slate-50/90 text-slate-600 font-semibold border-b border-slate-200 text-[11px] uppercase tracking-wider">
+              <thead className="bg-slate-50/90 text-slate-600 font-semibold border-b border-slate-200 text-[11px] uppercase tracking-wider select-none">
                 <tr>
+                  {/* Casilla Checkbox Maestro */}
+                  <th className="py-3.5 px-3 w-12 text-center">
+                    <input
+                      type="checkbox"
+                      aria-label="Seleccionar todas las cotizaciones"
+                      checked={filtered.length > 0 && selectedIds.length === filtered.length}
+                      ref={(el) => {
+                        if (el) {
+                          el.indeterminate = selectedIds.length > 0 && selectedIds.length < filtered.length;
+                        }
+                      }}
+                      onChange={toggleSelectAll}
+                      className="w-4 h-4 rounded text-[#E20000] focus:ring-[#E20000] border-slate-300 cursor-pointer accent-[#E20000]"
+                      title={
+                        selectedIds.length === filtered.length && filtered.length > 0
+                          ? 'Deseleccionar todas'
+                          : 'Seleccionar todas las cotizaciones visibles'
+                      }
+                    />
+                  </th>
                   <th className="py-3.5 px-4 w-48 font-semibold">Código / Versión</th>
                   <th className="py-3.5 px-4 min-w-[220px]">Cliente / Razón Social</th>
                   <th className="py-3.5 px-4 min-w-[200px]">Proyecto / Obra</th>
-                  <th className="py-3.5 px-3 min-w-[140px]">Centro de Costo</th>
+                  <th className="py-3.5 px-3 min-w-[130px]">Centro de Costo</th>
                   <th className="py-3.5 px-3 w-28 text-center">Fecha</th>
                   <th className="py-3.5 px-4 w-32 text-right">Neto (UF)</th>
                   <th className="py-3.5 px-4 w-36 text-right">Total (CLP)</th>
@@ -521,7 +667,7 @@ function CotizacionesContent() {
               <tbody className="divide-y divide-slate-100/90">
                 {loading ? (
                   <tr>
-                    <td colSpan={10} className="py-16 text-center text-slate-400">
+                    <td colSpan={11} className="py-16 text-center text-slate-400">
                       <div className="flex flex-col items-center justify-center gap-3">
                         <Loader2 className="w-7 h-7 text-[#E20000] animate-spin" />
                         <span className="text-xs font-medium text-slate-500">Cargando cotizaciones desde Supabase...</span>
@@ -530,7 +676,7 @@ function CotizacionesContent() {
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-16 text-center text-slate-400">
+                    <td colSpan={11} className="py-16 text-center text-slate-400">
                       <div className="flex flex-col items-center justify-center gap-2">
                         <FileText className="w-8 h-8 text-slate-300" />
                         <span className="text-sm font-medium text-slate-600">No se encontraron cotizaciones</span>
@@ -539,7 +685,7 @@ function CotizacionesContent() {
                           <button
                             type="button"
                             onClick={clearAllFilters}
-                            className="mt-2 text-xs font-semibold text-blue-600 hover:underline"
+                            className="mt-2 text-xs font-semibold text-blue-600 hover:underline cursor-pointer"
                           >
                             Limpiar todos los filtros
                           </button>
@@ -556,8 +702,28 @@ function CotizacionesContent() {
                       ? dateObj.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' })
                       : '-';
 
+                    const isSelected = selectedIds.includes(c.id);
+
                     return (
-                      <tr key={c.id} className="hover:bg-slate-50/70 transition-colors group">
+                      <tr
+                        key={c.id}
+                        className={`transition-colors group ${
+                          isSelected
+                            ? 'bg-red-50/60 hover:bg-red-50/80 border-l-2 border-l-[#E20000]'
+                            : 'hover:bg-slate-50/70'
+                        }`}
+                      >
+                        {/* Checkbox de fila */}
+                        <td className="py-3.5 px-3 text-center">
+                          <input
+                            type="checkbox"
+                            aria-label={`Seleccionar cotización ${c.code}`}
+                            checked={isSelected}
+                            onChange={() => toggleSelectOne(c.id)}
+                            className="w-4 h-4 rounded text-[#E20000] focus:ring-[#E20000] border-slate-300 cursor-pointer accent-[#E20000]"
+                          />
+                        </td>
+
                         {/* Código con Pill de Versión */}
                         <td className="py-3.5 px-4 font-mono text-xs">
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -741,6 +907,51 @@ function CotizacionesContent() {
             </table>
           </div>
         </div>
+
+        {/* Barra flotante de acciones por selección múltiple */}
+        {selectedIds.length > 0 && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 text-white backdrop-blur-md px-5 py-3 rounded-2xl shadow-2xl border border-slate-700/80 flex items-center gap-4 animate-in slide-in-from-bottom-5 duration-200 max-w-[95vw]">
+            <div className="flex items-center gap-2.5">
+              <span className="w-6 h-6 rounded-full bg-[#E20000] text-white font-bold text-xs flex items-center justify-center shadow-xs">
+                {selectedIds.length}
+              </span>
+              <span className="text-xs font-semibold text-slate-100">
+                {selectedIds.length === 1 ? '1 cotización seleccionada' : `${selectedIds.length} cotizaciones seleccionadas`}
+              </span>
+              <span className="text-xs text-slate-400 font-mono hidden md:inline">
+                ({selectedMetrics.uf.toLocaleString('es-CL', { minimumFractionDigits: 2 })} UF · ~${selectedMetrics.clp.toLocaleString('es-CL')} CLP)
+              </span>
+            </div>
+
+            <div className="h-4 w-px bg-slate-700 hidden sm:block"></div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="text-xs text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+
+              {hasPermission(user, 'cotizaciones.eliminar') && (
+                <button
+                  type="button"
+                  disabled={isDeletingBatch}
+                  onClick={handleBatchDelete}
+                  className="flex items-center gap-1.5 bg-[#E20000] hover:bg-[#C20000] text-white px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-xs transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {isDeletingBatch ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3.5 h-3.5" />
+                  )}
+                  <span>Eliminar {selectedIds.length === 1 ? 'cotización' : `(${selectedIds.length})`}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Modal de Vista Previa de PDF Embebido Ampliado */}
         {previewCotizacion && (

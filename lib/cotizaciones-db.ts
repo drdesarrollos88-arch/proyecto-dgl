@@ -308,7 +308,8 @@ export async function saveCotizacionAsync(
 export async function deleteCotizacionAsync(
   id: string,
   deletedBy?: string,
-  deletedById?: string
+  deletedById?: string,
+  isAdmin = false
 ): Promise<{ success: boolean; error?: string }> {
   const cached = ensureCache();
   const idx = cached.findIndex((c) => c.id === id);
@@ -317,10 +318,10 @@ export async function deleteCotizacionAsync(
   }
 
   const cot = cached[idx];
-  if (cot.status === 'Finalizada' || cot.status === 'Enviada' || cot.status === 'Aprobada') {
+  if (!isAdmin && (cot.status === 'Finalizada' || cot.status === 'Enviada' || cot.status === 'Aprobada')) {
     return {
       success: false,
-      error: 'No es posible eliminar una cotización con estado Finalizada, Enviada o Aprobada.',
+      error: 'No es posible eliminar una cotización con estado Finalizada, Enviada o Aprobada (solo administradores).',
     };
   }
 
@@ -340,3 +341,60 @@ export async function deleteCotizacionAsync(
 
   return { success: true };
 }
+
+/**
+ * Elimina múltiples cotizaciones en bloque en Supabase y memoria.
+ */
+export async function deleteCotizacionesBatchAsync(
+  ids: string[],
+  deletedBy?: string,
+  deletedById?: string,
+  isAdmin = false
+): Promise<{ success: boolean; deletedIds: string[]; failed: { id: string; reason: string }[] }> {
+  const cached = ensureCache();
+  const toDelete: string[] = [];
+  const failed: { id: string; reason: string }[] = [];
+
+  for (const id of ids) {
+    const cot = cached.find((c) => c.id === id);
+    if (!cot) {
+      // Intentar verificar si existe
+      toDelete.push(id);
+      continue;
+    }
+
+    if (!isAdmin && (cot.status === 'Finalizada' || cot.status === 'Enviada' || cot.status === 'Aprobada')) {
+      failed.push({
+        id,
+        reason: `${cot.code || id}: Estado ${cot.status} protegido (solo administradores).`,
+      });
+      continue;
+    }
+
+    toDelete.push(id);
+  }
+
+  if (toDelete.length === 0) {
+    return { success: false, deletedIds: [], failed };
+  }
+
+  // Eliminar de caché en memoria
+  _cachedCotizaciones = cached.filter((c) => !toDelete.includes(c.id));
+
+  // Eliminar en Supabase en una sola consulta batch
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      const { error } = await supabaseAdmin.from('cotizaciones').delete().in('id', toDelete);
+      if (error) {
+        console.error('Error al eliminar batch en Supabase:', error.message);
+        return { success: false, deletedIds: [], failed: [{ id: 'all', reason: error.message }] };
+      }
+    } catch (err: any) {
+      console.error('Excepción al eliminar batch en Supabase:', err);
+      return { success: false, deletedIds: [], failed: [{ id: 'all', reason: err.message }] };
+    }
+  }
+
+  return { success: true, deletedIds: toDelete, failed };
+}
+

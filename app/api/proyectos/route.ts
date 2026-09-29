@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const limit = limitParam ? Math.min(100, Math.max(1, parseInt(limitParam, 10) || 10)) : 10;
 
   try {
-    const proyectos = searchProyectos(q, limit);
+    const proyectos = await searchProyectos(q, limit);
     return NextResponse.json({ proyectos });
   } catch (err) {
     console.error('Error searching proyectos:', err);
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'El nombre del proyecto es obligatorio.' }, { status: 400 });
     }
 
-    const proyecto = createOrGetProyecto({
+    const proyecto = await createOrGetProyecto({
       id,
       name,
       reference: reference || '',
@@ -79,7 +79,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'El nombre del proyecto es obligatorio.' }, { status: 400 });
     }
 
-    const updated = updateProyecto(id, {
+    const updated = await updateProyecto(id, {
       name,
       reference: reference || '',
       city: city || '',
@@ -126,7 +126,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'El ID del proyecto es obligatorio para eliminarlo.' }, { status: 400 });
   }
 
-  const success = deleteProyecto(id.trim());
+  const success = await deleteProyecto(id.trim());
   if (!success) {
     return NextResponse.json({ error: 'Proyecto no encontrado o no pudo eliminarse.' }, { status: 404 });
   }

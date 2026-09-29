@@ -14,7 +14,7 @@ export async function GET(
   }
 
   const { id } = await params;
-  const cliente = getClienteById(id);
+  const cliente = await getClienteById(id);
   if (!cliente) {
     return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 });
   }
@@ -35,7 +35,7 @@ export async function PUT(
 
   try {
     const body = await req.json();
-    const updated = updateCliente(id, body);
+    const updated = await updateCliente(id, body);
     if (!updated) {
       return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 });
     }
@@ -60,7 +60,7 @@ export async function DELETE(
   }
 
   const { id } = await params;
-  const ok = deleteCliente(id);
+  const ok = await deleteCliente(id);
   return NextResponse.json({ success: ok });
 }
 

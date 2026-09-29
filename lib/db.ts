@@ -48,110 +48,85 @@ export const DEFAULT_FORMATO_SETTINGS: FormatoSettings = {
   ],
 };
 
+import initialDbData from '../data/db.json';
+
 const DB_PATH = path.join(process.cwd(), 'data', 'db.json');
 const BACKUP_PATH = path.join(process.cwd(), 'data', 'db.json.bak');
 
-// Ensure database file exists with automatic backup recovery
+let _memoryDb: DatabaseSchema | null = null;
+
+// Ensure database file exists with automatic backup recovery and memory fallback
 function ensureDb(): DatabaseSchema {
-  if (!fs.existsSync(DB_PATH)) {
-    // Check if backup exists to recover
-    if (fs.existsSync(BACKUP_PATH)) {
-      try {
-        const bakRaw = fs.readFileSync(BACKUP_PATH, 'utf-8');
-        const restored = JSON.parse(bakRaw);
-        if (restored && Array.isArray(restored.users)) {
-          fs.writeFileSync(DB_PATH, bakRaw, 'utf-8');
-          return restored;
-        }
-      } catch (err) {
-        console.error('Backup recovery failed:', err);
+  if (_memoryDb) return _memoryDb;
+
+  try {
+    if (fs.existsSync(DB_PATH)) {
+      const raw = fs.readFileSync(DB_PATH, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        _memoryDb = parsed;
+        return _memoryDb!;
       }
     }
+  } catch (err) {
+    // Read-only filesystem or inaccessible in serverless
+  }
 
-    const initialDb: DatabaseSchema = {
+  // Fallback to bundled database
+  try {
+    _memoryDb = JSON.parse(JSON.stringify(initialDbData)) as DatabaseSchema;
+  } catch {
+    _memoryDb = {
       version: '1.0',
       lastUpdated: new Date().toISOString(),
       users: [],
       tarifario: [],
       cotizaciones: [],
     };
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    fs.writeFileSync(DB_PATH, JSON.stringify(initialDb, null, 2), 'utf-8');
-    return initialDb;
   }
-
-  const raw = fs.readFileSync(DB_PATH, 'utf-8');
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') {
-      throw new Error('db.json content is not a valid object');
-    }
-    return parsed;
-  } catch (err) {
-    console.error('CRITICAL: Error parsing db.json. Attempting recovery from backup...', err);
-    if (fs.existsSync(BACKUP_PATH)) {
-      try {
-        const bakRaw = fs.readFileSync(BACKUP_PATH, 'utf-8');
-        const restored = JSON.parse(bakRaw);
-        if (restored && Array.isArray(restored.users)) {
-          console.log('SUCCESS: Restored database from db.json.bak');
-          fs.writeFileSync(DB_PATH, bakRaw, 'utf-8');
-          return restored;
-        }
-      } catch (bakErr) {
-        console.error('CRITICAL: Backup is also corrupted:', bakErr);
-      }
-    }
-    throw new Error('CRITICAL: db.json is corrupted and could not be safely read. Write aborted to prevent data loss.');
-  }
+  return _memoryDb;
 }
 
 // Atomic and resilient write with backup rotation and retry on lock
 function writeDb(data: DatabaseSchema) {
-  if (!data || !Array.isArray(data.users) || !Array.isArray(data.tarifario) || !Array.isArray(data.cotizaciones)) {
-    throw new Error('CRITICAL: Attempted to write incomplete or invalid database structure. Aborted.');
-  }
+  _memoryDb = data;
+  try {
+    if (!data || !Array.isArray(data.users) || !Array.isArray(data.tarifario) || !Array.isArray(data.cotizaciones)) {
+      return;
+    }
 
-  const dir = path.dirname(DB_PATH);
-  fs.mkdirSync(dir, { recursive: true });
-  data.lastUpdated = new Date().toISOString();
-  const jsonStr = JSON.stringify(data, null, 2);
+    const dir = path.dirname(DB_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    data.lastUpdated = new Date().toISOString();
+    const jsonStr = JSON.stringify(data, null, 2);
 
-  // Maintain backup of previous valid database before replacing
-  if (fs.existsSync(DB_PATH)) {
-    try {
-      fs.copyFileSync(DB_PATH, BACKUP_PATH);
-    } catch {}
-  }
+    if (fs.existsSync(DB_PATH)) {
+      try { fs.copyFileSync(DB_PATH, BACKUP_PATH); } catch {}
+    }
 
-  const tempPath = `${DB_PATH}.tmp.${Date.now()}`;
-  fs.writeFileSync(tempPath, jsonStr, 'utf-8');
+    const tempPath = `${DB_PATH}.tmp.${Date.now()}`;
+    fs.writeFileSync(tempPath, jsonStr, 'utf-8');
 
-  // Retry loop for Windows file locking
-  let written = false;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    try {
-      fs.renameSync(tempPath, DB_PATH);
-      written = true;
-      break;
-    } catch {
-      if (attempt === 4) {
-        try {
-          fs.writeFileSync(DB_PATH, jsonStr, 'utf-8');
-          try { fs.unlinkSync(tempPath); } catch {}
-          written = true;
-        } catch (finalErr) {
-          console.error('Error in final write fallback:', finalErr);
+    let written = false;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        fs.renameSync(tempPath, DB_PATH);
+        written = true;
+        break;
+      } catch {
+        if (attempt === 4) {
+          try {
+            fs.writeFileSync(DB_PATH, jsonStr, 'utf-8');
+            try { fs.unlinkSync(tempPath); } catch {}
+            written = true;
+          } catch {}
         }
-      } else {
-        const start = Date.now();
-        while (Date.now() - start < 30) {}
       }
     }
-  }
-
-  if (!written) {
-    throw new Error('Failed to write database file after multiple attempts.');
+  } catch (err) {
+    // Safely ignore filesystem write errors in read-only serverless runtimes
   }
 }
 

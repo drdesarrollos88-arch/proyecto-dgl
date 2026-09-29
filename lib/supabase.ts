@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const cleanStr = (val?: string) => (val || '').replace(/^\uFEFF/, '').trim();
+const supabaseUrl = cleanStr(process.env.NEXT_PUBLIC_SUPABASE_URL);
+const supabaseAnonKey = cleanStr(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+const supabaseServiceKey = cleanStr(process.env.SUPABASE_SERVICE_ROLE_KEY) || supabaseAnonKey;
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && (supabaseServiceKey || supabaseAnonKey));
 

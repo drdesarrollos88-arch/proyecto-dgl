@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
     // 3. Auto-register or update contact (Email is unique ID)
     if (data.clientEmail && typeof data.clientEmail === 'string' && data.clientEmail.includes('@') && data.clientAttention?.trim()) {
       try {
-        upsertContacto({
+        await upsertContacto({
           email: data.clientEmail.trim(),
           name: data.clientAttention.trim(),
           phone: data.clientPhone?.trim() || '',
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
     let assignedProjectId = data.projectId;
     if (data.projectName && typeof data.projectName === 'string' && data.projectName.trim()) {
       try {
-        const proj = createOrGetProyecto({
+        const proj = await createOrGetProyecto({
           id: data.projectId,
           name: data.projectName.trim(),
           reference: data.reference?.trim() || '',

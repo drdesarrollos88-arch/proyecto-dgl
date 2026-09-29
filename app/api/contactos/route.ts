@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const limit = limitParam ? Math.min(100, Math.max(1, parseInt(limitParam, 10) || 10)) : 10;
 
   try {
-    const contactos = searchContactos(q, limit);
+    const contactos = await searchContactos(q, limit);
     return NextResponse.json({ contactos });
   } catch (err) {
     console.error('Error searching contactos:', err);
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'El nombre del contacto es obligatorio.' }, { status: 400 });
     }
 
-    const contacto = upsertContacto({
+    const contacto = await upsertContacto({
       email,
       name,
       phone: phone || '',
@@ -89,7 +89,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'El correo electrónico es obligatorio para eliminar el contacto.' }, { status: 400 });
   }
 
-  const success = deleteContacto(email);
+  const success = await deleteContacto(email);
   if (!success) {
     return NextResponse.json({ error: 'Contacto no encontrado o no pudo eliminarse.' }, { status: 404 });
   }

@@ -17,7 +17,7 @@ async function runTests() {
   if (tarifario.length !== 358) throw new Error(`Expected 358 items, got ${tarifario.length}`);
 
   console.log('--- TEST 2: Authentication ---');
-  const user = findUserByIdentifier('diego.roman@idiem.cl');
+  const user = await findUserByIdentifier('diego.roman@idiem.cl');
   if (!user) throw new Error('User diego.roman@idiem.cl not found');
 
   const correctMatch = await verifyPassword('Diego.1988', user.passwordHash);

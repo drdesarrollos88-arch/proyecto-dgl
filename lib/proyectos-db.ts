@@ -1,200 +1,155 @@
-import { DatabaseSync } from 'node:sqlite';
-import path from 'path';
-import fs from 'fs';
 import { Proyecto } from './types';
+import { isSupabaseConfigured, supabaseAdmin } from './supabase';
 
-const DB_PATH = path.join(process.cwd(), 'data', 'clientes.db');
+const _memoryProyectos: Map<string, Proyecto> = new Map();
 
-let _db: DatabaseSync | null = null;
-
-function getDb(): DatabaseSync {
-  if (!_db) {
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    _db = new DatabaseSync(DB_PATH);
-
-    _db.exec(`
-      PRAGMA journal_mode = WAL;
-      PRAGMA busy_timeout = 5000;
-      PRAGMA synchronous = NORMAL;
-      CREATE TABLE IF NOT EXISTS proyectos (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        reference TEXT,
-        city TEXT,
-        client_name TEXT,
-        created_at TEXT,
-        updated_at TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_proyectos_name ON proyectos(name);
-    `);
-
-    // Auto-seed existing projects from db.json if table is empty
+async function getNextId(): Promise<string> {
+  if (isSupabaseConfigured && supabaseAdmin) {
     try {
-      const countStmt = _db.prepare('SELECT COUNT(*) as count FROM proyectos');
-      const countRow = countStmt.get() as { count: number } | undefined;
-      if (countRow && countRow.count === 0) {
-        seedFromDbJson(_db);
+      const { data, error } = await supabaseAdmin
+        .from('proyectos')
+        .select('id')
+        .like('id', 'PRY-%');
+
+      if (!error && data) {
+        let maxNum = 0;
+        for (const row of data) {
+          const numPart = parseInt(row.id.replace('PRY-', ''), 10);
+          if (!isNaN(numPart) && numPart > maxNum) {
+            maxNum = numPart;
+          }
+        }
+        return `PRY-${String(maxNum + 1).padStart(4, '0')}`;
       }
-    } catch (err) {
-      console.error('Error checking/seeding proyectos table:', err);
+    } catch (e) {
+      console.error('Error calculating next project id in Supabase:', e);
     }
   }
-  return _db;
-}
 
-function getNextId(db: DatabaseSync): string {
-  const stmt = db.prepare(`
-    SELECT id FROM proyectos 
-    WHERE id LIKE 'PRY-%'
-  `);
-  const rows = stmt.all() as { id: string }[];
   let maxNum = 0;
-  for (const row of rows) {
-    const numPart = parseInt(row.id.replace('PRY-', ''), 10);
+  for (const id of _memoryProyectos.keys()) {
+    const numPart = parseInt(id.replace('PRY-', ''), 10);
     if (!isNaN(numPart) && numPart > maxNum) {
       maxNum = numPart;
     }
   }
-  const nextNum = maxNum + 1;
-  return `PRY-${String(nextNum).padStart(4, '0')}`;
+  return `PRY-${String(maxNum + 1).padStart(4, '0')}`;
 }
 
-function seedFromDbJson(db: DatabaseSync) {
-  const jsonPath = path.join(process.cwd(), 'data', 'db.json');
-  if (!fs.existsSync(jsonPath)) return;
-
-  try {
-    const raw = fs.readFileSync(jsonPath, 'utf-8');
-    const data = JSON.parse(raw);
-    if (!data || !Array.isArray(data.cotizaciones)) return;
-
-    let modifiedQuotes = false;
-    const insertStmt = db.prepare(`
-      INSERT OR IGNORE INTO proyectos (id, name, reference, city, client_name, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    for (const cot of data.cotizaciones) {
-      const name = cot.projectName?.trim();
-      if (!name) continue;
-
-      // Check if project name already inserted
-      const checkStmt = db.prepare('SELECT id FROM proyectos WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))');
-      const existing = checkStmt.get(name) as { id: string } | undefined;
-      let pid: string = existing?.id || '';
-      if (!pid) {
-        pid = cot.projectId?.trim() || getNextId(db);
-        const ref = cot.reference?.trim() || '';
-        const city = cot.city?.trim() || '';
-        const client = cot.clientName?.trim() || '';
-        const date = cot.createdAt || new Date().toISOString();
-        insertStmt.run(pid, name, ref, city, client, date, date);
-      }
-
-      if (!cot.projectId && pid) {
-        cot.projectId = pid;
-        modifiedQuotes = true;
-      }
-    }
-
-    if (modifiedQuotes) {
-      fs.writeFileSync(jsonPath, JSON.stringify(data, null, 2), 'utf-8');
-    }
-  } catch (err) {
-    console.error('Error auto-seeding proyectos from db.json:', err);
-  }
-}
-
-export function searchProyectos(query: string, limit = 10): Proyecto[] {
-  const db = getDb();
+export async function searchProyectos(query: string, limit = 10): Promise<Proyecto[]> {
   const trimmed = (query || '').trim();
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      let req = supabaseAdmin.from('proyectos').select('*').limit(limit);
+      if (trimmed) {
+        req = req.or(`name.ilike.%${trimmed}%,id.ilike.%${trimmed}%,reference.ilike.%${trimmed}%,client_name.ilike.%${trimmed}%`);
+      } else {
+        req = req.order('updated_at', { ascending: false });
+      }
 
-  let rows: Record<string, unknown>[];
-
-  if (!trimmed) {
-    const stmt = db.prepare(`
-      SELECT * FROM proyectos
-      ORDER BY updated_at DESC
-      LIMIT ?
-    `);
-    rows = stmt.all(limit) as Record<string, unknown>[];
-  } else {
-    const q = `%${trimmed}%`;
-    const stmt = db.prepare(`
-      SELECT * FROM proyectos
-      WHERE name LIKE ? OR id LIKE ? OR reference LIKE ? OR client_name LIKE ?
-      ORDER BY 
-        CASE 
-          WHEN LOWER(id) = LOWER(?) THEN 1
-          WHEN LOWER(name) LIKE LOWER(?) THEN 2
-          ELSE 3
-        END,
-        updated_at DESC
-      LIMIT ?
-    `);
-    rows = stmt.all(q, q, q, q, trimmed, `${trimmed}%`, limit) as Record<string, unknown>[];
+      const { data, error } = await req;
+      if (!error && data) {
+        return data.map((r: any) => ({
+          id: String(r.id),
+          name: String(r.name || ''),
+          reference: r.reference ? String(r.reference) : undefined,
+          city: r.city ? String(r.city) : undefined,
+          clientName: r.client_name ? String(r.client_name) : undefined,
+          createdAt: String(r.created_at || ''),
+          updatedAt: String(r.updated_at || ''),
+        }));
+      }
+    } catch (e) {
+      console.error('Error querying proyectos in Supabase:', e);
+    }
   }
 
-  return rows.map((r) => ({
-    id: String(r.id),
-    name: String(r.name || ''),
-    reference: r.reference ? String(r.reference) : undefined,
-    city: r.city ? String(r.city) : undefined,
-    clientName: r.client_name ? String(r.client_name) : undefined,
-    createdAt: String(r.created_at || ''),
-    updatedAt: String(r.updated_at || ''),
-  }));
+  const all = Array.from(_memoryProyectos.values());
+  if (!trimmed) return all.slice(0, limit);
+  const q = trimmed.toLowerCase();
+  return all
+    .filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.id.toLowerCase().includes(q) ||
+        (p.reference && p.reference.toLowerCase().includes(q)) ||
+        (p.clientName && p.clientName.toLowerCase().includes(q))
+    )
+    .slice(0, limit);
 }
 
-export function getProyectoById(id: string): Proyecto | null {
+export async function getProyectoById(id: string): Promise<Proyecto | null> {
   if (!id) return null;
-  const db = getDb();
-  const stmt = db.prepare('SELECT * FROM proyectos WHERE id = ?');
-  const r = stmt.get(id.trim()) as Record<string, unknown> | undefined;
-  if (!r) return null;
+  const cleanId = id.trim();
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('proyectos')
+        .select('*')
+        .eq('id', cleanId)
+        .maybeSingle();
 
-  return {
-    id: String(r.id),
-    name: String(r.name || ''),
-    reference: r.reference ? String(r.reference) : undefined,
-    city: r.city ? String(r.city) : undefined,
-    clientName: r.client_name ? String(r.client_name) : undefined,
-    createdAt: String(r.created_at || ''),
-    updatedAt: String(r.updated_at || ''),
-  };
+      if (!error && data) {
+        return {
+          id: String(data.id),
+          name: String(data.name || ''),
+          reference: data.reference ? String(data.reference) : undefined,
+          city: data.city ? String(data.city) : undefined,
+          clientName: data.client_name ? String(data.client_name) : undefined,
+          createdAt: String(data.created_at || ''),
+          updatedAt: String(data.updated_at || ''),
+        };
+      }
+    } catch (e) {
+      console.error('Error fetching proyecto by id in Supabase:', e);
+    }
+  }
+  return _memoryProyectos.get(cleanId) || null;
 }
 
-export function getProyectoByName(name: string): Proyecto | null {
+export async function getProyectoByName(name: string): Promise<Proyecto | null> {
   if (!name) return null;
-  const db = getDb();
-  const stmt = db.prepare('SELECT * FROM proyectos WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))');
-  const r = stmt.get(name.trim()) as Record<string, unknown> | undefined;
-  if (!r) return null;
+  const cleanName = name.trim();
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('proyectos')
+        .select('*')
+        .ilike('name', cleanName)
+        .maybeSingle();
 
-  return {
-    id: String(r.id),
-    name: String(r.name || ''),
-    reference: r.reference ? String(r.reference) : undefined,
-    city: r.city ? String(r.city) : undefined,
-    clientName: r.client_name ? String(r.client_name) : undefined,
-    createdAt: String(r.created_at || ''),
-    updatedAt: String(r.updated_at || ''),
-  };
+      if (!error && data) {
+        return {
+          id: String(data.id),
+          name: String(data.name || ''),
+          reference: data.reference ? String(data.reference) : undefined,
+          city: data.city ? String(data.city) : undefined,
+          clientName: data.client_name ? String(data.client_name) : undefined,
+          createdAt: String(data.created_at || ''),
+          updatedAt: String(data.updated_at || ''),
+        };
+      }
+    } catch (e) {
+      console.error('Error fetching proyecto by name in Supabase:', e);
+    }
+  }
+  return (
+    Array.from(_memoryProyectos.values()).find(
+      (p) => p.name.trim().toLowerCase() === cleanName.toLowerCase()
+    ) || null
+  );
 }
 
-export function createOrGetProyecto(data: {
+export async function createOrGetProyecto(data: {
   id?: string;
   name: string;
   reference?: string;
   city?: string;
   clientName?: string;
-}): Proyecto {
+}): Promise<Proyecto> {
   const name = (data.name || '').trim();
-  if (!name) {
-    throw new Error('El nombre del proyecto es obligatorio');
-  }
+  if (!name) throw new Error('El nombre del proyecto es obligatorio');
 
-  const db = getDb();
   const now = new Date().toISOString();
   const ref = (data.reference || '').trim();
   const city = (data.city || '').trim();
@@ -202,46 +157,62 @@ export function createOrGetProyecto(data: {
 
   // If specific ID is supplied
   if (data.id && data.id.trim()) {
-    const existing = getProyectoById(data.id.trim());
+    const existing = await getProyectoById(data.id.trim());
     if (existing) {
-      const updateStmt = db.prepare(`
-        UPDATE proyectos
-        SET name = ?,
-            reference = CASE WHEN ? != '' THEN ? ELSE reference END,
-            city = CASE WHEN ? != '' THEN ? ELSE city END,
-            client_name = CASE WHEN ? != '' THEN ? ELSE client_name END,
-            updated_at = ?
-        WHERE id = ?
-      `);
-      updateStmt.run(name, ref, ref, city, city, clientName, clientName, now, existing.id);
-      return getProyectoById(existing.id)!;
+      const updated = {
+        ...existing,
+        name,
+        reference: ref || existing.reference,
+        city: city || existing.city,
+        clientName: clientName || existing.clientName,
+        updatedAt: now,
+      };
+      if (isSupabaseConfigured && supabaseAdmin) {
+        try {
+          await supabaseAdmin.from('proyectos').update({
+            name,
+            reference: updated.reference,
+            city: updated.city,
+            client_name: updated.clientName,
+            updated_at: now,
+          }).eq('id', existing.id);
+        } catch (e) {
+          console.error('Error updating proyecto in Supabase:', e);
+        }
+      }
+      _memoryProyectos.set(existing.id, updated);
+      return updated;
     }
   }
 
   // Check if project exists by name
-  const existingByName = getProyectoByName(name);
+  const existingByName = await getProyectoByName(name);
   if (existingByName) {
-    const updateStmt = db.prepare(`
-      UPDATE proyectos
-      SET reference = CASE WHEN ? != '' THEN ? ELSE reference END,
-          city = CASE WHEN ? != '' THEN ? ELSE city END,
-          client_name = CASE WHEN ? != '' THEN ? ELSE client_name END,
-          updated_at = ?
-      WHERE id = ?
-    `);
-    updateStmt.run(ref, ref, city, city, clientName, clientName, now, existingByName.id);
-    return getProyectoById(existingByName.id)!;
+    const updated = {
+      ...existingByName,
+      reference: ref || existingByName.reference,
+      city: city || existingByName.city,
+      clientName: clientName || existingByName.clientName,
+      updatedAt: now,
+    };
+    if (isSupabaseConfigured && supabaseAdmin) {
+      try {
+        await supabaseAdmin.from('proyectos').update({
+          reference: updated.reference,
+          city: updated.city,
+          client_name: updated.clientName,
+          updated_at: now,
+        }).eq('id', existingByName.id);
+      } catch (e) {
+        console.error('Error updating proyecto by name in Supabase:', e);
+      }
+    }
+    _memoryProyectos.set(existingByName.id, updated);
+    return updated;
   }
 
-  // Generate new unique sequential ID
-  const nextId = getNextId(db);
-  const insertStmt = db.prepare(`
-    INSERT INTO proyectos (id, name, reference, city, client_name, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `);
-  insertStmt.run(nextId, name, ref, city, clientName, now, now);
-
-  return {
+  const nextId = await getNextId();
+  const nuevo: Proyecto = {
     id: nextId,
     name,
     reference: ref || undefined,
@@ -250,9 +221,28 @@ export function createOrGetProyecto(data: {
     createdAt: now,
     updatedAt: now,
   };
+
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      await supabaseAdmin.from('proyectos').insert({
+        id: nextId,
+        name,
+        reference: ref,
+        city,
+        client_name: clientName,
+        created_at: now,
+        updated_at: now,
+      });
+    } catch (e) {
+      console.error('Error inserting proyecto in Supabase:', e);
+    }
+  }
+
+  _memoryProyectos.set(nextId, nuevo);
+  return nuevo;
 }
 
-export function updateProyecto(
+export async function updateProyecto(
   id: string,
   data: {
     name: string;
@@ -260,10 +250,9 @@ export function updateProyecto(
     city?: string;
     clientName?: string;
   }
-): Proyecto | null {
+): Promise<Proyecto | null> {
   if (!id || !data.name?.trim()) return null;
-  const db = getDb();
-  const existing = getProyectoById(id);
+  const existing = await getProyectoById(id);
   if (!existing) return null;
 
   const now = new Date().toISOString();
@@ -272,28 +261,46 @@ export function updateProyecto(
   const city = (data.city || '').trim();
   const clientName = (data.clientName || '').trim();
 
-  const updateStmt = db.prepare(`
-    UPDATE proyectos
-    SET name = ?,
-        reference = ?,
-        city = ?,
-        client_name = ?,
-        updated_at = ?
-    WHERE id = ?
-  `);
-  updateStmt.run(name, ref, city, clientName, now, id);
+  const updated: Proyecto = {
+    ...existing,
+    name,
+    reference: ref || undefined,
+    city: city || undefined,
+    clientName: clientName || undefined,
+    updatedAt: now,
+  };
 
-  return getProyectoById(id);
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      await supabaseAdmin.from('proyectos').update({
+        name,
+        reference: ref,
+        city,
+        client_name: clientName,
+        updated_at: now,
+      }).eq('id', id);
+    } catch (e) {
+      console.error('Error updating proyecto in Supabase:', e);
+    }
+  }
+
+  _memoryProyectos.set(id, updated);
+  return updated;
 }
 
-export function deleteProyecto(id: string): boolean {
+export async function deleteProyecto(id: string): Promise<boolean> {
   if (!id) return false;
-  const db = getDb();
-  const stmt = db.prepare('DELETE FROM proyectos WHERE id = ?');
-  const info = stmt.run(id);
-  return info.changes > 0;
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      await supabaseAdmin.from('proyectos').delete().eq('id', id);
+      return true;
+    } catch (e) {
+      console.error('Error deleting proyecto in Supabase:', e);
+    }
+  }
+  return _memoryProyectos.delete(id);
 }
 
-export function getAllProyectos(limit = 100): Proyecto[] {
+export async function getAllProyectos(limit = 100): Promise<Proyecto[]> {
   return searchProyectos('', limit);
 }

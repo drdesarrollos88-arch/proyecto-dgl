@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const limit = limitParam ? Math.min(100, Math.max(1, parseInt(limitParam, 10) || 20)) : 20;
 
   try {
-    const clientes = searchClientes(q, limit);
+    const clientes = await searchClientes(q, limit);
     return NextResponse.json({ clientes });
   } catch (err) {
     console.error('Error searching clientes:', err);
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'El RUT es obligatorio.' }, { status: 400 });
     }
 
-    const cliente = createCliente({
+    const cliente = await createCliente({
       name,
       rut,
       comuna: body.comuna || '',

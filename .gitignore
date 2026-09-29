@@ -29,6 +29,7 @@ yarn-error.log*
 
 # cloudflare / wrangler
 .wrangler/
+.open-next/
 
 # local database files & backups
 data/*.db

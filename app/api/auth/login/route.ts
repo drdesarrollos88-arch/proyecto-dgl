@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const user = findUserByIdentifier(identifier);
+    const user = await findUserByIdentifier(identifier);
     if (!user) {
       recordDualFailedAttempt(ip, identifier);
       return NextResponse.json(

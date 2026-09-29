@@ -60,6 +60,8 @@ export async function verifySessionToken(token: string): Promise<SessionUser | n
   }
 }
 
+import { isSupabaseConfigured, supabaseAdmin } from './supabase';
+
 // Obtener el usuario autenticado actual con sus permisos dinámicos vigentes
 export async function getCurrentUser(): Promise<SessionUser | null> {
   try {
@@ -70,7 +72,67 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     const session = await verifySessionToken(token);
     if (!session) return null;
 
-    // Obtener los datos más actualizados del usuario en base de datos para recalcular permisos
+    // 1. Intentar consultar en Supabase si está disponible
+    if (isSupabaseConfigured && supabaseAdmin) {
+      try {
+        const { data: dbUser, error } = await supabaseAdmin
+          .from('usuarios')
+          .select('*')
+          .eq('id', session.id)
+          .maybeSingle();
+
+        if (dbUser && !error) {
+          const { data: profilesData } = await supabaseAdmin.from('user_profiles').select('*');
+          const profiles = (profilesData && profilesData.length > 0)
+            ? profilesData.map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                description: p.description,
+                isSystem: p.is_system,
+                color: p.color,
+                badge: p.badge,
+                permissions: p.permissions || [],
+                createdAt: p.created_at,
+                updatedAt: p.updated_at,
+              }))
+            : getProfiles();
+
+          const mappedUser = {
+            id: dbUser.id,
+            rut: dbUser.rut,
+            name: dbUser.name,
+            email: dbUser.email,
+            passwordHash: dbUser.password_hash,
+            role: dbUser.role,
+            createdAt: dbUser.created_at,
+            commercialTitle: dbUser.commercial_title,
+            phone: dbUser.phone,
+            commercialInitials: dbUser.commercial_initials,
+            signature: dbUser.signature,
+            profileId: dbUser.profile_id,
+          };
+
+          const permissions = computeEffectivePermissions(mappedUser, profiles);
+          return {
+            id: dbUser.id,
+            rut: dbUser.rut,
+            name: dbUser.name,
+            email: dbUser.email,
+            role: dbUser.role,
+            profileId: dbUser.profile_id,
+            permissions,
+            commercialTitle: dbUser.commercial_title,
+            phone: dbUser.phone,
+            commercialInitials: dbUser.commercial_initials,
+            signature: dbUser.signature,
+          };
+        }
+      } catch (err) {
+        console.error('Error fetching current user from Supabase:', err);
+      }
+    }
+
+    // 2. Fallback a base de datos en memoria / local
     const dbUser = getUserById(session.id);
     if (dbUser) {
       const profiles = getProfiles();
@@ -97,7 +159,38 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
 }
 
 // Buscar usuario por correo electrónico o por RUT
-export function findUserByIdentifier(identifier: string) {
+export async function findUserByIdentifier(identifier: string) {
+  // 1. Si Supabase está configurado, consultar tabla 'usuarios'
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      const isEmail = identifier.includes('@');
+      const query = supabaseAdmin.from('usuarios').select('*');
+      const { data, error } = isEmail
+        ? await query.ilike('email', identifier.trim()).maybeSingle()
+        : await query.eq('rut', identifier.trim()).maybeSingle();
+
+      if (data && !error) {
+        return {
+          id: data.id,
+          rut: data.rut,
+          name: data.name,
+          email: data.email,
+          passwordHash: data.password_hash,
+          role: data.role as 'admin' | 'comercial',
+          createdAt: data.created_at,
+          commercialTitle: data.commercial_title,
+          phone: data.phone,
+          commercialInitials: data.commercial_initials,
+          signature: data.signature,
+          profileId: data.profile_id,
+        };
+      }
+    } catch (e) {
+      console.error('Error querying Supabase usuarios:', e);
+    }
+  }
+
+  // 2. Fallback a base de datos en memoria / local
   const isEmail = identifier.includes('@');
   if (isEmail) {
     return getUserByEmail(identifier);

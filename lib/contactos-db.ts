@@ -1,197 +1,135 @@
-import { DatabaseSync } from 'node:sqlite';
-import path from 'path';
-import fs from 'fs';
 import { Contacto } from './types';
+import { isSupabaseConfigured, supabaseAdmin } from './supabase';
 
-const DB_PATH = path.join(process.cwd(), 'data', 'clientes.db');
+const _memoryContactos: Map<string, Contacto> = new Map();
 
-let _db: DatabaseSync | null = null;
-
-function getDb(): DatabaseSync {
-  if (!_db) {
-    fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
-    _db = new DatabaseSync(DB_PATH);
-
-    _db.exec(`
-      PRAGMA journal_mode = WAL;
-      PRAGMA busy_timeout = 5000;
-      PRAGMA synchronous = NORMAL;
-      CREATE TABLE IF NOT EXISTS contactos (
-        email TEXT PRIMARY KEY COLLATE NOCASE,
-        name TEXT NOT NULL,
-        phone TEXT,
-        company TEXT,
-        created_at TEXT,
-        updated_at TEXT
-      );
-      CREATE INDEX IF NOT EXISTS idx_contactos_name ON contactos(name);
-      CREATE INDEX IF NOT EXISTS idx_contactos_phone ON contactos(phone);
-    `);
-
-    // Auto-seed existing contacts from db.json if table is empty
-    try {
-      const countStmt = _db.prepare('SELECT COUNT(*) as count FROM contactos');
-      const countRow = countStmt.get() as { count: number } | undefined;
-      if (countRow && countRow.count === 0) {
-        seedFromDbJson(_db);
-      }
-    } catch (err) {
-      console.error('Error checking/seeding contactos table:', err);
-    }
-  }
-  return _db;
-}
-
-function seedFromDbJson(db: DatabaseSync) {
-  const jsonPath = path.join(process.cwd(), 'data', 'db.json');
-  if (!fs.existsSync(jsonPath)) return;
-
-  try {
-    const raw = fs.readFileSync(jsonPath, 'utf-8');
-    const data = JSON.parse(raw);
-    if (!data || !Array.isArray(data.cotizaciones)) return;
-
-    const insertStmt = db.prepare(`
-      INSERT OR IGNORE INTO contactos (email, name, phone, company, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-
-    for (const cot of data.cotizaciones) {
-      const email = cot.clientEmail?.trim().toLowerCase();
-      const name = cot.clientAttention?.trim();
-      const phone = cot.clientPhone?.trim() || '';
-      const company = cot.clientName?.trim() || '';
-      const date = cot.createdAt || new Date().toISOString();
-
-      if (email && email.includes('@') && name) {
-        insertStmt.run(email, name, phone, company, date, date);
-      }
-    }
-  } catch (err) {
-    console.error('Error auto-seeding contactos from db.json:', err);
-  }
-}
-
-export function searchContactos(query: string, limit = 10): Contacto[] {
-  const db = getDb();
+export async function searchContactos(query: string, limit = 10): Promise<Contacto[]> {
   const trimmed = (query || '').trim();
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      let req = supabaseAdmin
+        .from('contactos')
+        .select('*')
+        .limit(limit);
 
-  let rows: Record<string, unknown>[];
+      if (trimmed) {
+        req = req.or(`email.ilike.%${trimmed}%,name.ilike.%${trimmed}%,phone.ilike.%${trimmed}%,company.ilike.%${trimmed}%`);
+      } else {
+        req = req.order('updated_at', { ascending: false });
+      }
 
-  if (!trimmed) {
-    const stmt = db.prepare(`
-      SELECT * FROM contactos
-      ORDER BY updated_at DESC
-      LIMIT ?
-    `);
-    rows = stmt.all(limit) as Record<string, unknown>[];
-  } else {
-    const q = `%${trimmed}%`;
-    const stmt = db.prepare(`
-      SELECT * FROM contactos
-      WHERE email LIKE ? OR name LIKE ? OR phone LIKE ? OR company LIKE ?
-      ORDER BY 
-        CASE 
-          WHEN LOWER(email) = LOWER(?) THEN 1
-          WHEN LOWER(name) LIKE LOWER(?) THEN 2
-          ELSE 3
-        END,
-        updated_at DESC
-      LIMIT ?
-    `);
-    rows = stmt.all(q, q, q, q, trimmed, `${trimmed}%`, limit) as Record<string, unknown>[];
+      const { data, error } = await req;
+      if (!error && data) {
+        return data.map((r: any) => ({
+          email: String(r.email || ''),
+          name: String(r.name || ''),
+          phone: String(r.phone || ''),
+          company: r.company ? String(r.company) : undefined,
+          createdAt: String(r.created_at || ''),
+          updatedAt: String(r.updated_at || ''),
+        }));
+      }
+    } catch (e) {
+      console.error('Error querying contactos in Supabase:', e);
+    }
   }
 
-  return rows.map((r) => ({
-    email: String(r.email || ''),
-    name: String(r.name || ''),
-    phone: String(r.phone || ''),
-    company: r.company ? String(r.company) : undefined,
-    createdAt: String(r.created_at || ''),
-    updatedAt: String(r.updated_at || ''),
-  }));
+  // Fallback en memoria
+  const all = Array.from(_memoryContactos.values());
+  if (!trimmed) {
+    return all.slice(0, limit);
+  }
+  const q = trimmed.toLowerCase();
+  return all
+    .filter((c) => c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q) || (c.company && c.company.toLowerCase().includes(q)))
+    .slice(0, limit);
 }
 
-export function getContactoByEmail(email: string): Contacto | null {
+export async function getContactoByEmail(email: string): Promise<Contacto | null> {
   if (!email) return null;
-  const db = getDb();
   const normalized = email.trim().toLowerCase();
-  const stmt = db.prepare('SELECT * FROM contactos WHERE LOWER(email) = LOWER(?)');
-  const r = stmt.get(normalized) as Record<string, unknown> | undefined;
-  if (!r) return null;
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('contactos')
+        .select('*')
+        .ilike('email', normalized)
+        .maybeSingle();
 
-  return {
-    email: String(r.email || ''),
-    name: String(r.name || ''),
-    phone: String(r.phone || ''),
-    company: r.company ? String(r.company) : undefined,
-    createdAt: String(r.created_at || ''),
-    updatedAt: String(r.updated_at || ''),
-  };
+      if (!error && data) {
+        return {
+          email: String(data.email || ''),
+          name: String(data.name || ''),
+          phone: String(data.phone || ''),
+          company: data.company ? String(data.company) : undefined,
+          createdAt: String(data.created_at || ''),
+          updatedAt: String(data.updated_at || ''),
+        };
+      }
+    } catch (e) {
+      console.error('Error fetching contacto by email in Supabase:', e);
+    }
+  }
+  return _memoryContactos.get(normalized) || null;
 }
 
-export function upsertContacto(data: {
+export async function upsertContacto(data: {
   email: string;
   name: string;
   phone?: string;
   company?: string;
-}): Contacto | null {
+}): Promise<Contacto | null> {
   const email = (data.email || '').trim().toLowerCase();
   const name = (data.name || '').trim();
   const phone = (data.phone || '').trim();
   const company = (data.company || '').trim();
 
-  if (!email || !email.includes('@')) {
-    return null; // Invalid email cannot be contact key
-  }
-  if (!name) {
-    return null; // Name is required
-  }
+  if (!email || !email.includes('@')) return null;
+  if (!name) return null;
 
-  const db = getDb();
   const now = new Date().toISOString();
+  const contacto: Contacto = {
+    email,
+    name,
+    phone,
+    company: company || undefined,
+    createdAt: now,
+    updatedAt: now,
+  };
 
-  const existing = getContactoByEmail(email);
-
-  if (existing) {
-    const updateStmt = db.prepare(`
-      UPDATE contactos
-      SET name = ?,
-          phone = CASE WHEN ? != '' THEN ? ELSE phone END,
-          company = CASE WHEN ? != '' THEN ? ELSE company END,
-          updated_at = ?
-      WHERE LOWER(email) = LOWER(?)
-    `);
-    updateStmt.run(name, phone, phone, company, company, now, email);
-    return getContactoByEmail(email);
-  } else {
-    const insertStmt = db.prepare(`
-      INSERT INTO contactos (email, name, phone, company, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-    insertStmt.run(email, name, phone, company, now, now);
-    return {
-      email,
-      name,
-      phone,
-      company: company || undefined,
-      createdAt: now,
-      updatedAt: now,
-    };
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      await supabaseAdmin.from('contactos').upsert({
+        email,
+        name,
+        phone,
+        company,
+        updated_at: now,
+      });
+      return contacto;
+    } catch (e) {
+      console.error('Error upserting contacto in Supabase:', e);
+    }
   }
+
+  _memoryContactos.set(email, contacto);
+  return contacto;
 }
 
-export function deleteContacto(email: string): boolean {
+export async function deleteContacto(email: string): Promise<boolean> {
   if (!email) return false;
-  const db = getDb();
   const normalized = email.trim().toLowerCase();
-  const stmt = db.prepare('DELETE FROM contactos WHERE LOWER(email) = LOWER(?)');
-  const info = stmt.run(normalized);
-  return info.changes > 0;
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      await supabaseAdmin.from('contactos').delete().ilike('email', normalized);
+      return true;
+    } catch (e) {
+      console.error('Error deleting contacto in Supabase:', e);
+    }
+  }
+  return _memoryContactos.delete(normalized);
 }
 
-export function getAllContactos(limit = 100): Contacto[] {
+export async function getAllContactos(limit = 100): Promise<Contacto[]> {
   return searchContactos('', limit);
 }
-
-

@@ -105,6 +105,36 @@ function getNextVersionCode(currentCode: string): string {
   return `${trimmed}-V2`;
 }
 
+// Separar título principal y especificaciones/notas del detalle del ensayo
+function parseDesignation(raw: string): { title: string; detail: string } {
+  if (!raw) return { title: '', detail: '' };
+  const clean = raw.trim();
+
+  // Caso 1: Tiene saltos de línea explícitos (muy común en tarifario IDIEM: Título \n Especificaciones / Notas)
+  if (clean.includes('\n')) {
+    const lines = clean.split('\n').map((l) => l.trim()).filter(Boolean);
+    const title = lines[0] || '';
+    const detail = lines.slice(1).join('\n');
+    return { title, detail };
+  }
+
+  // Caso 2: Bloques separados por múltiples espacios consecutivos (como en código 319)
+  if (/\s{3,}/.test(clean)) {
+    const parts = clean.split(/\s{3,}/).map((s) => s.trim()).filter(Boolean);
+    if (parts.length > 1) {
+      return { title: parts[0], detail: parts.slice(1).join('\n') };
+    }
+  }
+
+  // Caso 3: Frases largas con prefijos de notas/especificaciones (Nota:, Incluye:, Tamaño mínimo:, etc.)
+  const match = clean.match(/^(.*?)\.\s+(Nota.*|Incluye:.*|Tamaño mínimo.*|Considera.*|Probeta tallada.*)$/i);
+  if (match) {
+    return { title: match[1] + '.', detail: match[2] };
+  }
+
+  return { title: clean, detail: '' };
+}
+
 function CotizadorContent() {
   const searchParams = useSearchParams();
   const editId = searchParams.get('edit');
@@ -158,6 +188,23 @@ function CotizadorContent() {
 
   // Items in current quotation
   const [items, setItems] = useState<CotizacionItem[]>([]);
+  // Estado para expandir/ocultar especificaciones y detalles técnicos del ensayo
+  const [expandedDetails, setExpandedDetails] = useState<Record<string, boolean>>({});
+
+  const toggleExpandDetail = (id: string) => {
+    setExpandedDetails((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
+  const handleToggleAllDetails = (expand: boolean) => {
+    const next: Record<string, boolean> = {};
+    items.forEach((it) => {
+      next[it.id] = expand;
+    });
+    setExpandedDetails(next);
+  };
 
   // Commercial conditions & observations for this proposal
   const [observations, setObservations] = useState<string[]>(() => [...DEFAULT_OBSERVACIONES]);
@@ -2564,187 +2611,279 @@ function CotizadorContent() {
         </div>
 
           {/* Items Table */}
-          <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full text-left text-sm text-slate-700">
-              <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 text-xs uppercase tracking-wider">
-                <tr>
-                  <th className="py-3 px-2 w-28 text-center" title="Reorganizar posición: arrastra la fila o usa las flechas">
-                    <div className="flex items-center justify-center gap-1">
-                      <GripVertical className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Item</span>
-                    </div>
-                  </th>
-                  <th className="py-3 px-4">Designación Ensayo</th>
-                  <th className="py-3 px-3 w-48">Norma</th>
-                  <th className="py-3 px-2 w-20 text-center">Masa (kg)</th>
-                  <th className="py-3 px-2 w-16 text-center">Unidad</th>
-                  <th className="py-3 px-3 w-24 text-right">
-                    {currency === 'USD' ? 'Precio USD' : 'Precio UF'}
-                  </th>
-                  <th
-                    className="py-3 px-2 w-32 text-center text-[10px] leading-tight font-bold text-slate-700"
-                    title="Descuento o aumento de precio (1.0 = Precio lista, 0.9 = 10% descuento, 1.15 = 15% aumento)"
-                  >
-                    Descuento o Aumento de precio
-                  </th>
-                  <th className="py-3 px-3 w-20 text-center">Cant.</th>
-                  <th className="py-3 px-3 w-28 text-right">
-                    {currency === 'USD' ? 'Subtotal USD' : 'Subtotal UF'}
-                  </th>
-                  <th className="py-3 px-3 w-32 text-right">Subtotal CLP</th>
-                  <th className="py-3 px-2 w-12 text-center"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {items.length === 0 ? (
-                  <tr>
-                    <td colSpan={11} className="py-12 text-center text-slate-400">
-                      <div className="flex flex-col items-center gap-2">
-                        <Search className="w-8 h-8 text-slate-300" />
-                        <span className="text-sm font-medium text-slate-500">
-                          Aún no has agregado ningún ensayo.
-                        </span>
-                        <span className="text-xs text-slate-400">
-                          Utiliza el buscador superior para seleccionar ítems del tarifario oficial.
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  items.map((item, idx) => {
-                    const finalUnitUf = item.ufPrice * item.factor;
-                    const finalUnitDisplay =
-                      currency === 'USD'
-                        ? ((finalUnitUf * ufValue) / dollarValue).toFixed(2)
-                        : finalUnitUf.toFixed(2);
-                    const finalSubtotalDisplay =
-                      currency === 'USD'
-                        ? `${((item.subtotalUf * ufValue) / dollarValue).toFixed(2)} USD`
-                        : `${item.subtotalUf.toFixed(2)} UF`;
+          {(() => {
+            const itemsWithDetailsCount = items.filter(
+              (it) => !!parseDesignation(it.designation).detail
+            ).length;
+            const hasAnyDetails = itemsWithDetailsCount > 0;
+            const allDetailsExpanded =
+              hasAnyDetails &&
+              items.every((it) => {
+                const { detail } = parseDesignation(it.designation);
+                return !detail || !!expandedDetails[it.id];
+              });
 
-                    return (
-                      <tr
-                        key={item.id}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, idx)}
-                        onDragOver={(e) => handleDragOver(e, idx)}
-                        onDrop={(e) => handleDrop(e, idx)}
-                        onDragEnd={handleDragEnd}
-                        className={`transition-colors select-none ${
-                          draggedItemIndex === idx
-                            ? 'opacity-30 bg-blue-100/50 border-2 border-dashed border-blue-400'
-                            : dragOverItemIndex === idx
-                            ? 'bg-blue-50 border-t-2 border-blue-600'
-                            : 'hover:bg-slate-50/80'
-                        }`}
+            return (
+              <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-xs bg-white">
+                <table className="w-full min-w-[1100px] text-left text-sm text-slate-700">
+                  <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 text-xs uppercase tracking-wider">
+                    <tr>
+                      <th
+                        className="py-3 px-2 w-20 min-w-[76px] text-center"
+                        title="Reorganizar posición: arrastra la fila o usa las flechas"
                       >
-                        <td className="py-2 px-2 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            {/* Grip Handle for Drag & Drop */}
-                            <div
-                              className="cursor-grab active:cursor-grabbing p-1 text-slate-300 hover:text-slate-600 rounded transition"
-                              title="Arrastra para reordenar"
+                        <div className="flex items-center justify-center gap-1">
+                          <GripVertical className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Item</span>
+                        </div>
+                      </th>
+                      <th className="py-3 px-4 min-w-[340px] lg:min-w-[420px]">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-800">Designación Ensayo</span>
+                          {hasAnyDetails && (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleAllDetails(!allDetailsExpanded)}
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800 bg-blue-50/80 hover:bg-blue-100/90 border border-blue-200/80 px-2 py-0.5 rounded-md transition cursor-pointer normal-case tracking-normal shadow-2xs"
+                              title={
+                                allDetailsExpanded
+                                  ? 'Ocultar todos los detalles técnicos'
+                                  : 'Ver todos los detalles técnicos de los ensayos'
+                              }
                             >
-                              <GripVertical className="w-3.5 h-3.5" />
-                            </div>
-
-                            {/* Item Number 1.1.X */}
-                            <span className="font-mono text-xs font-semibold text-slate-600 min-w-[36px]">
-                              1.1.{idx + 1}
+                              {allDetailsExpanded ? (
+                                <>
+                                  <ChevronUp className="w-3 h-3 text-blue-600" />
+                                  <span>Ocultar detalles</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronDown className="w-3 h-3 text-blue-600" />
+                                  <span>Ver detalles ({itemsWithDetailsCount})</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </th>
+                      <th className="py-3 px-3 w-40 min-w-[140px] max-w-[180px]">Norma</th>
+                      <th className="py-3 px-2 w-20 min-w-[70px] text-center">Masa</th>
+                      <th className="py-3 px-2 w-16 min-w-[60px] text-center">Unidad</th>
+                      <th className="py-3 px-3 w-24 min-w-[85px] text-right">
+                        {currency === 'USD' ? 'Precio USD' : 'Precio UF'}
+                      </th>
+                      <th
+                        className="py-3 px-2 w-24 min-w-[85px] text-center"
+                        title="Factor multiplicador (1.0 = Precio lista, 0.9 = 10% desc., 1.15 = 15% recargo)"
+                      >
+                        <div className="flex flex-col items-center leading-tight">
+                          <span className="text-[11px] font-bold text-slate-700">Desc./Aum.</span>
+                          <span className="text-[9px] font-normal text-slate-400 lowercase">(factor)</span>
+                        </div>
+                      </th>
+                      <th className="py-3 px-2 w-16 min-w-[65px] text-center">Cant.</th>
+                      <th className="py-3 px-3 w-28 min-w-[95px] text-right">
+                        {currency === 'USD' ? 'Subtotal USD' : 'Subtotal UF'}
+                      </th>
+                      <th className="py-3 px-3 w-32 min-w-[110px] text-right">Subtotal CLP</th>
+                      <th className="py-3 px-2 w-10 min-w-[40px] text-center"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {items.length === 0 ? (
+                      <tr>
+                        <td colSpan={11} className="py-12 text-center text-slate-400">
+                          <div className="flex flex-col items-center gap-2">
+                            <Search className="w-8 h-8 text-slate-300" />
+                            <span className="text-sm font-medium text-slate-500">
+                              Aún no has agregado ningún ensayo.
                             </span>
-
-                            {/* Up / Down Buttons */}
-                            <div className="flex flex-col -space-y-0.5">
-                              <button
-                                type="button"
-                                disabled={idx === 0}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleMoveItem(idx, idx - 1);
-                                }}
-                                className="p-0.5 text-slate-400 hover:text-blue-600 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition"
-                                title="Mover arriba"
-                              >
-                                <ChevronUp className="w-3 h-3" />
-                              </button>
-                              <button
-                                type="button"
-                                disabled={idx === items.length - 1}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleMoveItem(idx, idx + 1);
-                                }}
-                                className="p-0.5 text-slate-400 hover:text-blue-600 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition"
-                                title="Mover abajo"
-                              >
-                                <ChevronDown className="w-3 h-3" />
-                              </button>
-                            </div>
+                            <span className="text-xs text-slate-400">
+                              Utiliza el buscador superior para seleccionar ítems del tarifario oficial.
+                            </span>
                           </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="font-semibold text-slate-900 leading-snug">
-                            {item.designation}
-                          </div>
-                        </td>
-                        <td className="py-3 px-3 text-xs text-slate-600 whitespace-pre-line">
-                          {item.norm || <span className="text-slate-400 italic">-</span>}
-                        </td>
-                        <td className="py-3 px-2 text-center text-xs font-mono text-slate-600">
-                          {item.minWeightKg ? `${item.minWeightKg} kg` : '-'}
-                        </td>
-                        <td className="py-3 px-2 text-center text-xs font-semibold text-slate-600">
-                          {item.unit}
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono font-medium text-slate-700">
-                          {finalUnitDisplay}
-                        </td>
-                        <td className="py-3 px-3 text-center">
-                          <input
-                            type="number"
-                            step="0.05"
-                            min="0"
-                            value={item.factor}
-                            onChange={(e) =>
-                              handleItemChange(item.id, 'factor', parseFloat(e.target.value) || 0)
-                            }
-                            className="w-16 p-1 text-center font-mono text-xs border border-slate-300 rounded focus:ring-2 focus:ring-blue-600 focus:outline-none"
-                            title="Factor multiplicador (1.0 = 100%, 0.9 = 10% desc.)"
-                          />
-                        </td>
-                        <td className="py-3 px-3 text-center">
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) =>
-                              handleItemChange(item.id, 'quantity', parseInt(e.target.value) || 0)
-                            }
-                            className="w-16 p-1 text-center font-mono text-xs font-bold border border-slate-300 rounded focus:ring-2 focus:ring-blue-600 focus:outline-none bg-blue-50/30"
-                          />
-                        </td>
-                        <td className="py-3 px-3 text-right font-bold font-mono text-slate-900">
-                          {finalSubtotalDisplay}
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-700">
-                          ${item.subtotalClp.toLocaleString('es-CL')}
-                        </td>
-                        <td className="py-3 px-2 text-center">
-                          <button
-                            onClick={() => handleRemoveItem(item.id)}
-                            className="p-1 text-slate-400 hover:text-red-600 rounded transition-colors cursor-pointer"
-                            title="Eliminar ensayo"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
                         </td>
                       </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                    ) : (
+                      items.map((item, idx) => {
+                        const finalUnitUf = item.ufPrice * item.factor;
+                        const finalUnitDisplay =
+                          currency === 'USD'
+                            ? ((finalUnitUf * ufValue) / dollarValue).toFixed(2)
+                            : finalUnitUf.toFixed(2);
+                        const finalSubtotalDisplay =
+                          currency === 'USD'
+                            ? `${((item.subtotalUf * ufValue) / dollarValue).toFixed(2)} USD`
+                            : `${item.subtotalUf.toFixed(2)} UF`;
+
+                        const { title, detail } = parseDesignation(item.designation);
+                        const isExpanded = !!expandedDetails[item.id];
+
+                        return (
+                          <tr
+                            key={item.id}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, idx)}
+                            onDragOver={(e) => handleDragOver(e, idx)}
+                            onDrop={(e) => handleDrop(e, idx)}
+                            onDragEnd={handleDragEnd}
+                            className={`transition-colors select-none ${
+                              draggedItemIndex === idx
+                                ? 'opacity-30 bg-blue-100/50 border-2 border-dashed border-blue-400'
+                                : dragOverItemIndex === idx
+                                ? 'bg-blue-50 border-t-2 border-blue-600'
+                                : 'hover:bg-slate-50/80'
+                            }`}
+                          >
+                            <td className="py-3 px-2 text-center align-top">
+                              <div className="flex items-center justify-center gap-1 pt-0.5">
+                                {/* Grip Handle for Drag & Drop */}
+                                <div
+                                  className="cursor-grab active:cursor-grabbing p-1 text-slate-300 hover:text-slate-600 rounded transition"
+                                  title="Arrastra para reordenar"
+                                >
+                                  <GripVertical className="w-3.5 h-3.5" />
+                                </div>
+
+                                {/* Item Number 1.1.X */}
+                                <span className="font-mono text-xs font-semibold text-slate-600 min-w-[36px]">
+                                  1.1.{idx + 1}
+                                </span>
+
+                                {/* Up / Down Buttons */}
+                                <div className="flex flex-col -space-y-0.5">
+                                  <button
+                                    type="button"
+                                    disabled={idx === 0}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleMoveItem(idx, idx - 1);
+                                    }}
+                                    className="p-0.5 text-slate-400 hover:text-blue-600 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition"
+                                    title="Mover arriba"
+                                  >
+                                    <ChevronUp className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={idx === items.length - 1}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleMoveItem(idx, idx + 1);
+                                    }}
+                                    className="p-0.5 text-slate-400 hover:text-blue-600 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition"
+                                    title="Mover abajo"
+                                  >
+                                    <ChevronDown className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 align-top">
+                              <div className="font-semibold text-slate-900 leading-snug text-[13px] md:text-sm">
+                                {title}
+                              </div>
+
+                              {detail && (
+                                <div className="mt-1">
+                                  {!isExpanded ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleExpandDetail(item.id)}
+                                      className="inline-flex items-center gap-1.5 text-[11px] font-medium text-blue-600 hover:text-blue-800 bg-blue-50/80 hover:bg-blue-100 px-2 py-0.5 rounded-md transition cursor-pointer border border-blue-200/60"
+                                      title="Ver especificaciones técnicas y condiciones del ensayo"
+                                    >
+                                      <Info className="w-3 h-3 text-blue-500" />
+                                      <span>Ver detalle del ensayo</span>
+                                      <ChevronDown className="w-3 h-3 text-blue-500" />
+                                    </button>
+                                  ) : (
+                                    <div className="mt-1.5 p-2.5 bg-slate-50 border border-slate-200 border-l-4 border-l-blue-600 rounded-r-md">
+                                      <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 mb-1">
+                                        <span className="flex items-center gap-1 text-slate-700">
+                                          <Info className="w-3 h-3 text-blue-600" /> Especificaciones / Detalle:
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleExpandDetail(item.id)}
+                                          className="text-slate-400 hover:text-slate-700 flex items-center gap-0.5 cursor-pointer text-[10px] font-medium hover:underline"
+                                        >
+                                          <ChevronUp className="w-3 h-3" /> Ocultar detalle
+                                        </button>
+                                      </div>
+                                      <div className="text-xs text-slate-600 font-normal whitespace-pre-line leading-relaxed">
+                                        {detail}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-xs text-slate-600 align-top">
+                              <div
+                                className="line-clamp-2 hover:line-clamp-none transition-all cursor-default whitespace-pre-line leading-relaxed"
+                                title={item.norm || undefined}
+                              >
+                                {item.norm || <span className="text-slate-400 italic">-</span>}
+                              </div>
+                            </td>
+                            <td className="py-3 px-2 text-center text-xs font-mono text-slate-600 align-top pt-3.5">
+                              {item.minWeightKg ? `${item.minWeightKg} kg` : '-'}
+                            </td>
+                            <td className="py-3 px-2 text-center text-xs font-semibold text-slate-600 align-top pt-3.5">
+                              {item.unit}
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono font-medium text-slate-700 align-top pt-3.5">
+                              {finalUnitDisplay}
+                            </td>
+                            <td className="py-3 px-2 text-center align-top pt-2.5">
+                              <input
+                                type="number"
+                                step="0.05"
+                                min="0"
+                                value={item.factor}
+                                onChange={(e) =>
+                                  handleItemChange(item.id, 'factor', parseFloat(e.target.value) || 0)
+                                }
+                                className="w-16 p-1 text-center font-mono text-xs border border-slate-300 rounded focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                                title="Factor multiplicador (1.0 = 100%, 0.9 = 10% desc.)"
+                              />
+                            </td>
+                            <td className="py-3 px-2 text-center align-top pt-2.5">
+                              <input
+                                type="number"
+                                min="1"
+                                value={item.quantity}
+                                onChange={(e) =>
+                                  handleItemChange(item.id, 'quantity', parseInt(e.target.value) || 0)
+                                }
+                                className="w-14 p-1 text-center font-mono text-xs font-bold border border-slate-300 rounded focus:ring-2 focus:ring-blue-600 focus:outline-none bg-blue-50/30"
+                              />
+                            </td>
+                            <td className="py-3 px-3 text-right font-bold font-mono text-slate-900 align-top pt-3.5">
+                              {finalSubtotalDisplay}
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono text-slate-700 align-top pt-3.5">
+                              ${item.subtotalClp.toLocaleString('es-CL')}
+                            </td>
+                            <td className="py-3 px-2 text-center align-top pt-2.5">
+                              <button
+                                onClick={() => handleRemoveItem(item.id)}
+                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                title="Eliminar ensayo"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
 
           {/* Summary Cards - Compact Executive Stat Strip */}
           <div className="mt-3.5 grid grid-cols-1 md:grid-cols-3 gap-3">

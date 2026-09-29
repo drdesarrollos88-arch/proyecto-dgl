@@ -30,6 +30,8 @@ import {
   FlaskConical,
   Filter,
   ArrowRightLeft,
+  GripVertical,
+  CheckSquare,
 } from 'lucide-react';
 
 // Natural Roman Numeral and hierarchical sorting
@@ -115,6 +117,19 @@ function ConfiguracionTarifarioContent() {
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Multi-selection state
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+
+  // Drag & drop state
+  const [draggedIds, setDraggedIds] = useState<string[] | null>(null);
+  const [dragOverCatKey, setDragOverCatKey] = useState<string | null>(null);
+  const [dragOverSubcatKey, setDragOverSubcatKey] = useState<string | null>(null);
+
+  // Batch move state
+  const [batchCc, setBatchCc] = useState<string>(CENTROS_DE_COSTO[0]);
+  const [batchCat, setBatchCat] = useState<string>('');
+  const [batchSubcat, setBatchSubcat] = useState<string>('');
+
   // Load structure & user
   const loadData = async () => {
     try {
@@ -130,11 +145,16 @@ function ConfiguracionTarifarioContent() {
 
       if (structRes.ok) {
         const s = await structRes.json();
-        setStructure(s.structure || []);
+        const loadedStructure = s.structure || [];
+        setStructure(loadedStructure);
         setItemCounts(s.itemCounts || {});
         setTotalItems(s.totalItems || 0);
         if (s.items && Array.isArray(s.items)) {
           setItems(s.items);
+        }
+        if (loadedStructure.length > 0) {
+          setBatchCc((prev) => prev || loadedStructure[0].cc);
+          setBatchCat((prev) => prev || loadedStructure[0].category);
         }
       }
     } catch (err) {
@@ -154,6 +174,181 @@ function ConfiguracionTarifarioContent() {
     setTimeout(() => {
       setAlertMessage(null);
     }, 5000);
+  };
+
+  // Batch Move helpers
+  const availableBatchCategories = structure.filter((s) => s.cc === batchCc);
+  const availableBatchSubcategories =
+    availableBatchCategories.find((s) => s.category === batchCat)?.subcategories || [];
+
+  const handleBatchCcChange = (newCc: string) => {
+    setBatchCc(newCc);
+    const available = structure.filter((s) => s.cc === newCc);
+    if (available.length > 0) {
+      setBatchCat(available[0].category);
+      setBatchSubcat('');
+    } else {
+      setBatchCat('');
+      setBatchSubcat('');
+    }
+  };
+
+  const handleBatchCatChange = (newCat: string) => {
+    setBatchCat(newCat);
+    setBatchSubcat('');
+  };
+
+  // Selection toggle
+  const toggleSelectItem = (id: string) => {
+    setSelectedItemIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAllDisplayed = (displayed: TarifarioItem[]) => {
+    const displayedIds = displayed.map((d) => d.id);
+    const allSelected = displayedIds.length > 0 && displayedIds.every((id) => selectedItemIds.includes(id));
+    if (allSelected) {
+      setSelectedItemIds((prev) => prev.filter((id) => !displayedIds.includes(id)));
+    } else {
+      setSelectedItemIds((prev) => Array.from(new Set([...prev, ...displayedIds])));
+    }
+  };
+
+  // Move items execution (used by Drag & Drop and Batch toolbar)
+  const executeMoveItems = async (
+    ids: string[],
+    targetCc: string,
+    targetCategory: string,
+    targetSubcategory?: string
+  ) => {
+    if (!ids || ids.length === 0) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/tarifario', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'batchMove',
+          ids,
+          targetCc,
+          targetCategory,
+          targetSubcategory: targetSubcategory || targetCategory,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al mover los ensayos.');
+      }
+
+      showAlert(
+        'success',
+        `✓ Se movieron ${ids.length} ensayo(s) a "${targetCategory}${
+          targetSubcategory && targetSubcategory !== targetCategory ? ' > ' + targetSubcategory : ''
+        }" exitosamente.`
+      );
+      setSelectedItemIds([]);
+      setDraggedIds(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Error al mover ensayos:', err);
+      showAlert('error', err.message || 'Error al mover los ensayos.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Drag & drop handlers
+  const handleDragStart = (e: React.DragEvent, item: TarifarioItem) => {
+    const idsToDrag =
+      selectedItemIds.includes(item.id) && selectedItemIds.length > 1
+        ? selectedItemIds
+        : [item.id];
+    setDraggedIds(idsToDrag);
+    e.dataTransfer.setData('application/json', JSON.stringify({ ids: idsToDrag }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIds(null);
+    setDragOverCatKey(null);
+    setDragOverSubcatKey(null);
+  };
+
+  const handleCategoryDragOver = (e: React.DragEvent, catKey: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverCatKey !== catKey) {
+      setDragOverCatKey(catKey);
+    }
+  };
+
+  const handleCategoryDragLeave = (e: React.DragEvent, catKey: string) => {
+    e.preventDefault();
+    if (e.currentTarget === e.target) {
+      setDragOverCatKey(null);
+    }
+  };
+
+  const handleCategoryDrop = async (e: React.DragEvent, targetCc: string, targetCategory: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverCatKey(null);
+    setDragOverSubcatKey(null);
+
+    let ids = draggedIds || [];
+    try {
+      const raw = e.dataTransfer.getData('application/json');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.ids) && parsed.ids.length > 0) ids = parsed.ids;
+      }
+    } catch {}
+
+    if (ids.length > 0) {
+      await executeMoveItems(ids, targetCc, targetCategory);
+    }
+  };
+
+  const handleSubcategoryDragOver = (e: React.DragEvent, subKey: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverSubcatKey !== subKey) {
+      setDragOverSubcatKey(subKey);
+    }
+  };
+
+  const handleSubcategoryDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverSubcatKey(null);
+  };
+
+  const handleSubcategoryDrop = async (
+    e: React.DragEvent,
+    targetCc: string,
+    targetCategory: string,
+    targetSubcategory: string
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverCatKey(null);
+    setDragOverSubcatKey(null);
+
+    let ids = draggedIds || [];
+    try {
+      const raw = e.dataTransfer.getData('application/json');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.ids) && parsed.ids.length > 0) ids = parsed.ids;
+      }
+    } catch {}
+
+    if (ids.length > 0) {
+      await executeMoveItems(ids, targetCc, targetCategory, targetSubcategory);
+    }
   };
 
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'superadmin';
@@ -724,13 +919,29 @@ function ConfiguracionTarifarioContent() {
                 );
               });
 
+              const isDragOver = dragOverCatKey === catKey;
+
               return (
                 <div
                   key={catKey}
+                  onDragOver={(e) => handleCategoryDragOver(e, catKey)}
+                  onDragLeave={(e) => handleCategoryDragLeave(e, catKey)}
+                  onDrop={(e) => handleCategoryDrop(e, cat.cc, cat.category)}
                   className={`bg-white rounded-2xl border transition-all overflow-hidden ${
-                    isExpanded ? 'border-red-200 shadow-md ring-1 ring-red-100' : 'border-slate-200 shadow-xs hover:border-slate-300'
+                    isDragOver
+                      ? 'border-red-500 shadow-xl ring-2 ring-red-400 bg-red-50/20 scale-[1.008]'
+                      : isExpanded
+                      ? 'border-red-200 shadow-md ring-1 ring-red-100'
+                      : 'border-slate-200 shadow-xs hover:border-slate-300'
                   }`}
                 >
+                  {isDragOver && (
+                    <div className="bg-red-600 text-white px-4 py-2 text-xs font-bold flex items-center justify-center gap-2 animate-pulse">
+                      <ArrowRightLeft className="w-4 h-4" />
+                      <span>Soltar aquí para mover los ensayos a &quot;{cat.category}&quot;</span>
+                    </div>
+                  )}
+
                   {/* Category Header */}
                   <div className="bg-slate-50/90 px-5 py-3.5 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div
@@ -812,28 +1023,32 @@ function ConfiguracionTarifarioContent() {
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
 
-                          <button
-                            onClick={() => {
-                              setDeleteConfirmData({
-                                type: 'category',
-                                cc: cat.cc,
-                                category: cat.category,
-                                count: catEssaysCount,
-                              });
-                            }}
-                            className={`p-1.5 rounded-lg bg-white border border-slate-200 transition-colors shadow-2xs ${
-                              catEssaysCount > 0
-                                ? 'text-slate-300 hover:text-slate-400 cursor-not-allowed'
-                                : 'text-slate-600 hover:text-red-700 hover:border-red-200 cursor-pointer'
-                            }`}
-                            title={
-                              catEssaysCount > 0
-                                ? `No se puede eliminar: tiene ${catEssaysCount} ensayo(s) asociado(s)`
-                                : 'Eliminar categoría vacía'
-                            }
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {/* Delete Empty Category prominent button */}
+                          {catEssaysCount === 0 ? (
+                            <button
+                              onClick={() => {
+                                setDeleteConfirmData({
+                                  type: 'category',
+                                  cc: cat.cc,
+                                  category: cat.category,
+                                  count: 0,
+                                });
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+                              title="Eliminar esta categoría vacía permanentemente"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Eliminar Categoría Vacía</span>
+                            </button>
+                          ) : (
+                            <button
+                              disabled
+                              className="p-1.5 rounded-lg bg-white border border-slate-200 text-slate-300 cursor-not-allowed shadow-2xs"
+                              title={`Tiene ${catEssaysCount} ensayo(s) asociado(s). Reasigna los ensayos para poder eliminarla.`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -874,22 +1089,34 @@ function ConfiguracionTarifarioContent() {
                           const subKey = `${cat.cc}:::${cat.category}:::${subcat}`;
                           const subEssaysCount = itemCounts[subKey] || 0;
                           const isSubActive = activeSubcat === subcat && isExpanded;
+                          const isSubcatDragOver = dragOverSubcatKey === subKey;
 
                           return (
                             <div
                               key={subKey}
                               onClick={() => handleSubcategoryClick(catKey, subcat)}
+                              onDragOver={(e) => handleSubcategoryDragOver(e, subKey)}
+                              onDragLeave={handleSubcategoryDragLeave}
+                              onDrop={(e) => handleSubcategoryDrop(e, cat.cc, cat.category, subcat)}
                               className={`group flex items-center justify-between gap-2 p-2.5 rounded-xl border transition-all cursor-pointer ${
-                                isSubActive
+                                isSubcatDragOver
+                                  ? 'bg-emerald-100 border-emerald-500 ring-2 ring-emerald-400 shadow-md scale-105 font-bold text-emerald-900'
+                                  : isSubActive
                                   ? 'bg-red-50/90 border-red-400 shadow-xs ring-1 ring-red-300'
                                   : 'border-slate-200 bg-slate-50/50 hover:bg-white hover:border-slate-300 hover:shadow-2xs'
                               }`}
-                              title={`Pincha para ver los ensayos de ${subcat}`}
+                              title={
+                                isSubcatDragOver
+                                  ? `Soltar aquí para mover a la subcategoría "${subcat}"`
+                                  : `Pincha para ver los ensayos de ${subcat}`
+                              }
                             >
                               <div className="flex items-center gap-2 min-w-0 flex-1">
                                 <span
                                   className={`w-2 h-2 rounded-full shrink-0 transition-colors ${
-                                    isSubActive
+                                    isSubcatDragOver
+                                      ? 'bg-emerald-600 ring-2 ring-emerald-300'
+                                      : isSubActive
                                       ? 'bg-red-600 ring-2 ring-red-200'
                                       : 'bg-slate-400 group-hover:bg-red-600'
                                   }`}
@@ -1048,13 +1275,31 @@ function ConfiguracionTarifarioContent() {
                           </p>
                           <p className="text-[11px] text-slate-400 mt-1">
                             {catAllItems.length === 0
-                              ? 'Puedes reasignar ensayos hacia esta categoría editándolos desde otra categoría o agregándolos al tarifario.'
+                              ? 'Puedes reasignar o arrastrar ensayos hacia esta categoría, o eliminarla si ya no la necesitas.'
                               : 'Prueba limpiando la búsqueda o el filtro de subcategoría.'}
                           </p>
+                          {catAllItems.length === 0 && isAdmin && (
+                            <div className="mt-3 flex items-center justify-center">
+                              <button
+                                onClick={() => {
+                                  setDeleteConfirmData({
+                                    type: 'category',
+                                    cc: cat.cc,
+                                    category: cat.category,
+                                    count: 0,
+                                  });
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Eliminar esta categoría vacía ahora</span>
+                              </button>
+                            </div>
+                          )}
                           {activeSubcat && (
                             <button
                               onClick={() => setActiveSubcatFilter((prev) => ({ ...prev, [catKey]: null }))}
-                              className="mt-3 text-xs text-red-700 hover:underline font-semibold"
+                              className="mt-3 text-xs text-red-700 hover:underline font-semibold cursor-pointer"
                             >
                               Quitar filtro de subcategoría
                             </button>
@@ -1066,6 +1311,25 @@ function ConfiguracionTarifarioContent() {
                             <table className="w-full text-left text-xs border-collapse">
                               <thead>
                                 <tr className="bg-slate-100/80 border-b border-slate-200 text-slate-600 font-semibold uppercase text-[10px] tracking-wider">
+                                  {canEdit && (
+                                    <th className="py-2.5 px-3 w-8 text-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={
+                                          displayedItems.length > 0 &&
+                                          displayedItems.every((it) => selectedItemIds.includes(it.id))
+                                        }
+                                        onChange={() => toggleSelectAllDisplayed(displayedItems)}
+                                        className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer w-4 h-4"
+                                        title="Seleccionar todos los mostrados"
+                                      />
+                                    </th>
+                                  )}
+                                  {canEdit && (
+                                    <th className="py-2.5 px-1 w-8 text-center text-slate-400 font-normal" title="Arrastrar para mover">
+                                      <span className="sr-only">Mover</span>
+                                    </th>
+                                  )}
                                   <th className="py-2.5 px-3">Código / SKU</th>
                                   <th className="py-2.5 px-3">Designación del Ensayo</th>
                                   <th className="py-2.5 px-3">Norma</th>
@@ -1075,57 +1339,89 @@ function ConfiguracionTarifarioContent() {
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100">
-                                {displayedItems.map((item) => (
-                                  <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                                    <td className="py-2.5 px-3 whitespace-nowrap align-top">
-                                      <span className="font-mono text-[11px] font-semibold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                                        {item.code || item.sku || 'S/C'}
-                                      </span>
-                                    </td>
-                                    <td className="py-2.5 px-3 align-top">
-                                      <p className="font-medium text-slate-900 leading-snug" title={item.designation}>
-                                        {item.designation}
-                                      </p>
-                                    </td>
-                                    <td className="py-2.5 px-3 whitespace-nowrap align-top">
-                                      {item.norm ? (
-                                        <span className="text-[11px] text-slate-700 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded font-medium">
-                                          {item.norm}
-                                        </span>
-                                      ) : (
-                                        <span className="text-slate-400 text-[11px]">-</span>
-                                      )}
-                                    </td>
-                                    <td className="py-2.5 px-3 align-top">
-                                      <span
-                                        className="text-[11px] text-slate-700 bg-slate-100/80 px-2 py-0.5 rounded-md inline-block font-medium max-w-[220px] truncate"
-                                        title={item.subcategory}
-                                      >
-                                        {item.subcategory || '-'}
-                                      </span>
-                                    </td>
-                                    <td className="py-2.5 px-3 text-right whitespace-nowrap align-top">
-                                      <span className="font-bold text-red-700 font-mono text-xs">
-                                        {item.ufPrice !== undefined ? Number(item.ufPrice).toFixed(2) : '0.00'} UF
-                                      </span>
-                                      <span className="text-[10px] text-slate-400 block font-normal">
-                                        / {item.unit || 'c/u'}
-                                      </span>
-                                    </td>
-                                    <td className="py-2.5 px-3 text-center whitespace-nowrap align-top">
+                                {displayedItems.map((item) => {
+                                  const isSelected = selectedItemIds.includes(item.id);
+                                  const isBeingDragged = draggedIds?.includes(item.id);
+
+                                  return (
+                                    <tr
+                                      key={item.id}
+                                      draggable={canEdit}
+                                      onDragStart={(e) => handleDragStart(e, item)}
+                                      onDragEnd={handleDragEnd}
+                                      className={`transition-colors ${
+                                        isSelected ? 'bg-red-50/90' : 'hover:bg-slate-50/80'
+                                      } ${isBeingDragged ? 'opacity-40 border-dashed border-red-400 bg-red-100/40' : ''}`}
+                                    >
                                       {canEdit && (
-                                        <button
-                                          onClick={() => openReassignModal(item)}
-                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:text-red-700 hover:border-red-200 hover:bg-red-50/50 transition-colors shadow-2xs cursor-pointer"
-                                          title="Cambiar/editar la categoría de este ensayo"
-                                        >
-                                          <Edit2 className="w-3 h-3 text-red-600" />
-                                          <span>Editar Categoría</span>
-                                        </button>
+                                        <td className="py-2.5 px-3 text-center align-top">
+                                          <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={() => toggleSelectItem(item.id)}
+                                            className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer w-4 h-4"
+                                            title="Seleccionar ensayo"
+                                          />
+                                        </td>
                                       )}
-                                    </td>
-                                  </tr>
-                                ))}
+                                      {canEdit && (
+                                        <td
+                                          className="py-2.5 px-1 text-center align-top cursor-grab active:cursor-grabbing text-slate-400 hover:text-red-700 transition-colors select-none"
+                                          title="Arrastra para mover a otra categoría o subcategoría"
+                                        >
+                                          <GripVertical className="w-4 h-4 mx-auto" />
+                                        </td>
+                                      )}
+                                      <td className="py-2.5 px-3 whitespace-nowrap align-top">
+                                        <span className="font-mono text-[11px] font-semibold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                          {item.code || item.sku || 'S/C'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 align-top">
+                                        <p className="font-medium text-slate-900 leading-snug" title={item.designation}>
+                                          {item.designation}
+                                        </p>
+                                      </td>
+                                      <td className="py-2.5 px-3 whitespace-nowrap align-top">
+                                        {item.norm ? (
+                                          <span className="text-[11px] text-slate-700 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded font-medium">
+                                            {item.norm}
+                                          </span>
+                                        ) : (
+                                          <span className="text-slate-400 text-[11px]">-</span>
+                                        )}
+                                      </td>
+                                      <td className="py-2.5 px-3 align-top">
+                                        <span
+                                          className="text-[11px] text-slate-700 bg-slate-100/80 px-2 py-0.5 rounded-md inline-block font-medium max-w-[220px] truncate"
+                                          title={item.subcategory}
+                                        >
+                                          {item.subcategory || '-'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-right whitespace-nowrap align-top">
+                                        <span className="font-bold text-red-700 font-mono text-xs">
+                                          {item.ufPrice !== undefined ? Number(item.ufPrice).toFixed(2) : '0.00'} UF
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 block font-normal">
+                                          / {item.unit || 'c/u'}
+                                        </span>
+                                      </td>
+                                      <td className="py-2.5 px-3 text-center whitespace-nowrap align-top">
+                                        {canEdit && (
+                                          <button
+                                            onClick={() => openReassignModal(item)}
+                                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:text-red-700 hover:border-red-200 hover:bg-red-50/50 transition-colors shadow-2xs cursor-pointer"
+                                            title="Cambiar/editar la categoría de este ensayo"
+                                          >
+                                            <Edit2 className="w-3 h-3 text-red-600" />
+                                            <span>Editar Categoría</span>
+                                          </button>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
                               </tbody>
                             </table>
                           </div>
@@ -1721,6 +2017,75 @@ function ConfiguracionTarifarioContent() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Floating Batch Move Toolbar */}
+        {selectedItemIds.length > 0 && canEdit && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-slate-700 flex flex-col md:flex-row items-center justify-between gap-4 max-w-4xl w-[92%] animate-in slide-in-from-bottom duration-200">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-red-600 flex items-center justify-center font-bold text-sm text-white shadow-xs shrink-0">
+                {selectedItemIds.length}
+              </div>
+              <div>
+                <span className="text-xs font-bold text-slate-100 block">
+                  {selectedItemIds.length} ensayo{selectedItemIds.length > 1 ? 's' : ''} seleccionado{selectedItemIds.length > 1 ? 's' : ''}
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  Arrastra los ensayos hacia una categoría o elígelas aquí:
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
+              <select
+                value={batchCc}
+                onChange={(e) => handleBatchCcChange(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg text-xs bg-slate-800 border border-slate-700 text-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500 font-medium cursor-pointer"
+              >
+                {CENTROS_DE_COSTO.map((cc) => (
+                  <option key={cc} value={cc}>{cc}</option>
+                ))}
+              </select>
+
+              <select
+                value={batchCat}
+                onChange={(e) => handleBatchCatChange(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg text-xs bg-slate-800 border border-slate-700 text-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500 font-medium max-w-[200px] truncate cursor-pointer"
+              >
+                {availableBatchCategories.map((c) => (
+                  <option key={c.category} value={c.category}>{c.category}</option>
+                ))}
+              </select>
+
+              <select
+                value={batchSubcat}
+                onChange={(e) => setBatchSubcat(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg text-xs bg-slate-800 border border-slate-700 text-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500 font-medium max-w-[180px] truncate cursor-pointer"
+              >
+                <option value="">(Misma que categoría)</option>
+                {availableBatchSubcategories.map((sub) => (
+                  <option key={sub} value={sub}>{sub}</option>
+                ))}
+              </select>
+
+              <button
+                onClick={() => executeMoveItems(selectedItemIds, batchCc, batchCat, batchSubcat)}
+                disabled={submitting || !batchCat}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors shadow-xs disabled:opacity-50 cursor-pointer whitespace-nowrap"
+              >
+                <ArrowRightLeft className="w-3.5 h-3.5" />
+                <span>Mover Ensayos</span>
+              </button>
+
+              <button
+                onClick={() => setSelectedItemIds([])}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Deseleccionar todos"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </div>
         )}

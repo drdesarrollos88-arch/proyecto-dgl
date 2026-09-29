@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getTarifario, updateTarifarioItem, createTarifarioItem } from '@/lib/db';
+import {
+  getTarifarioAsync,
+  updateTarifarioItemAsync,
+  createTarifarioItemAsync,
+  batchMoveTarifarioItemsAsync,
+} from '@/lib/tarifario-db';
 import { isAdminRole } from '@/lib/permissions';
 
 export async function GET() {
@@ -9,7 +14,7 @@ export async function GET() {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const items = getTarifario();
+  const items = await getTarifarioAsync();
   return NextResponse.json({ items });
 }
 
@@ -24,12 +29,43 @@ export async function PUT(req: NextRequest) {
   }
 
   try {
-    const { id, updates } = await req.json();
+    const body = await req.json();
+
+    // Check for batch move operation
+    if (body.action === 'batchMove') {
+      const { ids, targetCc, targetCategory, targetSubcategory } = body;
+      if (!Array.isArray(ids) || ids.length === 0 || !targetCc || !targetCategory) {
+        return NextResponse.json(
+          { error: 'Se requiere una lista de IDs, Centro de Costo y Categoría destino.' },
+          { status: 400 }
+        );
+      }
+
+      const result = await batchMoveTarifarioItemsAsync(
+        ids,
+        targetCc,
+        targetCategory,
+        targetSubcategory || targetCategory,
+        currentUser.name
+      );
+
+      if (!result.success) {
+        return NextResponse.json({ error: result.error || 'Error al mover los ensayos en lote.' }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Se movieron ${result.count} ensayo(s) exitosamente.`,
+        count: result.count,
+      });
+    }
+
+    const { id, updates } = body;
     if (!id || !updates) {
       return NextResponse.json({ error: 'ID y datos a actualizar son requeridos' }, { status: 400 });
     }
 
-    const updated = updateTarifarioItem(id, updates, currentUser.name);
+    const updated = await updateTarifarioItemAsync(id, updates, currentUser.name);
     if (!updated) {
       return NextResponse.json({ error: 'Ítem no encontrado en el tarifario' }, { status: 404 });
     }
@@ -59,7 +95,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const newItem = createTarifarioItem(
+    const newItem = await createTarifarioItemAsync(
       {
         code: itemData.code || '',
         category: itemData.category || 'ENSAYOS GENERALES',

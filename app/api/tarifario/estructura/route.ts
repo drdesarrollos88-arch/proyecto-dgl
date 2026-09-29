@@ -2,15 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { isAdminRole } from '@/lib/permissions';
 import {
-  getTarifarioStructure,
-  getTarifario,
-  addCategoryToStructure,
-  addSubcategoryToStructure,
-  renameCategoryInDb,
-  renameSubcategoryInDb,
-  deleteCategoryFromStructure,
-  deleteSubcategoryFromStructure,
-} from '@/lib/db';
+  getTarifarioStructureAsync,
+  getTarifarioAsync,
+  addCategoryToStructureAsync,
+  addSubcategoryToStructureAsync,
+  renameCategoryInDbAsync,
+  renameSubcategoryInDbAsync,
+  deleteCategoryFromStructureAsync,
+  deleteSubcategoryFromStructureAsync,
+} from '@/lib/tarifario-db';
 
 export async function GET() {
   const currentUser = await getCurrentUser();
@@ -18,8 +18,10 @@ export async function GET() {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const structure = getTarifarioStructure();
-  const items = getTarifario();
+  const [structure, items] = await Promise.all([
+    getTarifarioStructureAsync(),
+    getTarifarioAsync(),
+  ]);
 
   // Compute counts
   const itemCounts: Record<string, number> = {};
@@ -63,7 +65,7 @@ export async function POST(req: NextRequest) {
       if (!cc || !category) {
         return NextResponse.json({ error: 'Centro de costo y nombre de categoría requeridos.' }, { status: 400 });
       }
-      const result = addCategoryToStructure(cc, category, subcategories || []);
+      const result = await addCategoryToStructureAsync(cc, category, subcategories || []);
       if (!result.success) {
         return NextResponse.json({ error: result.message }, { status: 400 });
       }
@@ -77,7 +79,7 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-      const result = addSubcategoryToStructure(cc, category, subcategory);
+      const result = await addSubcategoryToStructureAsync(cc, category, subcategory);
       if (!result.success) {
         return NextResponse.json({ error: result.message }, { status: 400 });
       }
@@ -110,7 +112,7 @@ export async function PUT(req: NextRequest) {
           { status: 400 }
         );
       }
-      const result = renameCategoryInDb(cc, oldCategory, newCategory);
+      const result = await renameCategoryInDbAsync(cc, oldCategory, newCategory);
       if (!result.success) {
         return NextResponse.json({ error: result.message }, { status: 400 });
       }
@@ -128,7 +130,7 @@ export async function PUT(req: NextRequest) {
           { status: 400 }
         );
       }
-      const result = renameSubcategoryInDb(cc, category, oldSubcategory, newSubcategory);
+      const result = await renameSubcategoryInDbAsync(cc, category, oldSubcategory, newSubcategory);
       if (!result.success) {
         return NextResponse.json({ error: result.message }, { status: 400 });
       }
@@ -162,7 +164,7 @@ export async function DELETE(req: NextRequest) {
       if (!cc || !category) {
         return NextResponse.json({ error: 'Centro de costo y categoría requeridos.' }, { status: 400 });
       }
-      const result = deleteCategoryFromStructure(cc, category);
+      const result = await deleteCategoryFromStructureAsync(cc, category);
       if (!result.success) {
         return NextResponse.json({ error: result.message, count: result.count }, { status: 400 });
       }
@@ -176,7 +178,7 @@ export async function DELETE(req: NextRequest) {
           { status: 400 }
         );
       }
-      const result = deleteSubcategoryFromStructure(cc, category, subcategory);
+      const result = await deleteSubcategoryFromStructureAsync(cc, category, subcategory);
       if (!result.success) {
         return NextResponse.json({ error: result.message, count: result.count }, { status: 400 });
       }

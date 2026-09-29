@@ -44,6 +44,8 @@ import {
   CheckCircle2,
   Info,
   ChevronDown,
+  ChevronUp,
+  GripVertical,
   PlusCircle,
   Edit3,
   X,
@@ -890,6 +892,50 @@ function CotizadorContent() {
         .filter((it) => it.id !== id)
         .map((it, idx) => ({ ...it, itemNumber: `1.1.${idx + 1}` }))
     );
+  };
+
+  // Reorganizar orden de ensayos (Mover y Drag & Drop)
+  const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
+  const [dragOverItemIndex, setDragOverItemIndex] = useState<number | null>(null);
+
+  const handleMoveItem = (fromIndex: number, toIndex: number) => {
+    if (toIndex < 0 || toIndex >= items.length || fromIndex === toIndex) return;
+    setItems((prev) => {
+      const updated = [...prev];
+      const [moved] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, moved);
+      return updated.map((it, idx) => ({ ...it, itemNumber: `1.1.${idx + 1}` }));
+    });
+  };
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedItemIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    try {
+      e.dataTransfer.setData('text/plain', String(index));
+    } catch {}
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverItemIndex !== index) {
+      setDragOverItemIndex(index);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    if (draggedItemIndex !== null && draggedItemIndex !== targetIndex) {
+      handleMoveItem(draggedItemIndex, targetIndex);
+    }
+    setDraggedItemIndex(null);
+    setDragOverItemIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedItemIndex(null);
+    setDragOverItemIndex(null);
   };
 
   // Totals calculations
@@ -2522,7 +2568,12 @@ function CotizadorContent() {
             <table className="w-full text-left text-sm text-slate-700">
               <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 text-xs uppercase tracking-wider">
                 <tr>
-                  <th className="py-3 px-3 w-14 text-center">Item</th>
+                  <th className="py-3 px-2 w-28 text-center" title="Reorganizar posición: arrastra la fila o usa las flechas">
+                    <div className="flex items-center justify-center gap-1">
+                      <GripVertical className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Item</span>
+                    </div>
+                  </th>
                   <th className="py-3 px-4">Designación Ensayo</th>
                   <th className="py-3 px-3 w-48">Norma</th>
                   <th className="py-3 px-2 w-20 text-center">Masa (kg)</th>
@@ -2572,9 +2623,64 @@ function CotizadorContent() {
                         : `${item.subtotalUf.toFixed(2)} UF`;
 
                     return (
-                      <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3 px-3 text-center font-mono text-xs font-semibold text-slate-500">
-                          1.1.{idx + 1}
+                      <tr
+                        key={item.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, idx)}
+                        onDragOver={(e) => handleDragOver(e, idx)}
+                        onDrop={(e) => handleDrop(e, idx)}
+                        onDragEnd={handleDragEnd}
+                        className={`transition-colors select-none ${
+                          draggedItemIndex === idx
+                            ? 'opacity-30 bg-blue-100/50 border-2 border-dashed border-blue-400'
+                            : dragOverItemIndex === idx
+                            ? 'bg-blue-50 border-t-2 border-blue-600'
+                            : 'hover:bg-slate-50/80'
+                        }`}
+                      >
+                        <td className="py-2 px-2 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            {/* Grip Handle for Drag & Drop */}
+                            <div
+                              className="cursor-grab active:cursor-grabbing p-1 text-slate-300 hover:text-slate-600 rounded transition"
+                              title="Arrastra para reordenar"
+                            >
+                              <GripVertical className="w-3.5 h-3.5" />
+                            </div>
+
+                            {/* Item Number 1.1.X */}
+                            <span className="font-mono text-xs font-semibold text-slate-600 min-w-[36px]">
+                              1.1.{idx + 1}
+                            </span>
+
+                            {/* Up / Down Buttons */}
+                            <div className="flex flex-col -space-y-0.5">
+                              <button
+                                type="button"
+                                disabled={idx === 0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMoveItem(idx, idx - 1);
+                                }}
+                                className="p-0.5 text-slate-400 hover:text-blue-600 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition"
+                                title="Mover arriba"
+                              >
+                                <ChevronUp className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={idx === items.length - 1}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMoveItem(idx, idx + 1);
+                                }}
+                                className="p-0.5 text-slate-400 hover:text-blue-600 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition"
+                                title="Mover abajo"
+                              >
+                                <ChevronDown className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
                         </td>
                         <td className="py-3 px-4">
                           <div className="font-semibold text-slate-900 leading-snug">

@@ -713,6 +713,16 @@ export default function UnifiedAiAssistantModal({
   };
 
   // Manejo de la tabla interactiva de ensayos
+  const moveEnsayo = (fromIndex: number, toIndex: number) => {
+    if (toIndex < 0 || toIndex >= ensayosSeleccionados.length || fromIndex === toIndex) return;
+    setEnsayosSeleccionados((prev) => {
+      const updated = [...prev];
+      const [moved] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, moved);
+      return updated;
+    });
+  };
+
   const toggleEnsayo = (index: number) => {
     setEnsayosSeleccionados((prev) =>
       prev.map((item, i) =>
@@ -1425,12 +1435,34 @@ export default function UnifiedAiAssistantModal({
                                 }`}
                               >
                                 <div className="flex items-start gap-2.5">
-                                  <input
-                                    type="checkbox"
-                                    checked={ensayo.seleccionado}
-                                    onChange={() => toggleEnsayo(realIdx >= 0 ? realIdx : idx)}
-                                    className="mt-1 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                  />
+                                  <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                                    <div className="flex flex-col -space-y-1">
+                                      <button
+                                        type="button"
+                                        disabled={realIdx <= 0}
+                                        onClick={() => moveEnsayo(realIdx, realIdx - 1)}
+                                        className="p-0.5 text-slate-500 hover:text-blue-400 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition"
+                                        title="Mover arriba"
+                                      >
+                                        <ChevronUp className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={realIdx >= ensayosSeleccionados.length - 1}
+                                        onClick={() => moveEnsayo(realIdx, realIdx + 1)}
+                                        className="p-0.5 text-slate-500 hover:text-blue-400 disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed transition"
+                                        title="Mover abajo"
+                                      >
+                                        <ChevronDown className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                    <input
+                                      type="checkbox"
+                                      checked={ensayo.seleccionado}
+                                      onChange={() => toggleEnsayo(realIdx >= 0 ? realIdx : idx)}
+                                      className="rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                    />
+                                  </div>
                                   <div className="flex-1 min-w-0">
                                     <div className="flex flex-wrap items-center gap-1.5">
                                       <span className="font-mono text-[10px] font-bold text-blue-300 bg-blue-950/80 px-1.5 py-0.5 rounded border border-blue-800/50">

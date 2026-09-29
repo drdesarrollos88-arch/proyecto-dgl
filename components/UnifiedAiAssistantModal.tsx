@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
   CotizacionItem,
@@ -22,24 +22,18 @@ import {
   Send,
   Loader2,
   Bot,
-  User as UserIcon,
   Trash2,
   CheckCircle2,
   PlusCircle,
-  Edit2,
   HelpCircle,
   ArrowRight,
   RefreshCw,
-  Scale,
   FileText,
   Upload,
   AlertTriangle,
   Mail,
   Copy,
   Check,
-  Building2,
-  MapPin,
-  Calendar,
   Layers,
   ChevronDown,
   ChevronUp,
@@ -49,12 +43,15 @@ import {
   BookOpen,
   Database,
   Brain,
-  History,
-  TrendingUp,
-  Sliders,
-  ExternalLink,
   Search,
   Paperclip,
+  ExternalLink,
+  Maximize2,
+  Eye,
+  Minus,
+  Plus,
+  Filter,
+  MessageSquare,
 } from 'lucide-react';
 
 export interface UnifiedAiAssistantModalProps {
@@ -88,19 +85,18 @@ interface DisplayChatMessage {
 }
 
 const CHAT_SUGGESTIONS = [
-  'Agregale a este presupuesto 3 Clasificaciones Completas y 3 Consolidaciones de 20 cm sin permeabilidad',
-  'Cambia el ensayo de corte directo a 7 muestras',
+  'Agrega 3 Clasificaciones USCS completas y 3 Consolidaciones',
+  'Cambia el corte directo a 5 muestras',
   'Elimina los ensayos de cono de arena',
-  'Aplica un 10% de descuento (factor 0.9) a todos los ensayos',
-  '¿Qué ensayos se recomiendan para un estudio de fundación en gravas según NCh1508?',
+  'Aplica un 10% de descuento a todos los ensayos',
+  '¿Qué normativa aplica para fundación en roca según NCh1508?',
 ];
 
 const ANALISIS_EJEMPLOS = [
   {
     titulo: 'Licitación ESVAL (Cantera Melipilla)',
     texto: `Estimado Francisco, para licitación con ESVAL, solicito pueda cotizar la toma de muestra y caracterización y ensayo de roca de 5 a 6 ton.
-La roca se extraerá desde cantera la Virgen, en Melipilla
-https://maps.app.goo.gl/FnGoyTiqovJwUojJ8
+La roca se extraerá desde cantera la Virgen, en Melipilla https://maps.app.goo.gl/FnGoyTiqovJwUojJ8
 El informe deberá contener una caracterización completa de la muestra, descripción micro y macro, clasificación litológica, enfocada en las cualidades que tiene el material para prestar servicio en condiciones marítimas.
 Las características de la roca solicitadas por el mandante son:
 Resistencia a la compresión mayor a 60MPa
@@ -164,7 +160,7 @@ function getFileBadgeInfo(filename: string) {
   if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
     return {
       label: 'Excel',
-      bg: 'bg-emerald-50 text-emerald-900 border-emerald-300',
+      bg: 'bg-emerald-950/40 text-emerald-300 border-emerald-700/60',
       pillBg: 'bg-emerald-600 text-white',
       iconText: '📊',
     };
@@ -172,7 +168,7 @@ function getFileBadgeInfo(filename: string) {
   if (lower.endsWith('.docx') || lower.endsWith('.doc')) {
     return {
       label: 'Word',
-      bg: 'bg-blue-50 text-blue-900 border-blue-300',
+      bg: 'bg-blue-950/40 text-blue-300 border-blue-700/60',
       pillBg: 'bg-blue-600 text-white',
       iconText: '📝',
     };
@@ -180,14 +176,14 @@ function getFileBadgeInfo(filename: string) {
   if (lower.endsWith('.pdf')) {
     return {
       label: 'PDF',
-      bg: 'bg-red-50 text-red-900 border-red-300',
+      bg: 'bg-red-950/40 text-red-300 border-red-700/60',
       pillBg: 'bg-red-600 text-white',
       iconText: '📄',
     };
   }
   return {
     label: 'Texto',
-    bg: 'bg-slate-100 text-slate-800 border-slate-300',
+    bg: 'bg-slate-800 text-slate-300 border-slate-700',
     pillBg: 'bg-slate-600 text-white',
     iconText: '📄',
   };
@@ -202,85 +198,74 @@ export default function UnifiedAiAssistantModal({
   onApplyCampaign,
   contexto = {},
 }: UnifiedAiAssistantModalProps) {
-  // Pestaña activa: 'chat' (unificada: Chat + Análisis de Documentos/Correos) | 'memoria'
-  const [activeTab, setActiveTab] = useState<'chat' | 'memoria'>(
-    initialTab === 'memoria' ? 'memoria' : 'chat'
+  // Pestaña principal: 'workbench' (3 secciones) | 'memoria'
+  const [activeTab, setActiveTab] = useState<'workbench' | 'memoria'>(
+    initialTab === 'memoria' ? 'memoria' : 'workbench'
   );
 
-  // Panel desplegable para adjuntar / pegar documento o correo
-  const [showInputDrawer, setShowInputDrawer] = useState(initialTab === 'analizar');
-  const [drawerMode, setDrawerMode] = useState<'text' | 'file'>('text');
-  const [pastedText, setPastedText] = useState('');
+  // Estados de archivo y texto
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
-  // Retención de archivo y texto analizado en sesión para re-análisis interactivo o revisión de páginas específicas
   const [lastAnalyzedFile, setLastAnalyzedFile] = useState<File | null>(null);
   const [lastAnalyzedText, setLastAnalyzedText] = useState<string>('');
+  const [pastedText, setPastedText] = useState('');
+  const [rawFileText, setRawFileText] = useState<string | null>(null);
+  const [leftViewMode, setLeftViewMode] = useState<'viewer' | 'paste'>('viewer');
 
-  // Detector inteligente de intención de re-análisis o revisión de páginas/secciones del documento
+  // URL del objeto PDF para vista preliminar nativa
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  // Detector inteligente de intención de re-análisis
   const isDocumentRecheckRequest = (msg: string): boolean => {
     const lower = msg.toLowerCase();
     const keywords = [
-      'revisa',
-      'revisar',
-      'revises',
-      'revisalo',
-      'revisame',
-      'revisen',
-      'página',
-      'pagina',
-      'paginas',
-      'páginas',
-      'hoja',
-      'hojas',
-      'anexo',
-      'anexos',
-      'incompleto',
-      'incompletos',
-      'incompleta',
-      'incompletas',
-      'falta',
-      'faltan',
-      'faltante',
-      'faltantes',
-      'más ensayo',
-      'mas ensayo',
-      'más ensayos',
-      'mas ensayos',
-      'solicitan más',
-      'piden más',
-      'vuelve a',
-      'volver a',
-      'exhaustiv',
-      'busca más',
-      'buscar más',
-      'documento completo',
-      'todo el documento',
-      'todo el archivo',
-      'todas las páginas',
-      'todas las paginas',
-      'chequea',
-      'escanea',
+      'revisa', 'revisar', 'revises', 'revisalo', 'revisame', 'revisen',
+      'página', 'pagina', 'paginas', 'páginas', 'hoja', 'hojas',
+      'anexo', 'anexos', 'incompleto', 'incompletos', 'incompleta',
+      'falta', 'faltan', 'faltante', 'faltantes', 'más ensayo', 'mas ensayo',
+      'más ensayos', 'mas ensayos', 'solicitan más', 'piden más',
+      'vuelve a', 'volver a', 'exhaustiv', 'busca más', 'buscar más',
+      'documento completo', 'todo el documento', 'todo el archivo',
+      'todas las páginas', 'todas las paginas', 'chequea', 'escanea'
     ];
     return keywords.some((kw) => lower.includes(kw));
   };
 
-  // Sincronizar initialTab cuando se abre el modal
+  // Crear y limpiar ObjectURL cuando cambia el archivo actual
+  useEffect(() => {
+    const current = attachedFile || lastAnalyzedFile;
+    if (current && (current.type === 'application/pdf' || current.name.toLowerCase().endsWith('.pdf'))) {
+      const url = URL.createObjectURL(current);
+      setPreviewUrl(url);
+      return () => {
+        URL.revokeObjectURL(url);
+      };
+    } else {
+      setPreviewUrl(null);
+    }
+  }, [attachedFile, lastAnalyzedFile]);
+
+  // Extraer texto crudo si es archivo TXT
+  useEffect(() => {
+    const current = attachedFile || lastAnalyzedFile;
+    if (current && (current.name.toLowerCase().endsWith('.txt') || current.type.startsWith('text/'))) {
+      current.text().then((txt) => setRawFileText(txt)).catch(() => setRawFileText(null));
+    } else {
+      setRawFileText(null);
+    }
+  }, [attachedFile, lastAnalyzedFile]);
+
+  // Sincronizar initialTab
   useEffect(() => {
     if (isOpen) {
       if (initialTab === 'memoria') {
         setActiveTab('memoria');
       } else {
-        setActiveTab('chat');
-        if (initialTab === 'analizar') {
-          setShowInputDrawer(true);
-        }
+        setActiveTab('workbench');
       }
     }
   }, [isOpen, initialTab]);
 
-  // ==========================================
-  // ESTADOS COMUNES (API KEY, SEGURIDAD)
-  // ==========================================
+  // API Key personalizada / institucional
   const [customApiKey, setCustomApiKey] = useState('');
   const [showKeyInput, setShowKeyInput] = useState(false);
 
@@ -303,14 +288,14 @@ export default function UnifiedAiAssistantModal({
   };
 
   // ==========================================
-  // ESTADOS DEL ASISTENTE UNIFICADO (CHAT & ANÁLISIS)
+  // ESTADOS DEL WORKBENCH (CHAT, ANÁLISIS & ENSAYOS)
   // ==========================================
   const [chatMessages, setChatMessages] = useState<DisplayChatMessage[]>([
     {
       id: 'welcome',
       role: 'assistant',
       content:
-        '¡Hola! Soy tu **Asistente IA Técnico-Comercial DGL IDIEM**.\n\nPuedes **adjuntar un archivo (PDF, Word, Excel o TXT)** o **pegar un correo de licitación** para que extraiga los requerimientos y proponga la batería de ensayos oficial.\n\nTambién puedes pedirme en lenguaje natural que agregue ensayos, ajuste cantidades, aplique descuentos o responda cualquier duda técnica sobre nuestro tarifario de 358 ensayos y normativa (NCh1508, NCh433, MOP).',
+        '¡Hola! Soy tu **Asistente Técnico-Comercial DGL IDIEM impulsado por Gemini**.\n\nPuedes ver el documento preliminar en el panel izquierdo y la propuesta de ensayos en el panel derecho. Indícame cualquier instrucción técnica en este chat (ej. *"agrega 3 proctor"*, *"revisa la pág 4"*, *"aplica 10% de descuento"* o consultas sobre NCh1508) y ajustaré la campaña en tiempo real.',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
@@ -320,43 +305,37 @@ export default function UnifiedAiAssistantModal({
   const [analisisStep, setAnalisisStep] = useState(0);
   const [analisisError, setAnalisisError] = useState<string | null>(null);
 
-  // Campaña activa en el chat
+  // Campaña y propuesta técnica activa
   const [activeAnalisis, setActiveAnalisis] = useState<AiAnalisisResponse | null>(null);
   const [ensayosSeleccionados, setEnsayosSeleccionados] = useState<AiEnsayoSugerido[]>([]);
   const [campanaCargada, setCampanaCargada] = useState(false);
-  const [analisisResultSubTab, setAnalisisResultSubTab] = useState<'ensayos' | 'consultas' | 'alertas'>('ensayos');
+  const [activeRightSubTab, setActiveRightSubTab] = useState<'ensayos' | 'consultas' | 'alertas'>('ensayos');
+  const [searchEnsayoQuery, setSearchEnsayoQuery] = useState('');
   const [expandedJustifications, setExpandedJustifications] = useState<Record<number, boolean>>({});
   const [copiedMail, setCopiedMail] = useState(false);
 
+  // Referencias DOM
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const drawerFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Rotador de pasos de carga de análisis
+  // Rotador de pasos de carga
   useEffect(() => {
     if (!analisisLoading) return;
     const interval = setInterval(() => {
       setAnalisisStep((prev) => (prev + 1) % LOADING_STEPS.length);
-    }, 2800);
+    }, 2600);
     return () => clearInterval(interval);
   }, [analisisLoading]);
 
-  // Auto-scroll
+  // Auto-scroll del chat
   useEffect(() => {
-    if (isOpen && activeTab === 'chat') {
+    if (isOpen && activeTab === 'workbench') {
       chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [isOpen, activeTab, chatMessages, analisisLoading, chatLoading]);
 
-  // Focus input
-  useEffect(() => {
-    if (isOpen && activeTab === 'chat' && !showInputDrawer) {
-      setTimeout(() => chatInputRef.current?.focus(), 150);
-    }
-  }, [isOpen, activeTab, showInputDrawer]);
-
-  // Manejo de drag and drop sobre el área de chat
+  // Manejo de drag and drop
   const handleDropFile = (e: React.DragEvent) => {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
@@ -372,6 +351,7 @@ export default function UnifiedAiAssistantModal({
       ) {
         setAttachedFile(f);
         setAnalisisError(null);
+        setLeftViewMode('viewer');
       } else {
         setAnalisisError('Formatos admitidos: PDF (.pdf), Word (.docx, .doc), Excel (.xlsx, .xls) o Texto (.txt).');
       }
@@ -379,14 +359,14 @@ export default function UnifiedAiAssistantModal({
   };
 
   // ========================================================
-  // ACCIÓN 1: ANALIZAR DOCUMENTO O CORREO
+  // ACCIÓN 1: ANALIZAR DOCUMENTO O TEXTO
   // ========================================================
   const handleAnalyze = async (overrideText?: string, overrideFile?: File | null) => {
     const textToAnalyze = (overrideText !== undefined ? overrideText : pastedText || chatInput).trim();
-    const fileToAnalyze = overrideFile !== undefined ? overrideFile : attachedFile;
+    const fileToAnalyze = overrideFile !== undefined ? overrideFile : (attachedFile || lastAnalyzedFile);
 
     if (!textToAnalyze && !fileToAnalyze) {
-      setAnalisisError('Por favor selecciona un archivo (PDF, Word, Excel o TXT) o pega el texto de la solicitud.');
+      setAnalisisError('Por favor sube un archivo o escribe/pega el requerimiento para analizar.');
       return;
     }
 
@@ -402,16 +382,14 @@ export default function UnifiedAiAssistantModal({
     setAnalisisStep(0);
     setCampanaCargada(false);
 
-    // Identificar distintivo del tipo de archivo
     const fileBadge = fileToAnalyze ? getFileBadgeInfo(fileToAnalyze.name) : null;
-
-    // Agregar mensaje del usuario a la conversación
     const isReanalysis = Boolean(overrideFile || (activeAnalisis && fileToAnalyze));
+
     const userMsgContent = fileToAnalyze
-      ? `${fileBadge?.iconText || '📄'} **${isReanalysis ? 'Re-análisis de archivo' : 'Archivo adjunto'} [${fileBadge?.label || 'Documento'}]:** ${fileToAnalyze.name} (${(
+      ? `${fileBadge?.iconText || '📄'} **${isReanalysis ? 'Revisión técnica' : 'Análisis de documento'} [${fileBadge?.label}]:** ${fileToAnalyze.name} (${(
           fileToAnalyze.size / 1024
         ).toFixed(1)} KB)${textToAnalyze ? `\n\n*Instrucción:* ${textToAnalyze}` : ''}`
-      : `📧 **Solicitud / Correo de Licitación:**\n\n${textToAnalyze}`;
+      : `📋 **Solicitud técnica:**\n\n${textToAnalyze}`;
 
     const userMsg: DisplayChatMessage = {
       id: `user-analisis-${Date.now()}`,
@@ -424,11 +402,7 @@ export default function UnifiedAiAssistantModal({
     };
 
     setChatMessages((prev) => [...prev, userMsg]);
-    // Resetear inputs de análisis
-    setPastedText('');
     setChatInput('');
-    setAttachedFile(null);
-    setShowInputDrawer(false);
 
     try {
       let res: Response;
@@ -460,7 +434,7 @@ export default function UnifiedAiAssistantModal({
       } catch {
         throw new Error(
           !res.ok
-            ? `El servidor de IA respondió con un error (código ${res.status}). Por favor intenta nuevamente o sube el archivo en otro formato.`
+            ? `El servidor de IA respondió con un error (código ${res.status}).`
             : 'Respuesta inválida del servidor.'
         );
       }
@@ -477,7 +451,7 @@ export default function UnifiedAiAssistantModal({
         seleccionado: true,
       }));
 
-      // Combinar inteligentemente con los ensayos previamente seleccionados para no perder personalizaciones
+      // Combinar con personalizaciones previas
       setEnsayosSeleccionados((prevSelected) => {
         if (prevSelected.length === 0) return itemsSugeridos;
         const combined = itemsSugeridos.map((newItem) => {
@@ -502,23 +476,20 @@ export default function UnifiedAiAssistantModal({
         return combined;
       });
 
-      // Agregar respuesta del asistente con la propuesta interactiva
       const assistantMsg: DisplayChatMessage = {
         id: `asst-analisis-${Date.now()}`,
         role: 'assistant',
         content: isReanalysis
-          ? `🔍 **Revisión exhaustiva completada para "${
-              parsedAnalisis.datos_proyecto_detectados.nombre_obra || 'el proyecto'
-            }":**\n\nHe examinado nuevamente el documento completo (${fileToAnalyze?.name || 'solicitud'}), atendiendo a tus indicaciones sobre páginas y ensayos específicos. La campaña cuenta ahora con **${
+          ? `🔍 **Revisión completada para "${parsedAnalisis.datos_proyecto_detectados.nombre_obra || 'el proyecto'}":**\n\nHe examinado el documento atendiendo a tus indicaciones. La campaña cuenta ahora con **${
               parsedAnalisis.ensayos_sugeridos?.length || 0
-            } ensayos oficiales DGL** detectados en todas las secciones y páginas requeridas.\n\nPuedes revisar la propuesta actualizada abajo, cargarla al presupuesto o seguir ajustándola por este chat:`
-          : `He analizado la solicitud técnica para el proyecto "${
+            } ensayos oficiales DGL** listados en el panel derecho. Puedes ajustar cantidades o seguir modificando la propuesta aquí en el chat.`
+          : `He analizado la solicitud técnica para el proyecto **"${
               parsedAnalisis.datos_proyecto_detectados.nombre_obra || 'Sin nombre'
-            }" (${parsedAnalisis.datos_proyecto_detectados.empresa_cliente || 'Cliente particular'}).\n\nEstructuré una propuesta de **${
+            }"** (${parsedAnalisis.datos_proyecto_detectados.empresa_cliente || 'Cliente particular'}).\n\nPropuse **${
               itemsSugeridos.length
             } ensayos oficiales DGL** conforme al tarifario IDIEM y la normativa aplicable (${
               parsedAnalisis.normativa_aplicable?.slice(0, 3).join(', ') || 'NCh1508'
-            }). Puedes revisar y ajustar la campaña a continuación, cargarla al presupuesto o pedirme cualquier modificación directamente por este chat:`,
+            }). Revisa la lista a la derecha o dame cualquier instrucción para ajustarla.`,
         analisis: parsedAnalisis,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
@@ -532,7 +503,7 @@ export default function UnifiedAiAssistantModal({
         {
           id: `err-${Date.now()}`,
           role: 'assistant',
-          content: `⚠️ Ocurrió un problema al analizar la solicitud: ${errorText}. Por favor intenta nuevamente o sube el archivo en otro formato.`,
+          content: `⚠️ Ocurrió un problema al analizar la solicitud: ${errorText}.`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
@@ -542,25 +513,25 @@ export default function UnifiedAiAssistantModal({
   };
 
   // ========================================================
-  // ACCIÓN 2: CHAT CONVERSACIONAL E INTERACCIÓN POST-ANÁLISIS
+  // ACCIÓN 2: CHAT CONVERSACIONAL E INTERACCIÓN BIDIRECCIONAL
   // ========================================================
   const handleSendChatMessage = async (textToSend?: string) => {
-    // 1. Si hay un archivo adjunto pendiente en el clip, procesar como análisis
-    if (attachedFile) {
-      handleAnalyze(textToSend || chatInput);
+    // Si hay un archivo adjunto pendiente, procesar como análisis
+    if (attachedFile && !lastAnalyzedFile) {
+      handleAnalyze(textToSend || chatInput, attachedFile);
       return;
     }
 
     const text = (textToSend || chatInput).trim();
     if (!text || chatLoading || analisisLoading) return;
 
-    // 2. Si hay un documento en memoria y el usuario pide re-examinar, buscar más ensayos o revisar páginas específicas:
+    // Si el usuario pide re-examinar páginas específicas del documento en memoria:
     if (lastAnalyzedFile && isDocumentRecheckRequest(text)) {
       handleAnalyze(text, lastAnalyzedFile);
       return;
     }
 
-    // 3. Si hay un texto extenso de licitación en memoria y el usuario pide re-examinar:
+    // Si hay texto extenso de licitación en memoria y el usuario pide re-examinar:
     if (!lastAnalyzedFile && lastAnalyzedText && isDocumentRecheckRequest(text)) {
       handleAnalyze(`${text}\n\n[Texto original de licitación]:\n${lastAnalyzedText}`);
       return;
@@ -578,7 +549,6 @@ export default function UnifiedAiAssistantModal({
     setChatLoading(true);
 
     try {
-      // Historial enriquecido para que la IA sepa qué se analizó
       const historial: AiChatMessage[] = chatMessages.map((m) => {
         let content = m.content;
         if (m.analisis) {
@@ -594,7 +564,6 @@ export default function UnifiedAiAssistantModal({
         };
       });
 
-      // Si la campaña ya fue cargada, enviamos currentItems; si no, enviamos los ensayos de la campaña activa
       let itemsPayload = currentItems.map((it) => ({
         code: it.code,
         designation: it.designation,
@@ -643,57 +612,54 @@ export default function UnifiedAiAssistantModal({
       const assistantMsg: DisplayChatMessage = {
         id: `asst-${Date.now()}`,
         role: 'assistant',
-        content: data.mensaje || 'He procesado tu solicitud.',
+        content: data.mensaje || 'He procesado tu instrucción.',
         acciones: data.acciones,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
       setChatMessages((prev) => [...prev, assistantMsg]);
 
-      // Aplicar las acciones
+      // Aplicar las acciones en tiempo real sobre los ensayos seleccionados
       if (Array.isArray(data.acciones) && data.acciones.length > 0) {
-        // 1. Si los ítems ya están en el presupuesto principal, aplicar acciones en el cotizador
         if (currentItems.length > 0 || campanaCargada) {
           onApplyActions(data.acciones, data.itemsAgregadosCompletos || []);
         }
 
-        // 2. Sincronizar también con la tarjeta de campaña activa en el chat si está visible
-        if (ensayosSeleccionados.length > 0) {
-          setEnsayosSeleccionados((prev) => {
-            let updated = [...prev];
-            for (const act of data.acciones) {
-              if (act.tipo === 'ELIMINAR' && act.codigo) {
-                updated = updated.filter((e) => e.codigo !== act.codigo);
-              } else if (act.tipo === 'MODIFICAR_CANTIDAD' && act.codigo && act.cantidad) {
-                updated = updated.map((e) =>
-                  e.codigo === act.codigo ? { ...e, cantidad_estimada: act.cantidad! } : e
-                );
-              } else if (act.tipo === 'AGREGAR' && act.codigo) {
-                const already = updated.some((e) => e.codigo === act.codigo);
-                if (!already) {
-                  const itemCompleto = data.itemsAgregadosCompletos?.find((it) => it.code === act.codigo);
-                  if (itemCompleto) {
-                    updated.push({
-                      sku: itemCompleto.sku || `SKU-${act.codigo}`,
-                      codigo: itemCompleto.code,
-                      designacion: itemCompleto.designation,
-                      norma: itemCompleto.norm || 'Norma IDIEM',
-                      centro_costo: itemCompleto.cc || '1817',
-                      unidad: itemCompleto.unit || 'c/u',
-                      precio_uf: itemCompleto.ufPrice || 0,
-                      cantidad_estimada: act.cantidad || 1,
-                      justificacion_tecnica: act.descripcion || 'Agregado mediante chat interactivo',
-                      seleccionado: true,
-                    });
-                  }
+        // Sincronizar en tiempo real el listado del panel derecho
+        setEnsayosSeleccionados((prev) => {
+          let updated = [...prev];
+          for (const act of data.acciones) {
+            if (act.tipo === 'ELIMINAR' && act.codigo) {
+              updated = updated.filter((e) => e.codigo !== act.codigo);
+            } else if (act.tipo === 'MODIFICAR_CANTIDAD' && act.codigo && act.cantidad) {
+              updated = updated.map((e) =>
+                e.codigo === act.codigo ? { ...e, cantidad_estimada: act.cantidad! } : e
+              );
+            } else if (act.tipo === 'AGREGAR' && act.codigo) {
+              const already = updated.some((e) => e.codigo === act.codigo);
+              if (!already) {
+                const itemCompleto = data.itemsAgregadosCompletos?.find((it) => it.code === act.codigo);
+                if (itemCompleto) {
+                  updated.push({
+                    sku: itemCompleto.sku || `SKU-${act.codigo}`,
+                    codigo: itemCompleto.code,
+                    designacion: itemCompleto.designation,
+                    norma: itemCompleto.norm || 'Norma IDIEM',
+                    centro_costo: itemCompleto.cc || '1817',
+                    unidad: itemCompleto.unit || 'c/u',
+                    precio_uf: itemCompleto.ufPrice || 0,
+                    cantidad_estimada: act.cantidad || 1,
+                    justificacion_tecnica: act.descripcion || 'Agregado mediante interacción IA',
+                    seleccionado: true,
+                  });
                 }
               }
             }
-            return updated;
-          });
-        }
+          }
+          return updated;
+        });
 
-        // 3. Retroalimentación automática de aprendizaje (Opción B)
+        // Feedback de aprendizaje
         for (const act of data.acciones) {
           if (act.tipo === 'AGREGAR' && act.codigo) {
             fetch('/api/ai/feedback', {
@@ -715,7 +681,7 @@ export default function UnifiedAiAssistantModal({
         {
           id: `err-${Date.now()}`,
           role: 'assistant',
-          content: `⚠️ Ocurrió un inconveniente al procesar tu instrucción: ${errorText}. Por favor intenta nuevamente.`,
+          content: `⚠️ Inconveniente al procesar la instrucción: ${errorText}.`,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
@@ -725,13 +691,13 @@ export default function UnifiedAiAssistantModal({
   };
 
   const handleClearChat = () => {
-    if (confirm('¿Deseas reiniciar la conversación con el asistente?')) {
+    if (confirm('¿Deseas reiniciar la conversación y limpiar la mesa de trabajo?')) {
       setChatMessages([
         {
           id: 'welcome-reset',
           role: 'assistant',
           content:
-            'Conversación reiniciada. Puedes adjuntar un documento (PDF, Word, Excel o TXT), pegar un correo o pedirme cualquier instrucción técnica para tu presupuesto.',
+            'Mesa de trabajo reiniciada. Puedes subir un nuevo documento o formular una consulta técnica en el chat.',
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
@@ -742,11 +708,11 @@ export default function UnifiedAiAssistantModal({
       setLastAnalyzedFile(null);
       setLastAnalyzedText('');
       setPastedText('');
-      setShowInputDrawer(false);
+      setRawFileText(null);
     }
   };
 
-  // Manejadores para la tabla interactiva de campaña
+  // Manejo de la tabla interactiva de ensayos
   const toggleEnsayo = (index: number) => {
     setEnsayosSeleccionados((prev) =>
       prev.map((item, i) =>
@@ -779,39 +745,52 @@ export default function UnifiedAiAssistantModal({
   };
 
   const handleApplyCampaignClick = () => {
-    if (!activeAnalisis) return;
     const activos = ensayosSeleccionados.filter((e) => e.seleccionado);
     if (activos.length === 0) {
-      alert('Debes seleccionar al menos un ensayo para cargar al presupuesto.');
+      alert('Debes seleccionar al menos un ensayo para cargar a la cotización principal.');
       return;
     }
 
     onApplyCampaign({
-      datosProyecto: activeAnalisis.datos_proyecto_detectados,
+      datosProyecto: activeAnalisis?.datos_proyecto_detectados,
       ensayos: activos,
-      centroCosto: activeAnalisis.datos_proyecto_detectados.centro_costo_sugerido,
-      observacionesComerciales: activeAnalisis.observaciones_comerciales,
+      centroCosto: activeAnalisis?.datos_proyecto_detectados.centro_costo_sugerido || '1817',
+      observacionesComerciales: activeAnalisis?.observaciones_comerciales,
     });
 
     setCampanaCargada(true);
 
-    // Mensaje en el chat confirmando la carga
     setChatMessages((prev) => [
       ...prev,
       {
         id: `sys-cargado-${Date.now()}`,
         role: 'assistant',
-        content: `✅ **¡Campaña cargada exitosamente en el presupuesto!**\nSe incorporaron **${activos.length} ensayos** por un subtotal estimado de **${totalSeleccionadoUf.toFixed(
+        content: `✅ **¡${activos.length} ensayos cargados exitosamente en la Cotización Principal!**\nSubtotal estimado: **${totalSeleccionadoUf.toFixed(
           2
-        )} UF**.\n\nPuedes seguir interactuando conmigo aquí abajo para hacer modificaciones en tiempo real (ej. *"aplica 10% de descuento"*, *"agrega 2 muestras más de corte"*), o cerrar esta ventana cuando desees.`,
+        )} UF**.\n\nPuedes seguir interactuando conmigo para hacer modificaciones o cerrar la ventana cuando gustes.`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       },
     ]);
   };
 
-  const totalSeleccionadoUf = ensayosSeleccionados
-    .filter((e) => e.seleccionado)
-    .reduce((acc, curr) => acc + curr.precio_uf * curr.cantidad_estimada, 0);
+  // Cálculo del total seleccionado
+  const totalSeleccionadoUf = useMemo(() => {
+    return ensayosSeleccionados
+      .filter((e) => e.seleccionado)
+      .reduce((acc, curr) => acc + curr.precio_uf * curr.cantidad_estimada, 0);
+  }, [ensayosSeleccionados]);
+
+  // Filtrado de ensayos en el panel lateral derecho
+  const ensayosFiltrados = useMemo(() => {
+    if (!searchEnsayoQuery.trim()) return ensayosSeleccionados;
+    const q = searchEnsayoQuery.toLowerCase();
+    return ensayosSeleccionados.filter(
+      (e) =>
+        e.codigo.toLowerCase().includes(q) ||
+        e.designacion.toLowerCase().includes(q) ||
+        (e.norma && e.norma.toLowerCase().includes(q))
+    );
+  }, [ensayosSeleccionados, searchEnsayoQuery]);
 
   // ==========================================
   // ESTADOS DE PESTAÑA: MEMORIA Y APRENDIZAJE IA
@@ -930,65 +909,91 @@ export default function UnifiedAiAssistantModal({
 
   if (!isOpen) return null;
 
+  const currentFile = attachedFile || lastAnalyzedFile;
+  const currentBadge = currentFile ? getFileBadgeInfo(currentFile.name) : null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/75 backdrop-blur-sm overflow-hidden animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-6xl h-[94vh] max-h-[96vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-3 bg-slate-950/85 backdrop-blur-md overflow-hidden animate-in fade-in duration-150">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl w-full max-w-[98vw] h-[96vh] max-h-[96vh] flex flex-col overflow-hidden text-slate-100">
+        
         {/* ======================================================== */}
-        {/* HEADER UNIFICADO DE LA PLATAFORMA DE IA */}
+        {/* HEADER MINIMALISTA & PROFESIONAL */}
         {/* ======================================================== */}
-        <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 text-white px-5 py-3.5 border-b border-slate-800 flex items-center justify-between shrink-0">
+        <div className="bg-slate-950 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center shadow-md shadow-indigo-950/50 text-white border border-white/20 shrink-0">
-              <Bot className="w-5 h-5 text-amber-300" />
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 via-indigo-600 to-red-600 flex items-center justify-center text-white shadow-md shadow-blue-950/50 shrink-0">
+              <Bot className="w-4 h-4 text-amber-300" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-white tracking-wide">
-                  Asistente IA Técnico-Comercial DGL
+                <h2 className="text-sm font-bold text-white tracking-wide">
+                  Mesa de Trabajo Asistente IA DGL
                 </h2>
-                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                  <ShieldCheck className="w-3 h-3" /> Zero Data Training
+                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  Gemini 3 Flash
                 </span>
-                <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded-full">
-                  358 Ensayos Oficiales
+                <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-medium bg-blue-500/10 text-blue-300 border border-blue-500/20 px-2 py-0.5 rounded-full">
+                  358 Ensayos IDIEM
                 </span>
               </div>
-              <p className="text-[11px] text-slate-300">
-                Carga documentos, analiza correos de licitación y ajusta la propuesta interactuando en tiempo real con la IA
-              </p>
             </div>
           </div>
 
+          {/* Navegación entre Mesa de Trabajo y Memoria */}
           <div className="flex items-center gap-2">
-            <span className="hidden lg:inline-flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-950/70 border border-emerald-700/50 px-2.5 py-1 rounded-lg">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              Gemini Flash Activo
-            </span>
+            <div className="flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setActiveTab('workbench')}
+                className={`px-3 py-1 rounded-md transition cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'workbench'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>Mesa de Trabajo</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('memoria')}
+                className={`px-3 py-1 rounded-md transition cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'memoria'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Brain className="w-3.5 h-3.5 text-indigo-300" />
+                <span>Memoria RAG</span>
+              </button>
+            </div>
+
             <button
               onClick={() => setShowKeyInput(!showKeyInput)}
-              title="Ajustes de API Key Institucional / Personalizada"
-              className="text-xs text-slate-300 hover:text-white bg-slate-800/80 hover:bg-slate-700 p-2 rounded-lg border border-slate-700 transition cursor-pointer"
+              title="Ajuste de API Key Gemini"
+              className="text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 p-1.5 rounded-lg border border-slate-800 transition cursor-pointer"
             >
               <Key className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={onClose}
-              title="Cerrar Asistente (Esc)"
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer"
+              title="Cerrar Mesa de Trabajo (Esc)"
+              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition cursor-pointer"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Barra de Ajuste de API Key (opcional / institucional) */}
+        {/* Barra de Ajuste de API Key (Opcional) */}
         {showKeyInput && (
-          <div className="bg-emerald-50 border-b border-emerald-200 px-6 py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-emerald-900 shrink-0">
-            <div className="flex items-center gap-2 flex-1">
-              <Key className="w-4 h-4 text-emerald-700 shrink-0" />
-              <span className="font-semibold shrink-0">Estado de Llave Gemini:</span>
-              <span className="text-[11px] text-emerald-800">
-                ✓ Conectado mediante clave oficial institucional en servidor. No requiere configuración individual.
+          <div className="bg-slate-950 border-b border-slate-800 px-4 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-300 shrink-0">
+            <div className="flex items-center gap-2">
+              <Key className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="font-semibold text-emerald-400">Estado de Llave Gemini:</span>
+              <span className="text-[11px] text-slate-400">
+                Conectado con clave oficial del servidor. Puedes ingresar una API Key personalizada:
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -996,808 +1001,789 @@ export default function UnifiedAiAssistantModal({
                 type="password"
                 value={customApiKey}
                 onChange={(e) => handleSaveKey(e.target.value)}
-                placeholder="Personalizar API Key (Opcional)"
-                className="w-56 px-2.5 py-1 bg-white border border-emerald-300 rounded text-slate-800 font-mono text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none"
+                placeholder="API Key Personalizada"
+                className="w-56 px-2.5 py-1 bg-slate-900 border border-slate-700 rounded text-slate-100 font-mono text-xs focus:ring-1 focus:ring-blue-500 focus:outline-none"
               />
               {customApiKey && (
                 <button
                   type="button"
                   onClick={() => handleSaveKey('')}
-                  className="text-[10px] text-red-600 hover:underline cursor-pointer"
+                  className="text-[10px] text-red-400 hover:underline cursor-pointer"
                 >
-                  Restaurar servidor
+                  Restaurar
                 </button>
               )}
             </div>
           </div>
         )}
 
-        {/* ======================================================== */}
-        {/* BARRA DE NAVEGACIÓN UNIFICADA (2 PESTAÑAS) */}
-        {/* ======================================================== */}
-        <div className="bg-slate-100 px-4 pt-2 border-b border-slate-200 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-1 sm:gap-2">
-            {/* PESTAÑA UNIFICADA: ASISTENTE TÉCNICO-COMERCIAL (CHAT + ANÁLISIS) */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('chat')}
-              className={`flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-bold rounded-t-xl transition-all border-t border-x cursor-pointer ${
-                activeTab === 'chat'
-                  ? 'bg-white text-blue-700 border-slate-200 -mb-[1px] shadow-xs'
-                  : 'bg-transparent text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-200/60'
-              }`}
-            >
-              <Bot className="w-4 h-4 text-blue-600" />
-              <span>Asistente IA Técnico-Comercial</span>
-              <span className="text-[10px] bg-blue-100 text-blue-800 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-amber-500" />
-                Chat & Análisis de Solicitudes
-              </span>
-              {currentItems.length > 0 && (
-                <span className="hidden md:inline-flex text-[10px] bg-slate-100 text-slate-700 font-mono px-1.5 py-0.2 rounded border border-slate-200">
-                  {currentItems.length} {currentItems.length === 1 ? 'ítem en cotización' : 'ítems en cotización'}
-                </span>
-              )}
-            </button>
-
-            {/* PESTAÑA 2: MEMORIA Y APRENDIZAJE */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('memoria')}
-              className={`flex items-center gap-2 px-3.5 py-2 text-xs sm:text-sm font-bold rounded-t-xl transition-all border-t border-x cursor-pointer ${
-                activeTab === 'memoria'
-                  ? 'bg-white text-indigo-700 border-slate-200 -mb-[1px] shadow-xs'
-                  : 'bg-transparent text-slate-600 hover:text-slate-900 border-transparent hover:bg-slate-200/60'
-              }`}
-            >
-              <Brain className="w-4 h-4 text-indigo-600" />
-              <span>Memoria & Aprendizaje IA</span>
-              <span className="text-[10px] bg-indigo-100 text-indigo-800 font-semibold px-1.5 py-0.2 rounded-full">
-                RAG + Reglas
-              </span>
-            </button>
-          </div>
-
-          <div className="hidden md:flex items-center gap-2 pb-1 text-[11px] text-slate-500">
-            {(activeAnalisis?.datos_proyecto_detectados.empresa_cliente || contexto.clientName) && (
-              <span className="truncate max-w-[200px]">
-                <strong className="text-slate-700">Cliente:</strong>{' '}
-                {activeAnalisis?.datos_proyecto_detectados.empresa_cliente || contexto.clientName}
-              </span>
-            )}
-            {(activeAnalisis?.datos_proyecto_detectados.centro_costo_sugerido || contexto.centroCosto) && (
-              <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-mono text-[10px]">
-                {(activeAnalisis?.datos_proyecto_detectados.centro_costo_sugerido || contexto.centroCosto)?.slice(0, 4)}
-              </span>
-            )}
-          </div>
-        </div>
+        {/* Input file invisible para selector de archivos */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.txt,.xlsx,.xls,.docx,.doc"
+          onChange={(e) => {
+            if (e.target.files && e.target.files[0]) {
+              setAttachedFile(e.target.files[0]);
+              setAnalisisError(null);
+              setLeftViewMode('viewer');
+            }
+          }}
+          className="hidden"
+        />
 
         {/* ======================================================== */}
-        {/* CUERPO DINÁMICO */}
+        {/* CUERPO DEL MODAL (WORKBENCH DE 3 SECCIONES O MEMORIA) */}
         {/* ======================================================== */}
-        <div className="flex-1 overflow-hidden flex flex-col bg-white">
-          {/* ====================================================== */}
-          {/* TAB 1: ASISTENTE UNIFICADO (CHAT & ANÁLISIS DE SOLICITUDES) */}
-          {/* ====================================================== */}
-          {activeTab === 'chat' && (
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {/* Franja superior de estado y acciones rápidas de carga */}
-              <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 text-[11px] text-slate-600 flex flex-wrap items-center justify-between gap-2 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div>
-                    <span className="font-semibold text-slate-700">Presupuesto:</span>{' '}
-                    <span className="font-bold text-blue-700 font-mono">{currentItems.length}</span>{' '}
-                    {currentItems.length === 1 ? 'ítem cargado' : 'ítems cargados'}
+        {activeTab === 'workbench' ? (
+          <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+            {/* ==================================================== */}
+            {/* PARTE SUPERIOR: DOS PANELES LATERALES (IZQ & DER) */}
+            {/* ==================================================== */}
+            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0 border-b border-slate-800">
+              
+              {/* ================================================== */}
+              {/* SECCIÓN 1 (LATERAL IZQUIERDA): VISTA PRELIMINAR DOCUMENTO */}
+              {/* ================================================== */}
+              <div
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={handleDropFile}
+                className="w-full lg:w-1/2 flex flex-col bg-slate-950 border-b lg:border-b-0 lg:border-r border-slate-800 overflow-hidden"
+              >
+                {/* Header del Visor de Documento */}
+                <div className="px-3.5 py-2 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between shrink-0 text-xs">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="w-4 h-4 text-blue-400 shrink-0" />
+                    <span className="font-bold text-white text-xs tracking-tight truncate">
+                      Vista Preliminar del Documento
+                    </span>
+                    {currentFile && (
+                      <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${currentBadge?.bg}`}>
+                        {currentBadge?.label} • {(currentFile.size / 1024).toFixed(0)} KB
+                      </span>
+                    )}
                   </div>
-                  <span className="text-slate-300">|</span>
-                  <div className="text-slate-600 font-medium truncate max-w-xs">
-                    {activeAnalisis?.datos_proyecto_detectados.nombre_obra
-                      ? `Proyecto: ${activeAnalisis.datos_proyecto_detectados.nombre_obra}`
-                      : contexto.projectName
-                      ? `Proyecto: ${contexto.projectName}`
-                      : 'Presupuesto en elaboración'}
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {previewUrl && (
+                      <button
+                        type="button"
+                        onClick={() => window.open(previewUrl, '_blank')}
+                        className="px-2 py-1 text-[11px] font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-md transition flex items-center gap-1 cursor-pointer"
+                        title="Abrir PDF en pestaña independiente"
+                      >
+                        <Maximize2 className="w-3 h-3 text-slate-400" />
+                        <span className="hidden sm:inline">Pestaña</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setLeftViewMode(leftViewMode === 'viewer' ? 'paste' : 'viewer')}
+                      className={`px-2 py-1 text-[11px] font-medium rounded-md transition flex items-center gap-1 cursor-pointer ${
+                        leftViewMode === 'paste'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                      }`}
+                      title="Alternar entre visor de archivo y editor de texto pegado"
+                    >
+                      <Mail className="w-3 h-3" />
+                      <span>{leftViewMode === 'paste' ? 'Ver Archivo' : 'Pegar Texto'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-2 py-1 text-[11px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-md transition flex items-center gap-1 cursor-pointer shadow-xs"
+                      title="Cargar o cambiar documento"
+                    >
+                      <Upload className="w-3 h-3" />
+                      <span>{currentFile ? 'Cambiar' : 'Subir'}</span>
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {/* Botón para abrir el cargador de solicitudes / correos */}
-                  <button
-                    type="button"
-                    onClick={() => setShowInputDrawer(!showInputDrawer)}
-                    className={`px-2.5 py-1 rounded-lg transition cursor-pointer flex items-center gap-1.5 text-xs font-bold border ${
-                      showInputDrawer
-                        ? 'bg-red-50 text-red-700 border-red-200'
-                        : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'
-                    }`}
-                  >
-                    <FileUp className="w-3.5 h-3.5 text-red-600" />
-                    <span>Cargar Solicitud (PDF, Excel, Word o Correo)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleClearChat}
-                    title="Reiniciar conversación"
-                    className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded transition cursor-pointer flex items-center gap-1 text-[11px]"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Reiniciar</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* DRAWER DESPLEGABLE: CARGA DE DOCUMENTOS / CORREOS DE LICITACIÓN */}
-              {showInputDrawer && (
-                <div className="bg-slate-50 border-b border-slate-300 p-4 sm:p-5 shadow-inner transition-all animate-in slide-in-from-top-3 duration-200 shrink-0 max-h-[50vh] overflow-y-auto">
-                  <div className="max-w-4xl mx-auto space-y-3">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-red-600" />
-                        <h4 className="text-xs sm:text-sm font-bold text-slate-900">
-                          Analizar Solicitud de Cotización con IA
-                        </h4>
-                        <span className="text-[10px] text-slate-500 hidden sm:inline">
-                          PDF, Planillas Excel, Documentos Word o texto de licitación
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="flex items-center bg-slate-200/80 p-0.5 rounded-lg text-xs font-bold">
-                          <button
-                            type="button"
-                            onClick={() => setDrawerMode('text')}
-                            className={`px-2.5 py-1 rounded-md transition ${
-                              drawerMode === 'text' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-                            }`}
-                          >
-                            Pegar Texto
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDrawerMode('file')}
-                            className={`px-2.5 py-1 rounded-md transition ${
-                              drawerMode === 'file' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600'
-                            }`}
-                          >
-                            Subir Archivo (PDF, Excel, Word)
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setShowInputDrawer(false)}
-                          className="text-slate-400 hover:text-slate-700 p-1 rounded-md"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {drawerMode === 'text' ? (
-                      <div className="space-y-2">
-                        <textarea
-                          rows={4}
-                          value={pastedText}
-                          onChange={(e) => setPastedText(e.target.value)}
-                          placeholder="Pega aquí el correo del cliente, memoria técnica o requerimiento de licitación..."
-                          className="w-full p-3 bg-white border border-slate-300 rounded-xl text-xs sm:text-sm text-slate-800 focus:ring-2 focus:ring-red-500 focus:outline-none placeholder:text-slate-400"
-                        />
-
-                        {/* Ejemplos de prueba rápida */}
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                          <span className="text-[11px] text-slate-500 font-medium">Casos de prueba IDIEM:</span>
+                {/* Contenido del Visor */}
+                <div className="flex-1 overflow-hidden relative flex flex-col bg-slate-950">
+                  {leftViewMode === 'paste' ? (
+                    /* Vista de pegar texto de correo o licitación */
+                    <div className="flex-1 flex flex-col p-3 space-y-2 overflow-y-auto">
+                      <div className="flex items-center justify-between text-xs text-slate-400">
+                        <span>Pega el contenido del correo o especificaciones técnicas:</span>
+                        <div className="flex items-center gap-1">
                           {ANALISIS_EJEMPLOS.map((ej, idx) => (
                             <button
                               key={idx}
                               type="button"
                               onClick={() => setPastedText(ej.texto)}
-                              className="text-[11px] bg-white hover:bg-red-50 hover:text-red-700 text-slate-700 border border-slate-200 hover:border-red-200 px-2.5 py-0.5 rounded-md transition font-medium cursor-pointer"
+                              className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-0.5 rounded cursor-pointer transition"
+                            >
+                              ⚡ {ej.titulo.split(' ')[0]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <textarea
+                        rows={10}
+                        value={pastedText}
+                        onChange={(e) => setPastedText(e.target.value)}
+                        placeholder="Pega aquí el correo del mandante, bases de licitación o requerimientos de ensayos..."
+                        className="flex-1 w-full p-3 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-200 font-sans focus:ring-1 focus:ring-blue-500 focus:outline-none resize-none leading-relaxed"
+                      />
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-[10px] text-slate-500">
+                          {pastedText.length} caracteres ingresados
+                        </span>
+                        <button
+                          type="button"
+                          disabled={analisisLoading || !pastedText.trim()}
+                          onClick={() => handleAnalyze()}
+                          className="px-4 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md shadow-red-900/40"
+                        >
+                          {analisisLoading ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          )}
+                          <span>Analizar Texto con IA</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : previewUrl ? (
+                    /* Vista PDF Nativa Interactiva */
+                    <div className="w-full h-full flex flex-col">
+                      <iframe
+                        src={`${previewUrl}#toolbar=1&navpanes=0`}
+                        className="w-full flex-1 border-0 bg-slate-900"
+                        title="Visor PDF Interactivo"
+                      />
+                      <div className="px-3 py-1 bg-slate-900/90 border-t border-slate-800 text-[10px] text-slate-400 flex items-center justify-between shrink-0">
+                        <span className="truncate max-w-[70%]">
+                          Archivo activo: <strong className="text-slate-200">{currentFile?.name}</strong>
+                        </span>
+                        <span className="text-emerald-400 font-medium">✓ Visor PDF Activo</span>
+                      </div>
+                    </div>
+                  ) : rawFileText ? (
+                    /* Vista de archivo de texto plano */
+                    <div className="flex-1 flex flex-col p-3 overflow-hidden">
+                      <div className="flex-1 p-3 bg-slate-900 rounded-xl border border-slate-800 overflow-y-auto text-xs font-mono text-slate-200 whitespace-pre-wrap leading-relaxed">
+                        {rawFileText}
+                      </div>
+                      <div className="pt-2 flex items-center justify-between text-xs">
+                        <span className="text-[10px] text-slate-400">
+                          Archivo de texto cargado ({rawFileText.length} caracteres)
+                        </span>
+                        <button
+                          type="button"
+                          disabled={analisisLoading}
+                          onClick={() => handleAnalyze()}
+                          className="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          <span>Analizar con IA</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : currentFile ? (
+                    /* Vista para Word o Excel cargado */
+                    <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
+                      <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-3xl shadow-lg">
+                        {currentBadge?.iconText || '📄'}
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">{currentFile.name}</h4>
+                        <p className="text-xs text-slate-400 mt-1">
+                          Documento {currentBadge?.label} listo para procesamiento y extracción geotécnica
+                        </p>
+                        <span className="inline-block mt-2 font-mono text-[11px] text-blue-400 bg-blue-950/60 border border-blue-800/60 px-2 py-0.5 rounded">
+                          {(currentFile.size / 1024).toFixed(1)} KB
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 pt-2">
+                        <button
+                          type="button"
+                          disabled={analisisLoading}
+                          onClick={() => handleAnalyze()}
+                          className="px-5 py-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-lg shadow-red-950/50"
+                        >
+                          {analisisLoading ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-4 h-4 text-amber-300" />
+                          )}
+                          <span>Analizar Requerimiento con IA</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAttachedFile(null)}
+                          className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-medium transition cursor-pointer"
+                        >
+                          Quitar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Dropzone Minimalista cuando no hay archivo cargado */
+                    <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
+                      <div
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full max-w-md border-2 border-dashed border-slate-700 hover:border-blue-500 bg-slate-900/60 hover:bg-blue-950/20 rounded-2xl p-8 cursor-pointer transition flex flex-col items-center justify-center space-y-3"
+                      >
+                        <div className="w-12 h-12 rounded-xl bg-blue-600/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                          <Upload className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <p className="text-xs sm:text-sm font-bold text-white">
+                            Arrastra aquí tu documento o haz clic para subir
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-1">
+                            Soporta PDF (.pdf), Word (.docx, .doc), Excel (.xlsx, .xls) o Texto (.txt)
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700">
+                            PDF
+                          </span>
+                          <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700">
+                            Word
+                          </span>
+                          <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700">
+                            Excel
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 max-w-md">
+                        <span className="text-[11px] text-slate-400 font-medium">O prueba un caso típico IDIEM:</span>
+                        <div className="flex flex-wrap items-center justify-center gap-1.5">
+                          {ANALISIS_EJEMPLOS.map((ej, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => {
+                                setPastedText(ej.texto);
+                                setLeftViewMode('paste');
+                              }}
+                              className="text-[11px] bg-slate-900 hover:bg-blue-950 hover:text-blue-300 text-slate-300 border border-slate-800 hover:border-blue-700 px-2.5 py-1 rounded-lg transition font-medium cursor-pointer"
                             >
                               ⚡ {ej.titulo}
                             </button>
                           ))}
                         </div>
                       </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <div
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={handleDropFile}
-                          onClick={() => drawerFileInputRef.current?.click()}
-                          className="border-2 border-dashed border-slate-300 hover:border-red-500 rounded-xl p-5 text-center cursor-pointer transition bg-white hover:bg-red-50/20 flex flex-col items-center justify-center space-y-2"
-                        >
-                          <input
-                            ref={drawerFileInputRef}
-                            type="file"
-                            accept=".pdf,.txt,.xlsx,.xls,.docx,.doc"
-                            onChange={(e) => {
-                              if (e.target.files && e.target.files[0]) {
-                                setAttachedFile(e.target.files[0]);
-                                setAnalisisError(null);
-                              }
-                            }}
-                            className="hidden"
-                          />
-                          <div className="w-10 h-10 rounded-xl bg-red-50 border border-red-200 flex items-center justify-center text-red-600">
-                            <Upload className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <p className="text-xs font-semibold text-slate-800">
-                              {attachedFile ? attachedFile.name : 'Haz clic para seleccionar o arrastra aquí tu archivo'}
-                            </p>
-                            <p className="text-[10px] text-slate-500">
-                              Formatos soportados: PDF (.pdf), Word (.docx, .doc), Planillas Excel (.xlsx, .xls) o Texto (.txt)
-                            </p>
-                          </div>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-                          {attachedFile && (() => {
-                            const badge = getFileBadgeInfo(attachedFile.name);
-                            return (
-                              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs shadow-xs ${badge.bg}`}>
-                                <span>{badge.iconText}</span>
-                                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${badge.pillBg}`}>
-                                  {badge.label}
-                                </span>
-                                <span className="font-semibold">{attachedFile.name}</span>
-                                <span className="text-slate-500">({(attachedFile.size / 1024).toFixed(1)} KB)</span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setAttachedFile(null);
-                                  }}
-                                  className="text-slate-400 hover:text-red-600 ml-1 cursor-pointer"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            );
-                          })()}
-                        </div>
-
-                        <div>
-                          <input
-                            type="text"
-                            value={pastedText}
-                            onChange={(e) => setPastedText(e.target.value)}
-                            placeholder="Comentario o instrucción adicional para el análisis (opcional)..."
-                            className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs text-slate-800 focus:ring-2 focus:ring-red-500 focus:outline-none"
-                          />
-                        </div>
-                      </div>
-                    )}
-
-                    {analisisError && (
-                      <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-xs flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 shrink-0" />
-                        <span>{analisisError}</span>
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between pt-1">
-                      <span className="text-[10px] text-slate-500 flex items-center gap-1">
-                        <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                        Zero Data Training • Procesamiento confidencial IDIEM
-                      </span>
-                      <button
-                        type="button"
-                        disabled={analisisLoading || (!pastedText.trim() && !attachedFile)}
-                        onClick={() => handleAnalyze()}
-                        className="px-5 py-2 text-xs font-bold text-white bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 disabled:opacity-50 rounded-xl transition shadow-md shadow-red-600/30 flex items-center gap-2 cursor-pointer"
-                      >
-                        {analisisLoading ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Sparkles className="w-4 h-4 text-amber-300" />
+              {/* ================================================== */}
+              {/* SECCIÓN 2 (LATERAL DERECHA): ENSAYOS SUGERIDOS Y PROPUESTA */}
+              {/* ================================================== */}
+              <div className="w-full lg:w-1/2 flex flex-col bg-slate-900 overflow-hidden">
+                {/* Diagnóstico superior del proyecto */}
+                <div className="px-4 py-2.5 bg-slate-950/80 border-b border-slate-800 shrink-0">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-red-400 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3" />
+                          Propuesta Técnica IDIEM
+                        </span>
+                        {activeAnalisis?.datos_proyecto_detectados.centro_costo_sugerido && (
+                          <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-1.5 py-0.2 rounded font-bold">
+                            CC {activeAnalisis.datos_proyecto_detectados.centro_costo_sugerido}
+                          </span>
                         )}
-                        <span>Analizar Solicitud con IA</span>
-                      </button>
+                      </div>
+                      <h3 className="text-xs sm:text-sm font-bold text-white truncate max-w-sm">
+                        {activeAnalisis?.datos_proyecto_detectados.nombre_obra ||
+                          contexto.projectName ||
+                          'Presupuesto en Elaboración'}
+                      </h3>
+                      <p className="text-[11px] text-slate-400 truncate max-w-md">
+                        {activeAnalisis?.datos_proyecto_detectados.empresa_cliente
+                          ? `Mandante: ${activeAnalisis.datos_proyecto_detectados.empresa_cliente}`
+                          : contexto.clientName
+                          ? `Mandante: ${contexto.clientName}`
+                          : 'Campaña geotécnica oficial'}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="text-right">
+                        <span className="text-[9px] text-slate-400 uppercase tracking-wider block">Total Estimado</span>
+                        <span className="text-sm sm:text-base font-extrabold text-white font-mono">
+                          {totalSeleccionadoUf.toFixed(2)} UF
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
 
-              {/* FEED DE MENSAJES DEL CHAT (INTERACTIVO + TARJETAS DE ANÁLISIS) */}
-              <div
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={handleDropFile}
-                className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 bg-slate-50/50"
-              >
+                  {/* Selector de sub-vistas del panel derecho */}
+                  <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-800/80">
+                    <button
+                      type="button"
+                      onClick={() => setActiveRightSubTab('ensayos')}
+                      className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                        activeRightSubTab === 'ensayos'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      }`}
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>Ensayos Sugeridos ({ensayosSeleccionados.filter((e) => e.seleccionado).length})</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveRightSubTab('consultas')}
+                      className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                        activeRightSubTab === 'consultas'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      }`}
+                    >
+                      <HelpCircle className="w-3.5 h-3.5" />
+                      <span>Consultas ({activeAnalisis?.preguntas_para_el_cliente?.length || 0})</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveRightSubTab('alertas')}
+                      className={`px-2.5 py-1 text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
+                        activeRightSubTab === 'alertas'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                      }`}
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      <span>Normativa & Alertas</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Cuerpo de la sub-vista */}
+                <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-900/60">
+                  {activeRightSubTab === 'ensayos' && (
+                    <div className="space-y-2">
+                      {/* Barra de búsqueda y selecciones masivas */}
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <div className="relative flex-1">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            placeholder="Buscar por código, nombre o norma..."
+                            value={searchEnsayoQuery}
+                            onChange={(e) => setSearchEnsayoQuery(e.target.value)}
+                            className="w-full pl-8 pr-3 py-1 bg-slate-950 border border-slate-800 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[11px] shrink-0">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEnsayosSeleccionados((prev) =>
+                                prev.map((e) => ({ ...e, seleccionado: true }))
+                              )
+                            }
+                            className="text-blue-400 hover:underline cursor-pointer"
+                          >
+                            Todos
+                          </button>
+                          <span className="text-slate-600">•</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEnsayosSeleccionados((prev) =>
+                                prev.map((e) => ({ ...e, seleccionado: false }))
+                              )
+                            }
+                            className="text-slate-400 hover:underline cursor-pointer"
+                          >
+                            Ninguno
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Lista de ensayos sugeridos */}
+                      {ensayosFiltrados.length === 0 ? (
+                        <div className="p-8 text-center border border-dashed border-slate-800 rounded-xl text-xs text-slate-400">
+                          {ensayosSeleccionados.length === 0
+                            ? 'Aún no se han generado ensayos. Sube un documento en el panel izquierdo o pídele en el chat a Gemini que agregue ensayos.'
+                            : 'No se encontraron ensayos con el criterio de búsqueda.'}
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {ensayosFiltrados.map((ensayo, idx) => {
+                            const realIdx = ensayosSeleccionados.findIndex((e) => e.codigo === ensayo.codigo);
+                            return (
+                              <div
+                                key={ensayo.codigo + '-' + idx}
+                                className={`p-2.5 rounded-xl border transition-all ${
+                                  ensayo.seleccionado
+                                    ? 'bg-slate-950 border-slate-700/80 shadow-xs'
+                                    : 'bg-slate-950/40 border-slate-800/60 opacity-50'
+                                }`}
+                              >
+                                <div className="flex items-start gap-2.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={ensayo.seleccionado}
+                                    onChange={() => toggleEnsayo(realIdx >= 0 ? realIdx : idx)}
+                                    className="mt-1 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span className="font-mono text-[10px] font-bold text-blue-300 bg-blue-950/80 px-1.5 py-0.5 rounded border border-blue-800/50">
+                                        Cód. {ensayo.codigo}
+                                      </span>
+                                      <span className="text-xs font-bold text-white">
+                                        {ensayo.designacion}
+                                      </span>
+                                      {ensayo.norma && (
+                                        <span className="text-[10px] text-slate-400 bg-slate-900 px-1.5 py-0.2 rounded border border-slate-800">
+                                          {ensayo.norma}
+                                        </span>
+                                      )}
+                                      <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-emerald-950/70 text-emerald-400 border border-emerald-800/50">
+                                        CC: {ensayo.centro_costo || '1817'}
+                                      </span>
+                                    </div>
+
+                                    {/* Controles de cantidad y precio */}
+                                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-slate-400 text-[11px] mr-1">Cant:</span>
+                                        <button
+                                          type="button"
+                                          disabled={!ensayo.seleccionado || ensayo.cantidad_estimada <= 1}
+                                          onClick={() =>
+                                            updateCantidadEnsayo(
+                                              realIdx >= 0 ? realIdx : idx,
+                                              ensayo.cantidad_estimada - 1
+                                            )
+                                          }
+                                          className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white flex items-center justify-center cursor-pointer"
+                                        >
+                                          <Minus className="w-3 h-3" />
+                                        </button>
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          value={ensayo.cantidad_estimada}
+                                          onChange={(e) =>
+                                            updateCantidadEnsayo(
+                                              realIdx >= 0 ? realIdx : idx,
+                                              parseInt(e.target.value) || 1
+                                            )
+                                          }
+                                          disabled={!ensayo.seleccionado}
+                                          className="w-12 px-1 py-0.5 bg-slate-900 border border-slate-700 rounded text-center text-xs font-bold text-white disabled:bg-slate-950"
+                                        />
+                                        <button
+                                          type="button"
+                                          disabled={!ensayo.seleccionado}
+                                          onClick={() =>
+                                            updateCantidadEnsayo(
+                                              realIdx >= 0 ? realIdx : idx,
+                                              ensayo.cantidad_estimada + 1
+                                            )
+                                          }
+                                          className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-white flex items-center justify-center cursor-pointer"
+                                        >
+                                          <Plus className="w-3 h-3" />
+                                        </button>
+                                        <span className="text-slate-400 text-[10px] ml-1">
+                                          {ensayo.unidad || 'c/u'}
+                                        </span>
+                                      </div>
+
+                                      <div className="flex items-center gap-3">
+                                        <div className="text-right">
+                                          <span className="text-[9px] text-slate-400 block">Unitario</span>
+                                          <span className="font-semibold text-slate-300 text-xs font-mono">
+                                            {ensayo.precio_uf.toFixed(2)} UF
+                                          </span>
+                                        </div>
+                                        <div className="text-right">
+                                          <span className="text-[9px] text-slate-400 block">Subtotal</span>
+                                          <span className="font-bold text-white text-xs font-mono">
+                                            {(ensayo.precio_uf * ensayo.cantidad_estimada).toFixed(2)} UF
+                                          </span>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleJustification(realIdx >= 0 ? realIdx : idx)}
+                                          className="text-slate-400 hover:text-white p-1 cursor-pointer"
+                                          title="Ver justificación técnica"
+                                        >
+                                          {expandedJustifications[realIdx >= 0 ? realIdx : idx] ? (
+                                            <ChevronUp className="w-3.5 h-3.5" />
+                                          ) : (
+                                            <ChevronDown className="w-3.5 h-3.5" />
+                                          )}
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* Justificación técnica desplegable */}
+                                    {expandedJustifications[realIdx >= 0 ? realIdx : idx] &&
+                                      ensayo.justificacion_tecnica && (
+                                        <div className="mt-2 p-2 bg-blue-950/40 border border-blue-900/60 rounded text-[11px] text-blue-200 leading-relaxed">
+                                          <strong className="text-blue-300">Justificación técnica:</strong>{' '}
+                                          {ensayo.justificacion_tecnica}
+                                        </div>
+                                      )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Sub-tab Consultas al Cliente */}
+                  {activeRightSubTab === 'consultas' && (
+                    <div className="space-y-3 text-xs">
+                      {activeAnalisis?.preguntas_para_el_cliente &&
+                      activeAnalisis.preguntas_para_el_cliente.length > 0 ? (
+                        <div className="bg-amber-950/30 border border-amber-800/60 rounded-xl p-3 text-amber-200 space-y-1.5">
+                          <div className="font-bold flex items-center gap-1.5 text-amber-300">
+                            <HelpCircle className="w-4 h-4" />
+                            <span>Puntos a aclarar con el mandante:</span>
+                          </div>
+                          <ul className="list-disc list-inside space-y-1 text-slate-300 pl-1">
+                            {activeAnalisis.preguntas_para_el_cliente.map((q, i) => (
+                              <li key={i}>{q}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : (
+                        <div className="p-4 text-center text-slate-400 text-xs border border-dashed border-slate-800 rounded-xl">
+                          No se han detectado consultas técnicas pendientes.
+                        </div>
+                      )}
+
+                      {activeAnalisis?.borrador_correo_aclaratorio && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-white text-xs flex items-center gap-1.5">
+                              <Mail className="w-3.5 h-3.5 text-blue-400" />
+                              Borrador de Correo Formal:
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyEmail(activeAnalisis?.borrador_correo_aclaratorio)}
+                              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-md text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                            >
+                              {copiedMail ? (
+                                <>
+                                  <Check className="w-3 h-3 text-emerald-300" />
+                                  <span>¡Copiado!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3 h-3" />
+                                  <span>Copiar Correo</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                          <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-300 whitespace-pre-wrap leading-relaxed select-all max-h-48 overflow-y-auto">
+                            {activeAnalisis.borrador_correo_aclaratorio}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Sub-tab Normativa & Alertas */}
+                  {activeRightSubTab === 'alertas' && (
+                    <div className="space-y-3 text-xs">
+                      {activeAnalisis?.normativa_aplicable && activeAnalisis.normativa_aplicable.length > 0 && (
+                        <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
+                          <strong className="block text-white font-bold mb-1.5 text-xs">
+                            Normativa Aplicable Identificada:
+                          </strong>
+                          <div className="flex flex-wrap gap-1.5">
+                            {activeAnalisis.normativa_aplicable.map((norm, i) => (
+                              <span
+                                key={i}
+                                className="bg-slate-900 border border-slate-700 text-blue-300 px-2 py-0.5 rounded text-[11px] font-mono"
+                              >
+                                {norm}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {activeAnalisis?.ensayos_no_disponibles_o_especiales &&
+                        activeAnalisis.ensayos_no_disponibles_o_especiales.length > 0 && (
+                          <div className="space-y-1.5">
+                            <span className="font-bold text-red-400 block text-xs">
+                              Ensayos especiales o no tabulados detectados:
+                            </span>
+                            {activeAnalisis.ensayos_no_disponibles_o_especiales.map((esp, idx) => (
+                              <div
+                                key={idx}
+                                className="bg-red-950/30 border border-red-800/60 text-red-200 p-2.5 rounded-xl flex items-start gap-2"
+                              >
+                                <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
+                                <div>
+                                  <span className="font-bold">{esp.ensayo_solicitado}: </span>
+                                  <span>{esp.motivo}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                      {activeAnalisis?.observaciones_comerciales && (
+                        <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
+                          <strong className="block text-white font-bold mb-1 text-xs">
+                            Observaciones Comerciales IDIEM:
+                          </strong>
+                          <p className="text-slate-300 leading-relaxed text-xs">
+                            {activeAnalisis.observaciones_comerciales}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* BOTÓN PROMINENTE DE CARGA A LA COTIZACIÓN PRINCIPAL */}
+                <div className="p-3 bg-slate-950 border-t border-slate-800 shrink-0 flex items-center justify-between gap-3">
+                  <div className="text-xs">
+                    <span className="font-bold text-white">
+                      {ensayosSeleccionados.filter((e) => e.seleccionado).length} ensayos
+                    </span>{' '}
+                    <span className="text-slate-400">seleccionados por</span>{' '}
+                    <span className="font-extrabold text-blue-400 font-mono text-sm">
+                      {totalSeleccionadoUf.toFixed(2)} UF
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleApplyCampaignClick}
+                    disabled={ensayosSeleccionados.filter((e) => e.seleccionado).length === 0}
+                    className={`px-5 py-2.5 text-xs sm:text-sm font-extrabold text-white rounded-xl transition shadow-lg flex items-center gap-2 cursor-pointer ${
+                      campanaCargada
+                        ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-950/50'
+                        : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 shadow-blue-950/50'
+                    } disabled:opacity-40`}
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>
+                      {campanaCargada
+                        ? `✓ Campaña Cargada en Cotización (${totalSeleccionadoUf.toFixed(2)} UF)`
+                        : `Cargar en Cotización Principal (${totalSeleccionadoUf.toFixed(2)} UF)`}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* ==================================================== */}
+            {/* SECCIÓN 3 (INFERIOR): CONSOLA INTERACTIVA GEMINI IA */}
+            {/* ==================================================== */}
+            <div className="h-64 sm:h-72 lg:h-80 flex flex-col bg-slate-950 border-t border-slate-800 shrink-0 overflow-hidden">
+              
+              {/* Header de la Consola IA */}
+              <div className="px-4 py-1.5 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between shrink-0 text-xs">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span className="font-bold text-white text-xs">
+                    Consola Interactiva Gemini 3 Flash
+                  </span>
+                  <span className="text-[10px] text-slate-400 hidden sm:inline">
+                    • Modifica ensayos, cantidades, descuentos y haz consultas técnicas en tiempo real
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    En línea
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleClearChat}
+                    title="Reiniciar chat"
+                    className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition cursor-pointer"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Feed de mensajes interactivos */}
+              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5 bg-slate-950/80 text-xs">
                 {chatMessages.map((m) => (
                   <div
                     key={m.id}
                     className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
                   >
                     <div
-                      className={`max-w-[95%] sm:max-w-[85%] rounded-2xl p-4 text-xs sm:text-sm leading-relaxed shadow-xs ${
+                      className={`max-w-[90%] sm:max-w-[80%] rounded-xl p-3 text-xs leading-relaxed ${
                         m.role === 'user'
-                          ? 'bg-blue-700 text-white rounded-br-xs'
-                          : 'bg-white text-slate-800 border border-slate-200 rounded-bl-xs'
+                          ? 'bg-blue-600 text-white rounded-br-xs shadow-xs'
+                          : 'bg-slate-900 text-slate-200 border border-slate-800 rounded-bl-xs'
                       }`}
                     >
-                      {/* Texto del mensaje */}
                       <div className="whitespace-pre-wrap">{m.content}</div>
 
-                      {/* Tarjeta de acciones rápidas aplicadas por el Asistente */}
+                      {/* Acciones aplicadas por la IA */}
                       {m.acciones && m.acciones.length > 0 && (
-                        <div className="mt-3 pt-2.5 border-t border-slate-100 space-y-1.5">
-                          <div className="text-[11px] font-bold text-emerald-700 flex items-center gap-1.5">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>{m.acciones.length} cambio(s) aplicados en el presupuesto:</span>
-                          </div>
-                          <ul className="space-y-1 text-[11px] text-slate-700">
+                        <div className="mt-2 pt-2 border-t border-slate-800 space-y-1">
+                          <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" />
+                            {m.acciones.length} cambio(s) aplicados en tiempo real:
+                          </span>
+                          <div className="flex flex-wrap gap-1">
                             {m.acciones.map((act, i) => (
-                              <li
+                              <span
                                 key={i}
-                                className="bg-emerald-50/80 border border-emerald-200 rounded-lg px-2.5 py-1.5 flex items-center gap-2"
+                                className="bg-emerald-950/70 border border-emerald-800/80 text-emerald-300 text-[10px] px-2 py-0.5 rounded font-mono"
                               >
-                                {act.tipo === 'AGREGAR' && (
-                                  <>
-                                    <span className="font-bold text-emerald-800">+ {act.cantidad || 1}x</span>
-                                    <span className="font-mono text-[10px] text-emerald-900 bg-emerald-100 px-1.5 py-0.5 rounded font-bold">
-                                      Cód. {act.codigo}
-                                    </span>
-                                    <span className="truncate">{act.descripcion || 'Ensayo agregado'}</span>
-                                  </>
-                                )}
-                                {act.tipo === 'MODIFICAR_CANTIDAD' && (
-                                  <>
-                                    <span className="font-bold text-blue-800">✎ Cantidad:</span>
-                                    <span className="font-mono text-[10px] text-blue-900 bg-blue-100 px-1.5 py-0.5 rounded font-bold">
-                                      Cód. {act.codigo}
-                                    </span>
-                                    <span>a {act.cantidad} muestra(s)</span>
-                                  </>
-                                )}
-                                {act.tipo === 'ELIMINAR' && (
-                                  <>
-                                    <span className="font-bold text-red-700">✕ Eliminado:</span>
-                                    <span className="font-mono text-[10px] text-red-900 bg-red-100 px-1.5 py-0.5 rounded font-bold">
-                                      Cód. {act.codigo}
-                                    </span>
-                                  </>
-                                )}
-                                {act.tipo === 'APLICAR_FACTOR' && (
-                                  <>
-                                    <span className="font-bold text-purple-700">% Factor ajustado:</span>
-                                    <span className="font-bold">{act.factor}</span>
-                                    {act.codigo && <span className="font-mono text-[10px]">(Cód. {act.codigo})</span>}
-                                  </>
-                                )}
-                              </li>
+                                {act.tipo === 'AGREGAR' && `+ ${act.cantidad || 1}x Cód. ${act.codigo}`}
+                                {act.tipo === 'MODIFICAR_CANTIDAD' && `✎ Cód. ${act.codigo} a ${act.cantidad}`}
+                                {act.tipo === 'ELIMINAR' && `✕ Cód. ${act.codigo} eliminado`}
+                                {act.tipo === 'APLICAR_FACTOR' && `% Factor ${act.factor}`}
+                              </span>
                             ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      {/* ======================================================== */}
-                      {/* TARJETA INTERACTIVA DE CAMPAÑA ANALIZADA DENTRO DEL CHAT */}
-                      {/* ======================================================== */}
-                      {m.analisis && (
-                        <div className="mt-4 pt-3 border-t border-slate-200 space-y-4">
-                          {/* Diagnóstico del Proyecto y Sede */}
-                          <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white rounded-xl p-4 shadow-md border border-slate-700">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700/80 pb-3">
-                              <div>
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-red-400 flex items-center gap-1.5">
-                                  <Sparkles className="w-3 h-3" />
-                                  Diagnóstico Técnico de Solicitud
-                                </span>
-                                <h4 className="text-sm font-bold text-white mt-0.5">
-                                  Campaña Geotécnica Propuesta
-                                </h4>
-                                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                                  {m.analisis.resumen_tecnico_proyecto}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <div className="bg-slate-800 border border-slate-600 px-2.5 py-1 rounded-lg text-center">
-                                  <span className="text-[9px] text-slate-400 block">Centro de Costo</span>
-                                  <span className="text-xs font-bold text-emerald-400">
-                                    {m.analisis.datos_proyecto_detectados.centro_costo_sugerido || '1817 - Suelos'}
-                                  </span>
-                                </div>
-                                <div className="bg-slate-800 border border-slate-600 px-2.5 py-1 rounded-lg text-center">
-                                  <span className="text-[9px] text-slate-400 block">Total Estimado</span>
-                                  <span className="text-xs font-extrabold text-white">
-                                    {totalSeleccionadoUf.toFixed(2)} UF
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3 text-[11px]">
-                              <div>
-                                <span className="text-slate-400 text-[10px] block">Cliente:</span>
-                                <span className="font-semibold text-white truncate block">
-                                  {m.analisis.datos_proyecto_detectados.empresa_cliente || 'No especificado'}
-                                </span>
-                              </div>
-                              <div>
-                                <span className="text-slate-400 text-[10px] block">Proyecto:</span>
-                                <span className="font-semibold text-white truncate block">
-                                  {m.analisis.datos_proyecto_detectados.nombre_obra || 'No especificado'}
-                                </span>
-                              </div>
-                              <div>
-                                <span className="text-slate-400 text-[10px] block">Ubicación / Sede:</span>
-                                <span className="font-semibold text-white truncate block">
-                                  {m.analisis.datos_proyecto_detectados.ciudad_sede || 'Santiago / Regiones'}
-                                </span>
-                              </div>
-                              <div>
-                                <span className="text-slate-400 text-[10px] block">Batería Técnica:</span>
-                                <span className="font-semibold text-emerald-400 block">
-                                  {ensayosSeleccionados.filter((e) => e.seleccionado).length} de {ensayosSeleccionados.length} ensayos
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Acciones directas de re-análisis sobre el documento origen */}
-                            {lastAnalyzedFile && (
-                              <div className="mt-3 pt-2.5 border-t border-slate-700/80 flex flex-wrap items-center justify-between gap-2 text-xs">
-                                <div className="flex items-center gap-2 text-slate-300 text-[11px] truncate">
-                                  <FileText className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                                  <span>Documento origen: <strong className="text-white">{lastAnalyzedFile.name}</strong></span>
-                                  <span className="text-[10px] text-slate-400 font-mono">({(lastAnalyzedFile.size / 1024).toFixed(1)} KB)</span>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0">
-                                  <button
-                                    type="button"
-                                    disabled={analisisLoading}
-                                    onClick={() =>
-                                      handleAnalyze(
-                                        'Revisión exhaustiva completa: examina todo el documento de principio a fin, página por página (incluyendo anexos, tablas de especificaciones y calicatas), e incorpora todos los ensayos solicitados sin omitir ninguno.',
-                                        lastAnalyzedFile
-                                      )
-                                    }
-                                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                                    title="Volver a escanear exhaustivamente todas las páginas del documento"
-                                  >
-                                    <RefreshCw className={`w-3 h-3 ${analisisLoading ? 'animate-spin' : ''}`} />
-                                    <span>Re-analizar documento completo</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={analisisLoading}
-                                    onClick={() => {
-                                      setChatInput('Revisa porque en la página 4 y 5 solicitan más ensayos');
-                                      setTimeout(() => chatInputRef.current?.focus(), 80);
-                                    }}
-                                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-blue-300 border border-slate-600 rounded-lg text-[11px] font-semibold transition cursor-pointer"
-                                    title="Indicar páginas 4 y 5"
-                                  >
-                                    <span>Revisar pág. 4 y 5...</span>
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Sub-tabs de la Propuesta: Ensayos | Consultas al Mandante | Alertas */}
-                          <div className="flex items-center gap-1.5 border-b border-slate-200 pb-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setAnalisisResultSubTab('ensayos')}
-                              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                                analisisResultSubTab === 'ensayos'
-                                  ? 'bg-slate-900 text-white'
-                                  : 'text-slate-600 hover:bg-slate-100'
-                              }`}
-                            >
-                              <Layers className="w-3.5 h-3.5" />
-                              <span>Ensayos Sugeridos ({ensayosSeleccionados.filter((e) => e.seleccionado).length})</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setAnalisisResultSubTab('consultas')}
-                              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                                analisisResultSubTab === 'consultas'
-                                  ? 'bg-slate-900 text-white'
-                                  : 'text-slate-600 hover:bg-slate-100'
-                              }`}
-                            >
-                              <HelpCircle className="w-3.5 h-3.5" />
-                              <span>Consultas Técnicas ({m.analisis.preguntas_para_el_cliente?.length || 0})</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setAnalisisResultSubTab('alertas')}
-                              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                                analisisResultSubTab === 'alertas'
-                                  ? 'bg-slate-900 text-white'
-                                  : 'text-slate-600 hover:bg-slate-100'
-                              }`}
-                            >
-                              <AlertTriangle className="w-3.5 h-3.5" />
-                              <span>Alertas y Normativa ({m.analisis.normativa_aplicable?.length || 0})</span>
-                            </button>
-                          </div>
-
-                          {/* SUB-TAB 1: ENSAYOS SUGERIDOS INTERACTIVOS */}
-                          {analisisResultSubTab === 'ensayos' && (
-                            <div className="space-y-2.5">
-                              <div className="flex items-center justify-between text-[11px] text-slate-500">
-                                <span>Ajusta cantidades o desmarca ensayos según necesidad:</span>
-                                <div className="flex items-center gap-2 font-medium">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setEnsayosSeleccionados((prev) =>
-                                        prev.map((e) => ({ ...e, seleccionado: true }))
-                                      )
-                                    }
-                                    className="text-blue-700 hover:underline cursor-pointer"
-                                  >
-                                    Seleccionar todos
-                                  </button>
-                                  <span>•</span>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setEnsayosSeleccionados((prev) =>
-                                        prev.map((e) => ({ ...e, seleccionado: false }))
-                                      )
-                                    }
-                                    className="text-slate-500 hover:underline cursor-pointer"
-                                  >
-                                    Deseleccionar
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden bg-white">
-                                {ensayosSeleccionados.map((ensayo, idx) => (
-                                  <div
-                                    key={idx}
-                                    className={`p-3 transition-colors ${
-                                      ensayo.seleccionado ? 'bg-white' : 'bg-slate-50 opacity-60'
-                                    }`}
-                                  >
-                                    <div className="flex items-start gap-2.5">
-                                      <input
-                                        type="checkbox"
-                                        checked={ensayo.seleccionado}
-                                        onChange={() => toggleEnsayo(idx)}
-                                        className="mt-1 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                      />
-                                      <div className="flex-1 min-w-0">
-                                        <div className="flex flex-wrap items-center gap-1.5">
-                                          <span className="font-mono text-[11px] font-bold text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                                            Cód. {ensayo.codigo}
-                                          </span>
-                                          <span className="text-xs font-bold text-slate-900">
-                                            {ensayo.designacion}
-                                          </span>
-                                          {ensayo.norma && (
-                                            <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded">
-                                              {ensayo.norma}
-                                            </span>
-                                          )}
-                                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800">
-                                            CC: {ensayo.centro_costo || '1817'}
-                                          </span>
-                                        </div>
-
-                                        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-                                          <div className="flex items-center gap-1.5">
-                                            <label className="text-slate-500 text-[11px]">Muestras:</label>
-                                            <input
-                                              type="number"
-                                              min={1}
-                                              value={ensayo.cantidad_estimada}
-                                              onChange={(e) =>
-                                                updateCantidadEnsayo(idx, parseInt(e.target.value) || 1)
-                                              }
-                                              disabled={!ensayo.seleccionado}
-                                              className="w-14 px-1.5 py-0.5 bg-white border border-slate-300 rounded text-center text-xs font-bold text-slate-800 disabled:bg-slate-100"
-                                            />
-                                            <span className="text-slate-400 text-[10px]">{ensayo.unidad || 'c/u'}</span>
-                                          </div>
-
-                                          <div className="flex items-center gap-3">
-                                            <div className="text-right">
-                                              <span className="text-[9px] text-slate-400 block">Unitario</span>
-                                              <span className="font-semibold text-slate-700 text-xs">
-                                                {ensayo.precio_uf.toFixed(2)} UF
-                                              </span>
-                                            </div>
-                                            <div className="text-right">
-                                              <span className="text-[9px] text-slate-400 block">Subtotal</span>
-                                              <span className="font-bold text-slate-900 text-xs">
-                                                {(ensayo.precio_uf * ensayo.cantidad_estimada).toFixed(2)} UF
-                                              </span>
-                                            </div>
-                                            <button
-                                              type="button"
-                                              onClick={() => toggleJustification(idx)}
-                                              className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
-                                              title="Ver justificación técnica"
-                                            >
-                                              {expandedJustifications[idx] ? (
-                                                <ChevronUp className="w-3.5 h-3.5" />
-                                              ) : (
-                                                <ChevronDown className="w-3.5 h-3.5" />
-                                              )}
-                                            </button>
-                                          </div>
-                                        </div>
-
-                                        {expandedJustifications[idx] && ensayo.justificacion_tecnica && (
-                                          <div className="mt-1.5 p-2 bg-blue-50/70 border border-blue-200/70 rounded text-[11px] text-blue-900 leading-relaxed">
-                                            <strong className="font-semibold">Justificación técnica:</strong>{' '}
-                                            {ensayo.justificacion_tecnica}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* SUB-TAB 2: CONSULTAS AL CLIENTE & BORRADOR DE CORREO */}
-                          {analisisResultSubTab === 'consultas' && (
-                            <div className="space-y-3">
-                              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-xs text-amber-900 space-y-1.5">
-                                <div className="font-bold flex items-center gap-1.5">
-                                  <HelpCircle className="w-4 h-4 text-amber-700" />
-                                  <span>Puntos a aclarar con el mandante:</span>
-                                </div>
-                                <ul className="list-disc list-inside space-y-1 text-slate-700 pl-1">
-                                  {m.analisis.preguntas_para_el_cliente?.map((q, i) => (
-                                    <li key={i}>{q}</li>
-                                  ))}
-                                </ul>
-                              </div>
-
-                              {m.analisis.borrador_correo_aclaratorio && (
-                                <div className="space-y-1.5">
-                                  <div className="flex items-center justify-between">
-                                    <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                                      <Mail className="w-3.5 h-3.5 text-blue-600" />
-                                      Borrador de Correo Formal Listo para Enviar:
-                                    </label>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleCopyEmail(m.analisis?.borrador_correo_aclaratorio)}
-                                      className="text-xs font-bold text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-200 transition flex items-center gap-1.5 cursor-pointer"
-                                    >
-                                      {copiedMail ? (
-                                        <>
-                                          <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                          <span className="text-emerald-700">¡Copiado!</span>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Copy className="w-3.5 h-3.5" />
-                                          <span>Copiar Correo</span>
-                                        </>
-                                      )}
-                                    </button>
-                                  </div>
-                                  <div className="bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-sans whitespace-pre-wrap text-slate-800 leading-relaxed select-all max-h-48 overflow-y-auto">
-                                    {m.analisis.borrador_correo_aclaratorio}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* SUB-TAB 3: ALERTAS Y NORMATIVA */}
-                          {analisisResultSubTab === 'alertas' && (
-                            <div className="space-y-2.5 text-xs">
-                              {m.analisis.ensayos_no_disponibles_o_especiales &&
-                                m.analisis.ensayos_no_disponibles_o_especiales.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <span className="font-bold text-red-800 block text-[11px]">
-                                      Ensayos especiales o no tabulados detectados:
-                                    </span>
-                                    {m.analisis.ensayos_no_disponibles_o_especiales.map((esp, idx) => (
-                                      <div
-                                        key={idx}
-                                        className="bg-red-50 border border-red-200 text-red-900 p-2.5 rounded-xl flex items-start gap-2"
-                                      >
-                                        <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0 mt-0.5" />
-                                        <div>
-                                          <span className="font-bold">{esp.ensayo_solicitado}: </span>
-                                          <span>{esp.motivo}</span>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-
-                              {m.analisis.normativa_aplicable && m.analisis.normativa_aplicable.length > 0 && (
-                                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                                  <strong className="block text-slate-800 font-bold mb-1 text-[11px]">
-                                    Normativa Aplicable Identificada:
-                                  </strong>
-                                  <div className="flex flex-wrap gap-1">
-                                    {m.analisis.normativa_aplicable.map((norm, i) => (
-                                      <span
-                                        key={i}
-                                        className="bg-white border border-slate-300 text-slate-700 px-2 py-0.5 rounded text-[10px] font-mono"
-                                      >
-                                        {norm}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {m.analisis.observaciones_comerciales && (
-                                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                                  <strong className="block text-slate-800 font-bold mb-1 text-[11px]">
-                                    Observaciones Comerciales IDIEM:
-                                  </strong>
-                                  <p className="text-slate-600 leading-relaxed text-[11px]">
-                                    {m.analisis.observaciones_comerciales}
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {/* BOTONES DE ACCIÓN DE LA CAMPAÑA */}
-                          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3">
-                            <div className="text-xs text-slate-600">
-                              <span className="font-bold text-slate-900">
-                                {ensayosSeleccionados.filter((e) => e.seleccionado).length} ensayos
-                              </span>{' '}
-                              seleccionados por un total estimado de{' '}
-                              <span className="font-extrabold text-blue-700 font-mono text-sm">
-                                {totalSeleccionadoUf.toFixed(2)} UF
-                              </span>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={handleApplyCampaignClick}
-                              disabled={ensayosSeleccionados.filter((e) => e.seleccionado).length === 0}
-                              className={`px-5 py-2.5 text-xs sm:text-sm font-extrabold text-white rounded-xl transition shadow-md flex items-center gap-2 cursor-pointer ${
-                                campanaCargada
-                                  ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'
-                                  : 'bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-800 hover:to-indigo-800 shadow-blue-700/30'
-                              } disabled:opacity-50`}
-                            >
-                              <CheckCircle2 className="w-4 h-4" />
-                              <span>
-                                {campanaCargada
-                                  ? `✓ Campaña Cargada (${ensayosSeleccionados.filter((e) => e.seleccionado).length} Ensayos - Actualizar)`
-                                  : `Cargar Campaña al Presupuesto (${totalSeleccionadoUf.toFixed(2)} UF)`}
-                              </span>
-                            </button>
                           </div>
                         </div>
                       )}
                     </div>
-
-                    <span className="text-[10px] text-slate-400 mt-1 px-1">{m.timestamp}</span>
+                    <span className="text-[9px] text-slate-500 mt-0.5 px-1">{m.timestamp}</span>
                   </div>
                 ))}
 
-                {/* Loading indicator para análisis */}
+                {/* Indicador de carga de análisis */}
                 {analisisLoading && (
                   <div className="flex items-start gap-2">
-                    <div className="bg-white border border-red-200 rounded-2xl rounded-bl-xs p-4 text-xs shadow-xs space-y-2 max-w-md">
-                      <div className="flex items-center gap-2 text-red-600 font-bold">
-                        <Loader2 className="w-4 h-4 animate-spin" />
+                    <div className="bg-slate-900 border border-red-500/40 rounded-xl p-3 text-xs space-y-1 max-w-md">
+                      <div className="flex items-center gap-2 text-red-400 font-bold">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         <span>Analizando requerimiento geotécnico...</span>
                       </div>
-                      <p className="text-[11px] text-slate-600 transition-all duration-300 font-medium pl-6">
+                      <p className="text-[11px] text-slate-300 pl-5">
                         {LOADING_STEPS[analisisStep]}
                       </p>
                     </div>
                   </div>
                 )}
 
-                {/* Loading indicator para chat */}
+                {/* Indicador de carga de chat */}
                 {chatLoading && (
                   <div className="flex items-start gap-2">
-                    <div className="bg-white border border-slate-200 rounded-2xl rounded-bl-xs px-4 py-3 text-xs text-slate-600 shadow-xs flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-                      <span>Consultando catálogo oficial DGL y ejecutando instrucciones...</span>
+                    <div className="bg-slate-900 border border-blue-500/40 rounded-xl px-3 py-2 text-xs text-blue-300 flex items-center gap-2">
+                      <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin" />
+                      <span>Consultando catálogo oficial DGL y ejecutando instrucción...</span>
                     </div>
                   </div>
                 )}
@@ -1805,146 +1791,50 @@ export default function UnifiedAiAssistantModal({
                 <div ref={chatMessagesEndRef} />
               </div>
 
-              {/* BARRA DE SUGERENCIAS RÁPIDAS */}
-              <div className="px-4 py-2 bg-slate-100/90 border-t border-slate-200 shrink-0">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                    Sugerencias Rápidas de Presupuesto:
-                  </span>
-                  {activeAnalisis && (
-                    <span className="text-[10px] text-emerald-700 font-semibold">
-                      💡 Puedes pedir cambios sobre la campaña analizada arriba
-                    </span>
-                  )}
-                </div>
-
-                {/* Sugerencias contextuales si hay un documento analizado en sesión */}
+              {/* Barra de sugerencias rápidas */}
+              <div className="px-3 py-1 bg-slate-900/60 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto shrink-0">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
+                  Rápidas:
+                </span>
                 {lastAnalyzedFile && (
-                  <div className="flex flex-wrap gap-1.5 mb-1.5 pb-1.5 border-b border-slate-200">
+                  <>
                     <button
                       type="button"
                       onClick={() => handleSendChatMessage('Revisa porque en la página 4 y 5 solicitan más ensayos')}
                       disabled={chatLoading || analisisLoading}
-                      className="text-[11px] bg-blue-100 hover:bg-blue-200 text-blue-900 border border-blue-300 font-bold rounded-lg px-2.5 py-1 transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                      className="text-[10px] bg-blue-950/80 hover:bg-blue-900 text-blue-300 border border-blue-800 font-bold rounded px-2 py-0.5 transition cursor-pointer whitespace-nowrap"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-blue-700" />
-                      <span>Revisar páginas 4 y 5 (más ensayos)</span>
+                      ⚡ Revisar pág. 4 y 5
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleSendChatMessage('Revisa exhaustivamente todo el documento completo sin omitir ningún ensayo')}
+                      onClick={() => handleSendChatMessage('Revisa exhaustivamente todo el documento sin omitir ningún ensayo')}
                       disabled={chatLoading || analisisLoading}
-                      className="text-[11px] bg-indigo-100 hover:bg-indigo-200 text-indigo-900 border border-indigo-300 font-bold rounded-lg px-2.5 py-1 transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                      className="text-[10px] bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 border border-indigo-800 font-bold rounded px-2 py-0.5 transition cursor-pointer whitespace-nowrap"
                     >
-                      <Layers className="w-3.5 h-3.5 text-indigo-700" />
-                      <span>Escanear todo el documento sin omisiones</span>
+                      ⚡ Escanear todo el documento
                     </button>
-                  </div>
+                  </>
                 )}
-
-                <div className="flex flex-wrap gap-1.5 max-h-16 overflow-y-auto">
-                  {CHAT_SUGGESTIONS.map((sug, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => handleSendChatMessage(sug)}
-                      disabled={chatLoading || analisisLoading}
-                      className="text-[11px] text-left bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-800 border border-slate-200 rounded-lg px-2.5 py-1 transition-colors cursor-pointer disabled:opacity-50"
-                    >
-                      {sug}
-                    </button>
-                  ))}
-                </div>
+                {CHAT_SUGGESTIONS.map((sug, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => handleSendChatMessage(sug)}
+                    disabled={chatLoading || analisisLoading}
+                    className="text-[10px] bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded px-2 py-0.5 transition cursor-pointer whitespace-nowrap disabled:opacity-50"
+                  >
+                    {sug}
+                  </button>
+                ))}
               </div>
 
-              {/* INPUT BAR UNIFICADO (TEXTO + ADJUNTAR ARCHIVO CLIP + PEGAR CORREO) */}
-              <div className="p-3 bg-white border-t border-slate-200 shrink-0">
-                {/* Chip si hay archivo adjunto listo para enviar */}
-                {attachedFile && (() => {
-                  const badge = getFileBadgeInfo(attachedFile.name);
-                  return (
-                    <div className={`mb-2 flex items-center justify-between px-3 py-1.5 rounded-xl border text-xs shadow-xs ${badge.bg}`}>
-                      <div className="flex items-center gap-2">
-                        <span>{badge.iconText}</span>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${badge.pillBg}`}>
-                          {badge.label}
-                        </span>
-                        <span className="font-semibold">{attachedFile.name}</span>
-                        <span className="text-slate-500">({(attachedFile.size / 1024).toFixed(1)} KB)</span>
-                        <span className="text-emerald-700 font-bold text-[10px] bg-emerald-100 px-2 py-0.5 rounded-full">
-                          Listo para analizar
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setAttachedFile(null)}
-                        className="text-slate-400 hover:text-red-700 cursor-pointer p-0.5"
-                        title="Quitar archivo"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  );
-                })()}
-
-                {/* Banner de documento activo en memoria si no hay archivo pendiente */}
-                {!attachedFile && lastAnalyzedFile && (() => {
-                  const badge = getFileBadgeInfo(lastAnalyzedFile.name);
-                  return (
-                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 rounded-xl border border-blue-200 bg-blue-50/70 text-xs shadow-xs text-blue-900">
-                      <div className="flex items-center gap-2 truncate max-w-full sm:max-w-md">
-                        <span>{badge.iconText}</span>
-                        <span className="text-slate-600 text-[11px] font-medium">Documento activo:</span>
-                        <span className="font-bold text-blue-950 truncate">{lastAnalyzedFile.name}</span>
-                        <span className="text-[10px] text-slate-500 font-mono">
-                          ({(lastAnalyzedFile.size / 1024).toFixed(1)} KB)
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          type="button"
-                          disabled={analisisLoading || chatLoading}
-                          onClick={() =>
-                            handleAnalyze(
-                              'Revisa exhaustivamente todo el documento sin omitir ningún ensayo de ninguna página, tabla o anexo.',
-                              lastAnalyzedFile
-                            )
-                          }
-                          className="px-2 py-0.5 bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white rounded-md text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
-                          title="Volver a escanear exhaustivamente todo el documento"
-                        >
-                          <RefreshCw className={`w-3 h-3 ${analisisLoading ? 'animate-spin' : ''}`} />
-                          <span>Re-analizar completo</span>
-                        </button>
-                        <button
-                          type="button"
-                          disabled={analisisLoading || chatLoading}
-                          onClick={() => {
-                            setChatInput('Revisa porque en la página 4 y 5 solicitan más ensayos');
-                            setTimeout(() => chatInputRef.current?.focus(), 80);
-                          }}
-                          className="px-2 py-0.5 bg-white hover:bg-blue-100 text-blue-800 border border-blue-300 rounded-md text-[11px] font-semibold transition cursor-pointer"
-                          title="Indicar páginas 4 y 5"
-                        >
-                          <span>Páginas 4 y 5</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setLastAnalyzedFile(null)}
-                          className="text-slate-400 hover:text-slate-700 p-0.5 ml-1 cursor-pointer"
-                          title="Desvincular documento activo"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })()}
-
+              {/* Input Bar de la Consola */}
+              <div className="p-2.5 bg-slate-950 border-t border-slate-800 shrink-0">
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    if (attachedFile) {
+                    if (attachedFile && !lastAnalyzedFile) {
                       handleAnalyze();
                     } else {
                       handleSendChatMessage();
@@ -1952,36 +1842,20 @@ export default function UnifiedAiAssistantModal({
                   }}
                   className="flex items-center gap-2"
                 >
-                  {/* Input oculto para adjuntar archivo desde el clip */}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf,.txt,.xlsx,.xls,.docx,.doc"
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files[0]) {
-                        setAttachedFile(e.target.files[0]);
-                        setAnalisisError(null);
-                      }
-                    }}
-                    className="hidden"
-                  />
-
-                  {/* Botón clip para adjuntar documento */}
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    title="Adjuntar archivo (PDF, Word, Excel o TXT) para analizar con IA"
-                    className="p-2.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-xl border border-slate-300 transition cursor-pointer shrink-0"
+                    title="Adjuntar o cambiar archivo para analizar"
+                    className="p-2 text-slate-400 hover:text-white hover:bg-slate-900 rounded-lg border border-slate-800 transition cursor-pointer shrink-0"
                   >
                     <Paperclip className="w-4 h-4" />
                   </button>
 
-                  {/* Botón rápido para abrir drawer de pegar correo */}
                   <button
                     type="button"
-                    onClick={() => setShowInputDrawer(!showInputDrawer)}
-                    title="Pegar texto de correo o licitación"
-                    className="p-2.5 text-slate-500 hover:text-red-700 hover:bg-red-50 rounded-xl border border-slate-300 transition cursor-pointer shrink-0"
+                    onClick={() => setLeftViewMode('paste')}
+                    title="Pegar texto de licitación"
+                    className="p-2 text-slate-400 hover:text-white hover:bg-slate-900 rounded-lg border border-slate-800 transition cursor-pointer shrink-0"
                   >
                     <Mail className="w-4 h-4" />
                   </button>
@@ -1992,273 +1866,250 @@ export default function UnifiedAiAssistantModal({
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     disabled={chatLoading || analisisLoading}
-                    placeholder={
-                      attachedFile
-                        ? 'Agrega una nota u observación técnica para el análisis del archivo (opcional)...'
-                        : activeAnalisis
-                        ? 'Pídeme cambios a la campaña (ej. "quita el corte directo", "aplica 10% dcto", "aumenta a 5 las densidades")...'
-                        : 'Escribe tu requerimiento, pega un correo, o adjunta un PDF / Word / Excel con el clip 📎...'
-                    }
-                    className="flex-1 border border-slate-300 rounded-xl px-4 py-2.5 text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 disabled:opacity-50"
+                    placeholder="Escribe una instrucción para Gemini (ej. 'agrega 3 proctor', 'revisa la pág 4', 'aplica 10% dcto')..."
+                    className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
                   />
 
                   <button
                     type="submit"
                     disabled={(!chatInput.trim() && !attachedFile) || chatLoading || analisisLoading}
-                    className={`p-2.5 sm:px-5 sm:py-2.5 rounded-xl transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shrink-0 text-xs sm:text-sm font-bold text-white ${
-                      attachedFile
-                        ? 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800'
-                        : 'bg-blue-700 hover:bg-blue-800'
-                    }`}
-                    title="Enviar instrucción (Enter)"
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0 shadow-md shadow-blue-950/50"
                   >
                     {chatLoading || analisisLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : attachedFile ? (
-                      <>
-                        <Sparkles className="w-4 h-4 text-amber-300" />
-                        <span className="hidden sm:inline">Analizar</span>
-                      </>
                     ) : (
                       <>
-                        <Send className="w-4 h-4" />
+                        <Send className="w-3.5 h-3.5" />
                         <span className="hidden sm:inline">Enviar</span>
                       </>
                     )}
                   </button>
                 </form>
-
-                <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1.5 px-1">
-                  <span>Chat y análisis integrados en tiempo real sobre el tarifario DGL IDIEM.</span>
-                  <span>Zero Data Training • Memoria RAG Activa</span>
-                </div>
               </div>
             </div>
-          )}
-
-          {/* ====================================================== */}
-          {/* TAB 2: MEMORIA Y APRENDIZAJE IA */}
-          {/* ====================================================== */}
-          {activeTab === 'memoria' && (
-            <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
-              {/* Tarjeta de Encabezado y Métricas */}
-              <div className="bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white rounded-2xl p-5 border border-indigo-900/50 shadow-lg">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-indigo-900/60 pb-4">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
-                      <Brain className="w-3.5 h-3.5" />
-                      Sistema de Aprendizaje Continuo DGL
-                    </span>
-                    <h3 className="text-base font-bold text-white mt-0.5">
-                      Memoria Semántica Activa (Opciones A & B)
-                    </h3>
-                    <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
-                      La IA aprende de cada cotización finalizada (RAG Histórico) y de las confirmaciones de ensayos
-                      de los ingenieros, adaptando sinónimos y modismos sin alterar los pesos del modelo (Zero Retraining).
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setShowNuevaReglaModal(true)}
-                      className="px-3.5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition shadow flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <PlusCircle className="w-3.5 h-3.5" />
-                      <span>+ Nueva Regla</span>
-                    </button>
-                    <Link
-                      href="/configuracion/aprendizaje-ia"
-                      className="px-3.5 py-2 text-xs font-bold bg-white/10 hover:bg-white/20 text-white rounded-xl transition border border-white/20 flex items-center gap-1.5"
-                      title="Abrir panel completo de configuración"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span>Panel Maestro</span>
-                    </Link>
-                  </div>
+          </div>
+        ) : (
+          /* ====================================================== */
+          /* PESTAÑA: MEMORIA & APRENDIZAJE IA */
+          /* ====================================================== */
+          <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6 bg-slate-900">
+            {/* Encabezado de Memoria */}
+            <div className="bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white rounded-2xl p-5 border border-indigo-900/50 shadow-lg">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-indigo-900/60 pb-4">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                    <Brain className="w-3.5 h-3.5" />
+                    Sistema de Aprendizaje Continuo DGL
+                  </span>
+                  <h3 className="text-base font-bold text-white mt-0.5">
+                    Memoria Semántica Activa (Opciones A & B)
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-1 max-w-2xl leading-relaxed">
+                    La IA aprende de cada cotización finalizada (RAG Histórico) y de las confirmaciones de ensayos
+                    de los ingenieros, adaptando sinónimos y modismos sin alterar los pesos del modelo (Zero Retraining).
+                  </p>
                 </div>
 
-                {/* Métricas Rápidas */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 text-xs">
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <span className="text-[10px] text-slate-400 block">Reglas de Vocabulario</span>
-                    <span className="text-lg font-bold text-white mt-0.5 block">
-                      {reglasAprendidas.length}
-                    </span>
-                    <span className="text-[10px] text-emerald-400">
-                      {reglasAprendidas.filter((r) => r.estado === 'activo').length} activas
-                    </span>
-                  </div>
-
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <span className="text-[10px] text-slate-400 block">Casos Históricos RAG</span>
-                    <span className="text-lg font-bold text-white mt-0.5 block">
-                      {casosRAG.length}
-                    </span>
-                    <span className="text-[10px] text-indigo-300">Base IDIEM + Finalizadas</span>
-                  </div>
-
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <span className="text-[10px] text-slate-400 block">Confirmaciones de Usuario</span>
-                    <span className="text-lg font-bold text-white mt-0.5 block">
-                      {reglasAprendidas.reduce((acc, r) => acc + (r.conteoConfirmaciones || 0), 0)}
-                    </span>
-                    <span className="text-[10px] text-amber-300">Feedback Loop Opción B</span>
-                  </div>
-
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <span className="text-[10px] text-slate-400 block">Política de Privacidad</span>
-                    <span className="text-xs font-bold text-emerald-300 mt-1 block">
-                      100% Cero Retraining
-                    </span>
-                    <span className="text-[10px] text-slate-400">En memoria / In-context</span>
-                  </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setShowNuevaReglaModal(true)}
+                    className="px-3.5 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition shadow flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <PlusCircle className="w-3.5 h-3.5" />
+                    <span>+ Nueva Regla</span>
+                  </button>
+                  <Link
+                    href="/configuracion/aprendizaje-ia"
+                    className="px-3.5 py-2 text-xs font-bold bg-white/10 hover:bg-white/20 text-white rounded-xl transition border border-white/20 flex items-center gap-1.5"
+                    title="Abrir panel completo de configuración"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Panel Maestro</span>
+                  </Link>
                 </div>
               </div>
 
-              {/* Diccionario de Reglas Aprendidas */}
-              <div className="space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <BookOpen className="w-4 h-4 text-indigo-700" />
-                    <h4 className="text-xs sm:text-sm font-bold text-slate-900">
-                      Diccionario de Modismos y Términos Aprendidos (Opción B)
-                    </h4>
-                  </div>
-                  <div className="relative w-full sm:w-64">
-                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="Filtrar término o código..."
-                      value={filtroReglas}
-                      onChange={(e) => setFiltroReglas(e.target.value)}
-                      className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                  </div>
-                </div>
-
-                {loadingMemoria ? (
-                  <div className="py-10 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
-                    <span>Cargando memoria del sistema...</span>
-                  </div>
-                ) : reglasFiltradas.length === 0 ? (
-                  <div className="p-8 text-center border border-dashed border-slate-300 rounded-xl text-xs text-slate-500">
-                    No se encontraron reglas aprendidas con ese criterio.
-                  </div>
-                ) : (
-                  <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-                    <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 text-xs">
-                      {reglasFiltradas.map((regla) => (
-                        <div
-                          key={regla.id}
-                          className="p-3 hover:bg-slate-50 transition-colors flex items-center justify-between gap-3"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-900">
-                                &quot;{regla.terminoUsuario}&quot;
-                              </span>
-                              <ArrowRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                              <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0">
-                                Cód. {regla.codigoEnsayo || 'N/A'}
-                              </span>
-                              <span className="truncate text-slate-600">
-                                {regla.designacion || 'Ensayo oficial DGL'}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400">
-                              <span>Confirmado: <strong className="text-slate-700">{regla.conteoConfirmaciones} veces</strong></span>
-                              <span>•</span>
-                              <span>Origen: <strong className="text-slate-700">{regla.origen}</strong></span>
-                              <span>•</span>
-                              <span>Tipo: <strong className="text-slate-700">{regla.tipo}</strong></span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => handleToggleEstadoRegla(regla.id)}
-                              className={`px-2 py-0.5 text-[10px] font-bold rounded cursor-pointer transition ${
-                                regla.estado === 'activo'
-                                  ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                                  : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
-                              }`}
-                            >
-                              {regla.estado === 'activo' ? 'Activa' : 'Inactiva'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteRegla(regla.id)}
-                              className="text-slate-400 hover:text-red-600 p-1 cursor-pointer"
-                              title="Eliminar regla"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Casos Históricos de Referencia RAG (Opción A) */}
-              <div className="space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                  <div className="flex items-center gap-2">
-                    <Database className="w-4 h-4 text-indigo-700" />
-                    <h4 className="text-xs sm:text-sm font-bold text-slate-900">
-                      Proyectos Históricos en Memoria RAG ({casosRAG.length})
-                    </h4>
-                  </div>
-                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                    ✓ Solo Cotizaciones Finalizadas (Excluye Borradores)
+              {/* Métricas Rápidas */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 text-xs">
+                <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                  <span className="text-[10px] text-slate-400 block">Reglas de Vocabulario</span>
+                  <span className="text-lg font-bold text-white mt-0.5 block">
+                    {reglasAprendidas.length}
+                  </span>
+                  <span className="text-[10px] text-emerald-400">
+                    {reglasAprendidas.filter((r) => r.estado === 'activo').length} activas
                   </span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-56 overflow-y-auto">
-                  {casosRAG.map((caso) => (
-                    <div
-                      key={caso.id}
-                      className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs space-y-1 hover:border-indigo-300 transition"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900 truncate">
-                          {caso.empresaCliente}
-                        </span>
-                        <span className="font-mono text-[10px] text-slate-500 bg-slate-200 px-1.5 py-0.5 rounded">
-                          {caso.codigoCotizacion}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-indigo-900 font-medium truncate">
-                        {caso.nombreObra}
-                      </div>
-                      <div className="text-[10px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-200">
-                        <span>{caso.ensayosCotizados?.length || 0} ensayos indexados</span>
-                        <span className="font-bold text-slate-700">{caso.totalUf?.toFixed(1) || '0.0'} UF</span>
-                      </div>
-                    </div>
-                  ))}
+
+                <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                  <span className="text-[10px] text-slate-400 block">Casos Históricos RAG</span>
+                  <span className="text-lg font-bold text-white mt-0.5 block">
+                    {casosRAG.length}
+                  </span>
+                  <span className="text-[10px] text-indigo-300">Base IDIEM + Finalizadas</span>
+                </div>
+
+                <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                  <span className="text-[10px] text-slate-400 block">Confirmaciones de Usuario</span>
+                  <span className="text-lg font-bold text-white mt-0.5 block">
+                    {reglasAprendidas.reduce((acc, r) => acc + (r.conteoConfirmaciones || 0), 0)}
+                  </span>
+                  <span className="text-[10px] text-amber-300">Feedback Loop Opción B</span>
+                </div>
+
+                <div className="bg-white/5 border border-white/10 rounded-xl p-3">
+                  <span className="text-[10px] text-slate-400 block">Política de Privacidad</span>
+                  <span className="text-xs font-bold text-emerald-300 mt-1 block">
+                    100% Cero Retraining
+                  </span>
+                  <span className="text-[10px] text-slate-400">En memoria / In-context</span>
                 </div>
               </div>
             </div>
-          )}
-        </div>
+
+            {/* Diccionario de Reglas Aprendidas */}
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-indigo-400" />
+                  <h4 className="text-xs sm:text-sm font-bold text-white">
+                    Diccionario de Modismos y Términos Aprendidos (Opción B)
+                  </h4>
+                </div>
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Filtrar término o código..."
+                    value={filtroReglas}
+                    onChange={(e) => setFiltroReglas(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-950 border border-slate-800 rounded-lg text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {loadingMemoria ? (
+                <div className="py-10 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
+                  <span>Cargando memoria del sistema...</span>
+                </div>
+              ) : reglasFiltradas.length === 0 ? (
+                <div className="p-8 text-center border border-dashed border-slate-800 rounded-xl text-xs text-slate-500">
+                  No se encontraron reglas aprendidas con ese criterio.
+                </div>
+              ) : (
+                <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950">
+                  <div className="max-h-64 overflow-y-auto divide-y divide-slate-850 text-xs">
+                    {reglasFiltradas.map((regla) => (
+                      <div
+                        key={regla.id}
+                        className="p-3 hover:bg-slate-900 transition-colors flex items-center justify-between gap-3"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white">
+                              &quot;{regla.terminoUsuario}&quot;
+                            </span>
+                            <ArrowRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            <span className="font-mono font-bold text-indigo-300 bg-indigo-950/60 px-1.5 py-0.5 rounded border border-indigo-800 shrink-0">
+                              Cód. {regla.codigoEnsayo || 'N/A'}
+                            </span>
+                            <span className="truncate text-slate-300">
+                              {regla.designacion || 'Ensayo oficial DGL'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-500">
+                            <span>Confirmado: <strong className="text-slate-300">{regla.conteoConfirmaciones} veces</strong></span>
+                            <span>•</span>
+                            <span>Origen: <strong className="text-slate-300">{regla.origen}</strong></span>
+                            <span>•</span>
+                            <span>Tipo: <strong className="text-slate-300">{regla.tipo}</strong></span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleEstadoRegla(regla.id)}
+                            className={`px-2 py-0.5 text-[10px] font-bold rounded cursor-pointer transition ${
+                              regla.estado === 'activo'
+                                ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-800'
+                                : 'bg-slate-800 text-slate-400'
+                            }`}
+                          >
+                            {regla.estado === 'activo' ? 'Activa' : 'Inactiva'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRegla(regla.id)}
+                            className="text-slate-500 hover:text-red-400 p-1 cursor-pointer"
+                            title="Eliminar regla"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Casos Históricos de Referencia RAG */}
+            <div className="space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <div className="flex items-center gap-2">
+                  <Database className="w-4 h-4 text-indigo-400" />
+                  <h4 className="text-xs sm:text-sm font-bold text-white">
+                    Proyectos Históricos en Memoria RAG ({casosRAG.length})
+                  </h4>
+                </div>
+                <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-2 py-0.5 rounded-full">
+                  ✓ Solo Cotizaciones Finalizadas
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-56 overflow-y-auto">
+                {casosRAG.map((caso) => (
+                  <div
+                    key={caso.id}
+                    className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs space-y-1 hover:border-indigo-500/50 transition"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white truncate">
+                        {caso.empresaCliente}
+                      </span>
+                      <span className="font-mono text-[10px] text-slate-400 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded">
+                        {caso.codigoCotizacion}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-indigo-300 font-medium truncate">
+                      {caso.nombreObra}
+                    </div>
+                    <div className="text-[10px] text-slate-500 flex items-center justify-between pt-1 border-t border-slate-850">
+                      <span>{caso.ensayosCotizados?.length || 0} ensayos indexados</span>
+                      <span className="font-bold text-slate-300 font-mono">{caso.totalUf?.toFixed(1) || '0.0'} UF</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Modal Inline para Crear Nueva Regla de Aprendizaje */}
         {showNuevaReglaModal && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-            <div className="bg-white rounded-2xl p-5 shadow-2xl border border-slate-200 w-full max-w-md space-y-4">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                  <PlusCircle className="w-4 h-4 text-indigo-600" />
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+            <div className="bg-slate-900 rounded-2xl p-5 shadow-2xl border border-slate-700 w-full max-w-md space-y-4 text-white">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                  <PlusCircle className="w-4 h-4 text-indigo-400" />
                   <span>Crear Regla de Aprendizaje Manual</span>
                 </h3>
                 <button
                   type="button"
                   onClick={() => setShowNuevaReglaModal(false)}
-                  className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                  className="text-slate-400 hover:text-white cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -2266,7 +2117,7 @@ export default function UnifiedAiAssistantModal({
 
               <form onSubmit={handleCrearRegla} className="space-y-3 text-xs">
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">
+                  <label className="font-semibold text-slate-300 block mb-1">
                     Término, Alias o Modismo del Usuario:
                   </label>
                   <input
@@ -2275,15 +2126,15 @@ export default function UnifiedAiAssistantModal({
                     placeholder="Ej. triaxial gigante 15x30, corte rápido..."
                     value={nuevoTermino}
                     onChange={(e) => setNuevoTermino(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                   />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
                     Cómo lo escribirán los usuarios en el buscador o chat.
                   </span>
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">
+                  <label className="font-semibold text-slate-300 block mb-1">
                     Código de Ensayo Oficial DGL:
                   </label>
                   <input
@@ -2292,25 +2143,25 @@ export default function UnifiedAiAssistantModal({
                     placeholder="Ej. 106, 001, 042..."
                     value={nuevoCodigo}
                     onChange={(e) => setNuevoCodigo(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono focus:ring-1 focus:ring-indigo-500 focus:outline-none"
                   />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
                     Código correspondiente en el tarifario oficial de 358 ensayos.
                   </span>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
                   <button
                     type="button"
                     onClick={() => setShowNuevaReglaModal(false)}
-                    className="px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg text-slate-400 hover:bg-slate-800 font-semibold cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={guardandoRegla}
-                    className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    className="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
                     {guardandoRegla ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />

@@ -159,6 +159,8 @@ function ConfiguracionTarifarioContent() {
   const [batchCat, setBatchCat] = useState<string>('');
   const [batchSubcat, setBatchSubcat] = useState<string>('');
   const [batchSubSubcat, setBatchSubSubcat] = useState<string>('');
+  const [isBatchCustomSubSubcat, setIsBatchCustomSubSubcat] = useState<boolean>(false);
+  const [batchCustomSubSubcat, setBatchCustomSubSubcat] = useState<string>('');
 
   // Load structure & user
   const loadData = async () => {
@@ -217,6 +219,8 @@ function ConfiguracionTarifarioContent() {
 
   const handleBatchCcChange = (newCc: string) => {
     setBatchCc(newCc);
+    setIsBatchCustomSubSubcat(false);
+    setBatchCustomSubSubcat('');
     const available = structure.filter((s) => s.cc === newCc);
     if (available.length > 0) {
       setBatchCat(available[0].category);
@@ -231,29 +235,72 @@ function ConfiguracionTarifarioContent() {
 
   const handleBatchCatChange = (newCat: string) => {
     setBatchCat(newCat);
+    setIsBatchCustomSubSubcat(false);
+    setBatchCustomSubSubcat('');
     setBatchSubcat('');
     setBatchSubSubcat('');
   };
 
   const handleBatchSubcatChange = (newSub: string) => {
     setBatchSubcat(newSub);
+    setIsBatchCustomSubSubcat(false);
+    setBatchCustomSubSubcat('');
     setBatchSubSubcat('');
   };
 
-  // Selection toggle
-  const toggleSelectItem = (id: string) => {
-    setSelectedItemIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    );
+  // Selection toggle with context auto-sync
+  const toggleSelectItem = (
+    id: string,
+    currentCc?: string,
+    currentCat?: string,
+    currentSubcat?: string | null
+  ) => {
+    setSelectedItemIds((prev) => {
+      const isSelecting = !prev.includes(id);
+      const next = isSelecting ? [...prev, id] : prev.filter((i) => i !== id);
+      if (isSelecting) {
+        // Auto-sync batch destination to current context
+        const targetItem = items.find((it) => it.id === id);
+        if (targetItem) {
+          if (currentCc) setBatchCc(currentCc);
+          else if (targetItem.cc) setBatchCc(targetItem.cc);
+
+          if (currentCat) setBatchCat(currentCat);
+          else if (targetItem.category) setBatchCat(targetItem.category);
+
+          if (currentSubcat) setBatchSubcat(currentSubcat);
+          else if (targetItem.subcategory) setBatchSubcat(targetItem.subcategory);
+
+          setBatchSubSubcat(targetItem.subSubcategory || '');
+          setIsBatchCustomSubSubcat(false);
+          setBatchCustomSubSubcat('');
+        }
+      }
+      return next;
+    });
   };
 
-  const toggleSelectAllDisplayed = (displayed: TarifarioItem[]) => {
+  const toggleSelectAllDisplayed = (
+    displayed: TarifarioItem[],
+    currentCc?: string,
+    currentCat?: string,
+    currentSubcat?: string | null
+  ) => {
     const displayedIds = displayed.map((d) => d.id);
     const allSelected = displayedIds.length > 0 && displayedIds.every((id) => selectedItemIds.includes(id));
     if (allSelected) {
       setSelectedItemIds((prev) => prev.filter((id) => !displayedIds.includes(id)));
     } else {
       setSelectedItemIds((prev) => Array.from(new Set([...prev, ...displayedIds])));
+      if (displayed.length > 0) {
+        const first = displayed[0];
+        setBatchCc(currentCc || first.cc || CENTROS_DE_COSTO[0]);
+        setBatchCat(currentCat || first.category || '');
+        setBatchSubcat(currentSubcat || first.subcategory || '');
+        setBatchSubSubcat('');
+        setIsBatchCustomSubSubcat(false);
+        setBatchCustomSubSubcat('');
+      }
     }
   };
 
@@ -300,6 +347,8 @@ function ConfiguracionTarifarioContent() {
       );
       setSelectedItemIds([]);
       setDraggedIds(null);
+      setIsBatchCustomSubSubcat(false);
+      setBatchCustomSubSubcat('');
       await loadData();
     } catch (err: any) {
       console.error('Error al mover ensayos:', err);
@@ -1581,11 +1630,10 @@ function ConfiguracionTarifarioContent() {
                             })}
                           </div>
 
-                          {/* Level 3 Sub-subcategories filter row if activeSubcat has children */}
+                          {/* Level 3 Sub-subcategories filter row & drop targets */}
                           {activeSubcat && (() => {
                             const currentSubObj = sortedSubcats.map(normalizeSub).find((s) => s.name === activeSubcat);
                             const children = currentSubObj?.children || [];
-                            if (children.length === 0) return null;
                             const parentSubKey = `${cat.cc}:::${cat.category}:::${activeSubcat}`;
                             const totalInSubcat = itemCounts[parentSubKey] || 0;
 
@@ -1597,18 +1645,38 @@ function ConfiguracionTarifarioContent() {
                                 </span>
                                 <button
                                   onClick={() => setActiveSubSubcatFilter((prev) => ({ ...prev, [catKey]: null }))}
-                                  className={`px-2 py-0.5 rounded-md text-[11px] transition-all cursor-pointer ${
+                                  className={`px-2.5 py-1 rounded-lg text-xs transition-all cursor-pointer ${
                                     activeSubSubcat === null
-                                      ? 'bg-slate-700 text-white shadow-xs font-semibold'
+                                      ? 'bg-slate-800 text-white shadow-xs font-semibold'
                                       : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 font-medium'
                                   }`}
+                                  title="Ver todos los ensayos de esta subcategoría"
                                 >
                                   Todos ({totalInSubcat})
                                 </button>
+
+                                {children.length > 0 && (
+                                  <button
+                                    onDragOver={(e) => handleSubSubcategoryDragOver(e, `${parentSubKey}:::__NONE__`)}
+                                    onDragLeave={handleSubSubcategoryDragLeave}
+                                    onDrop={(e) => handleSubSubcategoryDrop(e, cat.cc, cat.category, activeSubcat, '')}
+                                    className={`px-2.5 py-1 rounded-lg text-xs transition-all border border-dashed cursor-pointer ${
+                                      dragOverSubSubcatKey === `${parentSubKey}:::__NONE__`
+                                        ? 'bg-emerald-100 border-emerald-500 ring-2 ring-emerald-400 font-bold text-emerald-900 scale-105'
+                                        : 'border-slate-300 text-slate-500 bg-white hover:bg-slate-50'
+                                    }`}
+                                    title="Arrastra ensayos aquí para dejarlos en la subcategoría general (sin sub-tipo)"
+                                  >
+                                    Sin sub-tipo
+                                  </button>
+                                )}
+
                                 {children.map((child) => {
                                   const childKey = `${cat.cc}:::${cat.category}:::${activeSubcat}:::${child}`;
                                   const childCount = itemCounts[childKey] || 0;
                                   const isChildActive = activeSubSubcat === child;
+                                  const isChildDragOver = dragOverSubSubcatKey === childKey;
+
                                   return (
                                     <button
                                       key={child}
@@ -1618,17 +1686,56 @@ function ConfiguracionTarifarioContent() {
                                           [catKey]: isChildActive ? null : child,
                                         }))
                                       }
-                                      className={`px-2 py-0.5 rounded-md text-[11px] transition-all truncate max-w-[200px] cursor-pointer ${
-                                        isChildActive
+                                      onDragOver={(e) => handleSubSubcategoryDragOver(e, childKey)}
+                                      onDragLeave={handleSubSubcategoryDragLeave}
+                                      onDrop={(e) => handleSubSubcategoryDrop(e, cat.cc, cat.category, activeSubcat, child)}
+                                      className={`px-2.5 py-1 rounded-lg text-xs transition-all truncate max-w-[240px] cursor-pointer inline-flex items-center gap-1.5 ${
+                                        isChildDragOver
+                                          ? 'bg-emerald-100 border-emerald-500 ring-2 ring-emerald-400 font-bold text-emerald-900 scale-105 shadow-sm'
+                                          : isChildActive
                                           ? 'bg-red-700 text-white shadow-xs font-semibold'
                                           : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 font-medium'
                                       }`}
-                                      title={child}
+                                      title={
+                                        isChildDragOver
+                                          ? `Soltar aquí para mover al sub-tipo "${child}"`
+                                          : `Filtrar o arrastrar ensayos aquí para moverlos a "${child}"`
+                                      }
                                     >
-                                      {child} ({childCount})
+                                      <span
+                                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                          isChildDragOver ? 'bg-emerald-600' : isChildActive ? 'bg-white' : 'bg-red-500'
+                                        }`}
+                                      />
+                                      <span className="truncate">{child}</span>
+                                      <span
+                                        className={`text-[9px] px-1.5 py-0.2 rounded-full font-bold ${
+                                          isChildActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                                        }`}
+                                      >
+                                        {childCount}
+                                      </span>
                                     </button>
                                   );
                                 })}
+
+                                {isAdmin && (
+                                  <button
+                                    onClick={() => {
+                                      setTargetCategoryForSubcat({
+                                        cc: cat.cc,
+                                        category: cat.category,
+                                        parentSubcategory: activeSubcat,
+                                      });
+                                      setShowCreateSubcatModal(true);
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg text-xs text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                    title="Crear un nuevo sub-tipo dentro de esta subcategoría"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>+ Sub-tipo</span>
+                                  </button>
+                                )}
                               </div>
                             );
                           })()}
@@ -1722,7 +1829,7 @@ function ConfiguracionTarifarioContent() {
                                           displayedItems.length > 0 &&
                                           displayedItems.every((it) => selectedItemIds.includes(it.id))
                                         }
-                                        onChange={() => toggleSelectAllDisplayed(displayedItems)}
+                                        onChange={() => toggleSelectAllDisplayed(displayedItems, cat.cc, cat.category, activeSubcat)}
                                         className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer w-4 h-4"
                                         title="Seleccionar todos los mostrados"
                                       />
@@ -1761,7 +1868,7 @@ function ConfiguracionTarifarioContent() {
                                           <input
                                             type="checkbox"
                                             checked={isSelected}
-                                            onChange={() => toggleSelectItem(item.id)}
+                                            onChange={() => toggleSelectItem(item.id, cat.cc, cat.category, activeSubcat)}
                                             className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer w-4 h-4"
                                             title="Seleccionar ensayo"
                                           />
@@ -2593,21 +2700,64 @@ function ConfiguracionTarifarioContent() {
                 ))}
               </select>
 
-              {availableBatchSubSubcategories.length > 0 && (
-                <select
-                  value={batchSubSubcat}
-                  onChange={(e) => setBatchSubSubcat(e.target.value)}
-                  className="px-2.5 py-1.5 rounded-lg text-xs bg-slate-800 border border-slate-700 text-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500 font-medium max-w-[180px] truncate cursor-pointer"
-                >
-                  <option value="">(Sin sub-tipo específico)</option>
-                  {availableBatchSubSubcategories.map((child) => (
-                    <option key={child} value={child}>{child}</option>
-                  ))}
-                </select>
+              {batchSubcat && (
+                <div className="flex items-center gap-1.5">
+                  {!isBatchCustomSubSubcat ? (
+                    <select
+                      value={batchSubSubcat}
+                      onChange={(e) => {
+                        if (e.target.value === '__NEW_SUB_SUB__') {
+                          setIsBatchCustomSubSubcat(true);
+                          setBatchCustomSubSubcat('');
+                        } else {
+                          setBatchSubSubcat(e.target.value);
+                        }
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg text-xs bg-slate-800 border border-slate-700 text-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500 font-medium max-w-[200px] truncate cursor-pointer"
+                      title="Sub-tipo destino para los ensayos seleccionados"
+                    >
+                      <option value="">(Sin sub-tipo / General)</option>
+                      {availableBatchSubSubcategories.map((child) => (
+                        <option key={child} value={child}>
+                          ↳ {child}
+                        </option>
+                      ))}
+                      <option value="__NEW_SUB_SUB__">+ Crear nuevo sub-tipo...</option>
+                    </select>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={batchCustomSubSubcat}
+                        onChange={(e) => setBatchCustomSubSubcat(e.target.value)}
+                        placeholder="Nombre nuevo sub-tipo..."
+                        className="px-2.5 py-1 rounded-lg text-xs bg-slate-800 border border-red-500 text-white focus:outline-none focus:ring-2 focus:ring-red-500 w-44 font-medium"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsBatchCustomSubSubcat(false);
+                          setBatchCustomSubSubcat('');
+                          setBatchSubSubcat('');
+                        }}
+                        className="p-1 text-slate-400 hover:text-white rounded hover:bg-slate-700 cursor-pointer"
+                        title="Cancelar creación de nuevo sub-tipo"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
 
               <button
-                onClick={() => executeMoveItems(selectedItemIds, batchCc, batchCat, batchSubcat, batchSubSubcat)}
+                onClick={() => {
+                  const finalSubSub = isBatchCustomSubSubcat
+                    ? batchCustomSubSubcat.trim()
+                    : batchSubSubcat.trim();
+                  executeMoveItems(selectedItemIds, batchCc, batchCat, batchSubcat, finalSubSub);
+                }}
                 disabled={submitting || !batchCat}
                 className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors shadow-xs disabled:opacity-50 cursor-pointer whitespace-nowrap"
               >
@@ -2616,7 +2766,11 @@ function ConfiguracionTarifarioContent() {
               </button>
 
               <button
-                onClick={() => setSelectedItemIds([])}
+                onClick={() => {
+                  setSelectedItemIds([]);
+                  setIsBatchCustomSubSubcat(false);
+                  setBatchCustomSubSubcat('');
+                }}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
                 title="Deseleccionar todos"
               >

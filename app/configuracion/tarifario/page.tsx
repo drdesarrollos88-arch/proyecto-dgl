@@ -1701,11 +1701,21 @@ function ConfiguracionTarifarioContent() {
                       ) : (
                         <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
                           <div className="overflow-x-auto">
-                            <table className="w-full text-left text-xs border-collapse">
+                            <table className="w-full min-w-[980px] text-left text-xs border-collapse">
+                              <colgroup>
+                                {canEdit && <col className="w-10" />}
+                                {canEdit && <col className="w-9" />}
+                                <col className="w-24" />
+                                <col className="w-auto" />
+                                <col className="w-64" />
+                                <col className="w-52" />
+                                <col className="w-28" />
+                                {canEdit && <col className="w-36" />}
+                              </colgroup>
                               <thead>
-                                <tr className="bg-slate-100/80 border-b border-slate-200 text-slate-600 font-semibold uppercase text-[10px] tracking-wider">
+                                <tr className="bg-slate-100/90 border-b border-slate-200 text-slate-600 font-semibold uppercase text-[10px] tracking-wider select-none">
                                   {canEdit && (
-                                    <th className="py-2.5 px-3 w-8 text-center">
+                                    <th className="py-2.5 px-3 w-10 text-center">
                                       <input
                                         type="checkbox"
                                         checked={
@@ -1719,16 +1729,16 @@ function ConfiguracionTarifarioContent() {
                                     </th>
                                   )}
                                   {canEdit && (
-                                    <th className="py-2.5 px-1 w-8 text-center text-slate-400 font-normal" title="Arrastrar para mover">
+                                    <th className="py-2.5 px-1 w-9 text-center text-slate-400 font-normal" title="Arrastrar para mover">
                                       <span className="sr-only">Mover</span>
                                     </th>
                                   )}
-                                  <th className="py-2.5 px-3">Código / SKU</th>
-                                  <th className="py-2.5 px-3">Designación del Ensayo</th>
-                                  <th className="py-2.5 px-3">Norma</th>
-                                  <th className="py-2.5 px-3">Subcategoría</th>
-                                  <th className="py-2.5 px-3 text-right">Precio Oficial</th>
-                                  <th className="py-2.5 px-3 text-center">Acciones</th>
+                                  <th className="py-2.5 px-3 w-24 text-center">Código / SKU</th>
+                                  <th className="py-2.5 px-3 min-w-[260px]">Designación del Ensayo</th>
+                                  <th className="py-2.5 px-3 w-64 min-w-[180px]">Norma / Referencia</th>
+                                  <th className="py-2.5 px-3 w-52 min-w-[160px]">Subcategoría</th>
+                                  <th className="py-2.5 px-3 w-28 text-right">Precio Oficial</th>
+                                  {canEdit && <th className="py-2.5 px-3 w-36 text-center">Acciones</th>}
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100">
@@ -1765,64 +1775,64 @@ function ConfiguracionTarifarioContent() {
                                           <GripVertical className="w-4 h-4 mx-auto" />
                                         </td>
                                       )}
-                                      <td className="py-2.5 px-3 whitespace-nowrap align-top">
-                                        <span className="font-mono text-[11px] font-semibold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                      <td className="py-2.5 px-3 text-center whitespace-nowrap align-top">
+                                        <span className="font-mono text-[11px] font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 inline-block shadow-2xs">
                                           {item.code || item.sku || 'S/C'}
                                         </span>
                                       </td>
-                                      <td className="py-2.5 px-3 align-top">
-                                        <p className="font-medium text-slate-900 leading-snug" title={item.designation}>
+                                      <td className="py-2.5 px-3 align-top min-w-[260px]">
+                                        <div className="font-medium text-slate-900 leading-snug whitespace-pre-line text-xs break-words" title={item.designation}>
                                           {item.designation}
-                                        </p>
+                                        </div>
                                       </td>
-                                      <td className="py-2.5 px-3 whitespace-nowrap align-top">
+                                      <td className="py-2.5 px-3 align-top">
                                         {item.norm ? (
-                                          <span className="text-[11px] text-slate-700 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded font-medium">
+                                          <span className="text-[11px] text-slate-700 bg-slate-50 border border-slate-200/90 px-2 py-1 rounded-md font-medium inline-block max-w-full leading-relaxed whitespace-pre-line break-words">
                                             {item.norm}
                                           </span>
                                         ) : (
-                                          <span className="text-slate-400 text-[11px]">-</span>
+                                          <span className="text-slate-400 text-[11px] italic">-</span>
                                         )}
                                       </td>
                                       <td className="py-2.5 px-3 align-top">
-                                        <div className="flex flex-col gap-1">
+                                        <div className="flex flex-col gap-1 max-w-full">
                                           <span
-                                            className="text-[11px] text-slate-700 bg-slate-100/80 px-2 py-0.5 rounded-md inline-block font-medium max-w-[220px] truncate"
+                                            className="text-[11px] text-slate-700 bg-slate-100/90 border border-slate-200/60 px-2 py-0.5 rounded-md inline-block font-medium leading-tight break-words"
                                             title={item.subcategory}
                                           >
                                             {item.subcategory || '-'}
                                           </span>
                                           {item.subSubcategory && (
                                             <span
-                                              className="text-[10px] text-red-700 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-semibold max-w-[220px] truncate"
+                                              className="text-[10px] text-red-700 bg-red-50 border border-red-200/80 px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-semibold leading-tight break-words"
                                               title={`Sub-tipo: ${item.subSubcategory}`}
                                             >
                                               <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
-                                              {item.subSubcategory}
+                                              <span>{item.subSubcategory}</span>
                                             </span>
                                           )}
                                         </div>
                                       </td>
                                       <td className="py-2.5 px-3 text-right whitespace-nowrap align-top">
-                                        <span className="font-bold text-red-700 font-mono text-xs">
+                                        <span className="font-bold text-red-700 font-mono text-xs block">
                                           {item.ufPrice !== undefined ? Number(item.ufPrice).toFixed(2) : '0.00'} UF
                                         </span>
                                         <span className="text-[10px] text-slate-400 block font-normal">
                                           / {item.unit || 'c/u'}
                                         </span>
                                       </td>
-                                      <td className="py-2.5 px-3 text-center whitespace-nowrap align-top">
-                                        {canEdit && (
+                                      {canEdit && (
+                                        <td className="py-2.5 px-3 text-center whitespace-nowrap align-top">
                                           <button
                                             onClick={() => openReassignModal(item)}
                                             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:text-red-700 hover:border-red-200 hover:bg-red-50/50 transition-colors shadow-2xs cursor-pointer"
                                             title="Cambiar/editar la categoría de este ensayo"
                                           >
-                                            <Edit2 className="w-3 h-3 text-red-600" />
+                                            <Edit2 className="w-3 h-3 text-red-600 shrink-0" />
                                             <span>Editar Categoría</span>
                                           </button>
-                                        )}
-                                      </td>
+                                        </td>
+                                      )}
                                     </tr>
                                   );
                                 })}

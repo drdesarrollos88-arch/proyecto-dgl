@@ -994,7 +994,7 @@ function TarifarioContent() {
         {/* Table Container with Sticky Headers */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm flex-1 flex flex-col overflow-hidden">
           <div className="max-h-[calc(100vh-215px)] overflow-y-auto overflow-x-auto relative">
-            <table className="w-full text-left text-xs text-slate-700 relative border-collapse">
+            <table className="w-full min-w-[1100px] text-left text-xs text-slate-700 relative border-collapse">
               {/* Sticky Table Header with interactive sorting */}
               <thead className="sticky top-0 z-20 bg-slate-100 text-slate-700 font-bold border-b-2 border-slate-200 text-[11px] uppercase tracking-wider shadow-2xs select-none">
                 <tr>
@@ -1147,8 +1147,8 @@ function TarifarioContent() {
                       </td>
 
                       {/* Designation */}
-                      <td className="py-2 px-4">
-                        <div className="font-semibold text-slate-900 whitespace-pre-line leading-tight">
+                      <td className="py-2 px-4 min-w-[260px]">
+                        <div className="font-semibold text-slate-900 whitespace-pre-line leading-tight break-words">
                           {item.designation}
                         </div>
                       </td>
@@ -1172,7 +1172,7 @@ function TarifarioContent() {
                       </td>
 
                       {/* Norm */}
-                      <td className="py-2 px-3 text-slate-600 whitespace-pre-line leading-relaxed text-[11px]">
+                      <td className="py-2 px-3 text-slate-600 whitespace-pre-line leading-relaxed text-[11px] break-words">
                         {item.norm || <span className="text-slate-400 italic">-</span>}
                       </td>
 

@@ -1,10 +1,33 @@
-import { TarifarioItem, TarifarioCategoryStructure } from './types';
+import { TarifarioItem, TarifarioCategoryStructure, SubcategoryItem } from './types';
 import { isSupabaseConfigured, supabaseAdmin } from './supabase';
 import initialDbData from '../data/db.json';
 
 // In-memory cache for fast lookups and resilience
 let _cachedTarifario: TarifarioItem[] | null = null;
 let _cachedStructure: TarifarioCategoryStructure[] | null = null;
+
+export function normalizeSubcategory(sub: string | SubcategoryItem): { name: string; children: string[] } {
+  if (typeof sub === 'string') {
+    return { name: sub.trim(), children: [] };
+  }
+  return {
+    name: (sub?.name || '').trim(),
+    children: Array.isArray(sub?.children)
+      ? sub.children.map((c) => (typeof c === 'string' ? c.trim() : '')).filter(Boolean)
+      : [],
+  };
+}
+
+export function findSubcategoryIndex(
+  subcategories: (string | SubcategoryItem)[],
+  name: string
+): number {
+  const target = name.trim().toLowerCase();
+  return subcategories.findIndex((s) => {
+    const sName = (typeof s === 'string' ? s : s?.name || '').trim().toLowerCase();
+    return sName === target;
+  });
+}
 
 function ensureLocalCache(): { items: TarifarioItem[]; structure: TarifarioCategoryStructure[] } {
   if (!_cachedTarifario) {
@@ -32,6 +55,7 @@ export function mapRowToTarifarioItem(row: any): TarifarioItem {
     code: row.code || '',
     category: row.category || 'ENSAYOS GENERALES',
     subcategory: row.subcategory || row.category || 'ENSAYOS GENERALES',
+    subSubcategory: row.sub_subcategory || '',
     designation: row.designation || '',
     norm: row.norm || '',
     minWeightKg:
@@ -54,6 +78,7 @@ export function mapItemToRow(item: Partial<TarifarioItem>) {
   if (item.code !== undefined) row.code = item.code;
   if (item.category !== undefined) row.category = item.category;
   if (item.subcategory !== undefined) row.subcategory = item.subcategory;
+  if (item.subSubcategory !== undefined) row.sub_subcategory = item.subSubcategory;
   if (item.designation !== undefined) row.designation = item.designation;
   if (item.norm !== undefined) row.norm = item.norm;
   if (item.minWeightKg !== undefined) {
@@ -140,12 +165,14 @@ export async function getTarifarioStructureAsync(): Promise<TarifarioCategoryStr
 export async function ensureCategoryAndSubcategoryInStructureAsync(
   cc: string,
   category: string,
-  subcategory?: string
+  subcategory?: string,
+  subSubcategory?: string
 ): Promise<void> {
   if (!cc || !category) return;
   const trimmedCc = cc.trim();
   const trimmedCat = category.trim();
   const trimmedSubcat = subcategory ? subcategory.trim() : '';
+  const trimmedSubSubcat = subSubcategory ? subSubcategory.trim() : '';
 
   const structId = `${trimmedCc}:::${trimmedCat}`;
 
@@ -158,7 +185,14 @@ export async function ensureCategoryAndSubcategoryInStructureAsync(
         .maybeSingle();
 
       if (!existing) {
-        const subcats = trimmedSubcat ? [trimmedSubcat] : [];
+        let subcats: (string | SubcategoryItem)[] = [];
+        if (trimmedSubcat) {
+          if (trimmedSubSubcat) {
+            subcats = [{ name: trimmedSubcat, children: [trimmedSubSubcat] }];
+          } else {
+            subcats = [trimmedSubcat];
+          }
+        }
         await supabaseAdmin.from('tarifario_structure').insert({
           id: structId,
           cc: trimmedCc,
@@ -167,15 +201,33 @@ export async function ensureCategoryAndSubcategoryInStructureAsync(
           updated_at: new Date().toISOString(),
         });
       } else if (trimmedSubcat) {
-        const currentSubcats: string[] = Array.isArray(existing.subcategories)
+        const currentSubcats: (string | SubcategoryItem)[] = Array.isArray(existing.subcategories)
           ? existing.subcategories
           : [];
-        if (!currentSubcats.includes(trimmedSubcat)) {
-          const updatedSubcats = [...currentSubcats, trimmedSubcat];
+        const idx = findSubcategoryIndex(currentSubcats, trimmedSubcat);
+        let changed = false;
+
+        if (idx === -1) {
+          if (trimmedSubSubcat) {
+            currentSubcats.push({ name: trimmedSubcat, children: [trimmedSubSubcat] });
+          } else {
+            currentSubcats.push(trimmedSubcat);
+          }
+          changed = true;
+        } else if (trimmedSubSubcat) {
+          const item = normalizeSubcategory(currentSubcats[idx]);
+          if (!item.children.some((c) => c.toLowerCase() === trimmedSubSubcat.toLowerCase())) {
+            item.children.push(trimmedSubSubcat);
+            currentSubcats[idx] = item;
+            changed = true;
+          }
+        }
+
+        if (changed) {
           await supabaseAdmin
             .from('tarifario_structure')
             .update({
-              subcategories: updatedSubcats,
+              subcategories: currentSubcats,
               updated_at: new Date().toISOString(),
             })
             .eq('id', structId);
@@ -192,10 +244,31 @@ export async function ensureCategoryAndSubcategoryInStructureAsync(
     (s) => s.cc === trimmedCc && s.category.toLowerCase() === trimmedCat.toLowerCase()
   );
   if (!entry) {
-    entry = { cc: trimmedCc, category: trimmedCat, subcategories: trimmedSubcat ? [trimmedSubcat] : [] };
+    let subcats: (string | SubcategoryItem)[] = [];
+    if (trimmedSubcat) {
+      if (trimmedSubSubcat) {
+        subcats = [{ name: trimmedSubcat, children: [trimmedSubSubcat] }];
+      } else {
+        subcats = [trimmedSubcat];
+      }
+    }
+    entry = { cc: trimmedCc, category: trimmedCat, subcategories: subcats };
     structure.push(entry);
-  } else if (trimmedSubcat && !entry.subcategories.includes(trimmedSubcat)) {
-    entry.subcategories.push(trimmedSubcat);
+  } else if (trimmedSubcat) {
+    const idx = findSubcategoryIndex(entry.subcategories, trimmedSubcat);
+    if (idx === -1) {
+      if (trimmedSubSubcat) {
+        entry.subcategories.push({ name: trimmedSubcat, children: [trimmedSubSubcat] });
+      } else {
+        entry.subcategories.push(trimmedSubcat);
+      }
+    } else if (trimmedSubSubcat) {
+      const item = normalizeSubcategory(entry.subcategories[idx]);
+      if (!item.children.some((c) => c.toLowerCase() === trimmedSubSubcat.toLowerCase())) {
+        item.children.push(trimmedSubSubcat);
+        entry.subcategories[idx] = item;
+      }
+    }
   }
 }
 
@@ -232,11 +305,12 @@ export async function updateTarifarioItemAsync(
         }
 
         // If category or subcategory updated, ensure structure has it
-        if (cleanUpdates.category || cleanUpdates.cc || cleanUpdates.subcategory) {
+        if (cleanUpdates.category || cleanUpdates.cc || cleanUpdates.subcategory || cleanUpdates.subSubcategory) {
           await ensureCategoryAndSubcategoryInStructureAsync(
             updatedItem.cc,
             updatedItem.category,
-            updatedItem.subcategory
+            updatedItem.subcategory,
+            updatedItem.subSubcategory
           );
         }
 
@@ -262,11 +336,12 @@ export async function updateTarifarioItemAsync(
     updatedBy,
   };
 
-  if (cleanUpdates.category || cleanUpdates.cc || cleanUpdates.subcategory) {
+  if (cleanUpdates.category || cleanUpdates.cc || cleanUpdates.subcategory || cleanUpdates.subSubcategory) {
     await ensureCategoryAndSubcategoryInStructureAsync(
       items[idx].cc,
       items[idx].category,
-      items[idx].subcategory
+      items[idx].subcategory,
+      items[idx].subSubcategory
     );
   }
 
@@ -289,6 +364,7 @@ export async function createTarifarioItemAsync(
     code: itemData.code || '',
     category: itemData.category || 'ENSAYOS GENERALES',
     subcategory: itemData.subcategory || itemData.category || 'ENSAYOS GENERALES',
+    subSubcategory: itemData.subSubcategory || '',
     designation: itemData.designation,
     norm: itemData.norm || '',
     minWeightKg: itemData.minWeightKg || 0,
@@ -317,7 +393,8 @@ export async function createTarifarioItemAsync(
         await ensureCategoryAndSubcategoryInStructureAsync(
           created.cc,
           created.category,
-          created.subcategory
+          created.subcategory,
+          created.subSubcategory
         );
         return created;
       }
@@ -334,7 +411,8 @@ export async function createTarifarioItemAsync(
   await ensureCategoryAndSubcategoryInStructureAsync(
     newItem.cc,
     newItem.category,
-    newItem.subcategory
+    newItem.subcategory,
+    newItem.subSubcategory
   );
   return newItem;
 }
@@ -347,6 +425,7 @@ export async function batchMoveTarifarioItemsAsync(
   targetCc: string,
   targetCategory: string,
   targetSubcategory: string,
+  targetSubSubcategory: string = '',
   updatedBy: string = 'Sistema'
 ): Promise<{ success: boolean; count: number; error?: string }> {
   if (!ids || ids.length === 0) {
@@ -356,6 +435,7 @@ export async function batchMoveTarifarioItemsAsync(
   const trimmedCc = targetCc.trim();
   const trimmedCat = targetCategory.trim();
   const trimmedSubcat = (targetSubcategory || targetCategory).trim();
+  const trimmedSubSubcat = (targetSubSubcategory || '').trim();
 
   if (isSupabaseConfigured && supabaseAdmin) {
     try {
@@ -365,6 +445,7 @@ export async function batchMoveTarifarioItemsAsync(
           cc: trimmedCc,
           category: trimmedCat,
           subcategory: trimmedSubcat,
+          sub_subcategory: trimmedSubSubcat,
           updated_at: now,
           updated_by: updatedBy,
         })
@@ -376,7 +457,12 @@ export async function batchMoveTarifarioItemsAsync(
       }
 
       // Ensure target category/subcategory in structure
-      await ensureCategoryAndSubcategoryInStructureAsync(trimmedCc, trimmedCat, trimmedSubcat);
+      await ensureCategoryAndSubcategoryInStructureAsync(
+        trimmedCc,
+        trimmedCat,
+        trimmedSubcat,
+        trimmedSubSubcat
+      );
 
       // Update in local cache
       const { items } = ensureLocalCache();
@@ -386,6 +472,7 @@ export async function batchMoveTarifarioItemsAsync(
           it.cc = trimmedCc;
           it.category = trimmedCat;
           it.subcategory = trimmedSubcat;
+          it.subSubcategory = trimmedSubSubcat;
           it.updatedAt = now;
           it.updatedBy = updatedBy;
         }
@@ -407,13 +494,19 @@ export async function batchMoveTarifarioItemsAsync(
       it.cc = trimmedCc;
       it.category = trimmedCat;
       it.subcategory = trimmedSubcat;
+      it.subSubcategory = trimmedSubSubcat;
       it.updatedAt = now;
       it.updatedBy = updatedBy;
       count++;
     }
   });
 
-  await ensureCategoryAndSubcategoryInStructureAsync(trimmedCc, trimmedCat, trimmedSubcat);
+  await ensureCategoryAndSubcategoryInStructureAsync(
+    trimmedCc,
+    trimmedCat,
+    trimmedSubcat,
+    trimmedSubSubcat
+  );
   return { success: true, count };
 }
 
@@ -423,7 +516,7 @@ export async function batchMoveTarifarioItemsAsync(
 export async function addCategoryToStructureAsync(
   cc: string,
   category: string,
-  subcategories: string[] = []
+  subcategories: (string | SubcategoryItem)[] = []
 ): Promise<{ success: boolean; message?: string }> {
   const trimmedCat = category.trim();
   const trimmedCc = cc.trim();
@@ -431,7 +524,6 @@ export async function addCategoryToStructureAsync(
   if (!trimmedCc) return { success: false, message: 'El Centro de Costo es requerido.' };
 
   const structId = `${trimmedCc}:::${trimmedCat}`;
-  const cleanSubcats = Array.from(new Set(subcategories.map((s) => s.trim()).filter(Boolean)));
 
   if (isSupabaseConfigured && supabaseAdmin) {
     try {
@@ -449,7 +541,7 @@ export async function addCategoryToStructureAsync(
         id: structId,
         cc: trimmedCc,
         category: trimmedCat,
-        subcategories: cleanSubcats,
+        subcategories,
         updated_at: new Date().toISOString(),
       });
 
@@ -469,21 +561,24 @@ export async function addCategoryToStructureAsync(
   if (existing) {
     return { success: false, message: 'Esta categoría ya existe para este Centro de Costo.' };
   }
-  structure.push({ cc: trimmedCc, category: trimmedCat, subcategories: cleanSubcats });
+  structure.push({ cc: trimmedCc, category: trimmedCat, subcategories });
   return { success: true };
 }
 
 /**
  * Agregar una subcategoría a una categoría existente.
+ * Si se especifica parentSubcategory, se agrega como nivel 3 dentro de ella.
  */
 export async function addSubcategoryToStructureAsync(
   cc: string,
   category: string,
-  subcategory: string
+  subcategory: string,
+  parentSubcategory?: string
 ): Promise<{ success: boolean; message?: string }> {
   const trimmedCc = cc.trim();
   const trimmedCat = category.trim();
   const trimmedSubcat = subcategory.trim();
+  const trimmedParent = parentSubcategory ? parentSubcategory.trim() : '';
   if (!trimmedSubcat) return { success: false, message: 'La subcategoría no puede estar vacía.' };
 
   const structId = `${trimmedCc}:::${trimmedCat}`;
@@ -497,22 +592,49 @@ export async function addSubcategoryToStructureAsync(
         .maybeSingle();
 
       if (!existing) {
+        let initialSubcats: (string | SubcategoryItem)[] = [];
+        if (trimmedParent) {
+          initialSubcats = [{ name: trimmedParent, children: [trimmedSubcat] }];
+        } else {
+          initialSubcats = [trimmedSubcat];
+        }
         await supabaseAdmin.from('tarifario_structure').insert({
           id: structId,
           cc: trimmedCc,
           category: trimmedCat,
-          subcategories: [trimmedSubcat],
+          subcategories: initialSubcats,
           updated_at: new Date().toISOString(),
         });
       } else {
-        const subcats: string[] = Array.isArray(existing.subcategories) ? existing.subcategories : [];
-        if (subcats.some((s) => s.toLowerCase() === trimmedSubcat.toLowerCase())) {
-          return { success: false, message: 'Esta subcategoría ya existe dentro de esta categoría.' };
+        const subcats: (string | SubcategoryItem)[] = Array.isArray(existing.subcategories)
+          ? existing.subcategories
+          : [];
+
+        if (trimmedParent) {
+          // Level 3 addition
+          const parentIdx = findSubcategoryIndex(subcats, trimmedParent);
+          if (parentIdx === -1) {
+            subcats.push({ name: trimmedParent, children: [trimmedSubcat] });
+          } else {
+            const parentObj = normalizeSubcategory(subcats[parentIdx]);
+            if (parentObj.children.some((c) => c.toLowerCase() === trimmedSubcat.toLowerCase())) {
+              return { success: false, message: 'Esta subcategoría ya existe dentro de este grupo.' };
+            }
+            parentObj.children.push(trimmedSubcat);
+            subcats[parentIdx] = parentObj;
+          }
+        } else {
+          // Level 2 addition
+          if (findSubcategoryIndex(subcats, trimmedSubcat) !== -1) {
+            return { success: false, message: 'Esta subcategoría ya existe dentro de esta categoría.' };
+          }
+          subcats.push(trimmedSubcat);
         }
+
         await supabaseAdmin
           .from('tarifario_structure')
           .update({
-            subcategories: [...subcats, trimmedSubcat],
+            subcategories: subcats,
             updated_at: new Date().toISOString(),
           })
           .eq('id', structId);
@@ -527,13 +649,35 @@ export async function addSubcategoryToStructureAsync(
     (s) => s.cc === trimmedCc && s.category.toLowerCase() === trimmedCat.toLowerCase()
   );
   if (!entry) {
-    entry = { cc: trimmedCc, category: trimmedCat, subcategories: [] };
+    let initialSubcats: (string | SubcategoryItem)[] = [];
+    if (trimmedParent) {
+      initialSubcats = [{ name: trimmedParent, children: [trimmedSubcat] }];
+    } else {
+      initialSubcats = [trimmedSubcat];
+    }
+    entry = { cc: trimmedCc, category: trimmedCat, subcategories: initialSubcats };
     structure.push(entry);
+  } else {
+    if (trimmedParent) {
+      const parentIdx = findSubcategoryIndex(entry.subcategories, trimmedParent);
+      if (parentIdx === -1) {
+        entry.subcategories.push({ name: trimmedParent, children: [trimmedSubcat] });
+      } else {
+        const parentObj = normalizeSubcategory(entry.subcategories[parentIdx]);
+        if (parentObj.children.some((c) => c.toLowerCase() === trimmedSubcat.toLowerCase())) {
+          return { success: false, message: 'Esta subcategoría ya existe dentro de este grupo.' };
+        }
+        parentObj.children.push(trimmedSubcat);
+        entry.subcategories[parentIdx] = parentObj;
+      }
+    } else {
+      if (findSubcategoryIndex(entry.subcategories, trimmedSubcat) !== -1) {
+        return { success: false, message: 'Esta subcategoría ya existe dentro de esta categoría.' };
+      }
+      entry.subcategories.push(trimmedSubcat);
+    }
   }
-  if (entry.subcategories.some((s) => s.toLowerCase() === trimmedSubcat.toLowerCase())) {
-    return { success: false, message: 'Esta subcategoría ya existe dentro de esta categoría.' };
-  }
-  entry.subcategories.push(trimmedSubcat);
+
   return { success: true };
 }
 
@@ -612,14 +756,18 @@ export async function renameCategoryInDbAsync(
 
 /**
  * Renombrar subcategoría en estructura y en todos los ensayos.
+ * Si parentSubcategory está presente, renombra la sub-subcategoría de nivel 3.
  */
 export async function renameSubcategoryInDbAsync(
   cc: string,
   category: string,
   oldSubcategory: string,
-  newSubcategory: string
+  newSubcategory: string,
+  parentSubcategory?: string
 ): Promise<{ success: boolean; updatedCount: number; message?: string }> {
   const trimmedNew = newSubcategory.trim();
+  const trimmedOld = oldSubcategory.trim();
+  const trimmedParent = parentSubcategory ? parentSubcategory.trim() : '';
   if (!trimmedNew) return { success: false, updatedCount: 0, message: 'El nuevo nombre no puede estar vacío.' };
 
   const structId = `${cc}:::${category}`;
@@ -634,27 +782,64 @@ export async function renameSubcategoryInDbAsync(
         .maybeSingle();
 
       if (entry) {
-        const subcats = (entry.subcategories || []).map((s: string) =>
-          s === oldSubcategory ? trimmedNew : s
-        );
+        const subcats: (string | SubcategoryItem)[] = Array.isArray(entry.subcategories) ? entry.subcategories : [];
+        if (trimmedParent) {
+          // Renaming Level 3 child
+          const parentIdx = findSubcategoryIndex(subcats, trimmedParent);
+          if (parentIdx !== -1) {
+            const parentObj = normalizeSubcategory(subcats[parentIdx]);
+            parentObj.children = parentObj.children.map((c) => (c === trimmedOld ? trimmedNew : c));
+            subcats[parentIdx] = parentObj;
+          }
+        } else {
+          // Renaming Level 2 subcategory
+          const idx = findSubcategoryIndex(subcats, trimmedOld);
+          if (idx !== -1) {
+            const current = subcats[idx];
+            if (typeof current === 'object' && current !== null) {
+              subcats[idx] = { ...current, name: trimmedNew };
+            } else {
+              subcats[idx] = trimmedNew;
+            }
+          }
+        }
+
         await supabaseAdmin
           .from('tarifario_structure')
           .update({ subcategories: subcats, updated_at: new Date().toISOString() })
           .eq('id', structId);
       }
 
-      const { data: updatedRows } = await supabaseAdmin
-        .from('tarifario')
-        .update({
-          subcategory: trimmedNew,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('cc', cc)
-        .eq('category', category)
-        .eq('subcategory', oldSubcategory)
-        .select('id');
+      if (trimmedParent) {
+        // Update level 3 items in tarifario
+        const { data: updatedRows } = await supabaseAdmin
+          .from('tarifario')
+          .update({
+            sub_subcategory: trimmedNew,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('cc', cc)
+          .eq('category', category)
+          .eq('subcategory', trimmedParent)
+          .eq('sub_subcategory', trimmedOld)
+          .select('id');
 
-      if (updatedRows) updatedCount = updatedRows.length;
+        if (updatedRows) updatedCount = updatedRows.length;
+      } else {
+        // Update level 2 items in tarifario
+        const { data: updatedRows } = await supabaseAdmin
+          .from('tarifario')
+          .update({
+            subcategory: trimmedNew,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('cc', cc)
+          .eq('category', category)
+          .eq('subcategory', trimmedOld)
+          .select('id');
+
+        if (updatedRows) updatedCount = updatedRows.length;
+      }
     } catch (e: any) {
       console.error('Error renaming subcategory in Supabase:', e.message);
     }
@@ -664,13 +849,39 @@ export async function renameSubcategoryInDbAsync(
   const { structure, items } = ensureLocalCache();
   const entry = structure.find((s) => s.cc === cc && s.category === category);
   if (entry) {
-    entry.subcategories = entry.subcategories.map((s) => (s === oldSubcategory ? trimmedNew : s));
+    if (trimmedParent) {
+      const parentIdx = findSubcategoryIndex(entry.subcategories, trimmedParent);
+      if (parentIdx !== -1) {
+        const parentObj = normalizeSubcategory(entry.subcategories[parentIdx]);
+        parentObj.children = parentObj.children.map((c) => (c === trimmedOld ? trimmedNew : c));
+        entry.subcategories[parentIdx] = parentObj;
+      }
+    } else {
+      const idx = findSubcategoryIndex(entry.subcategories, trimmedOld);
+      if (idx !== -1) {
+        const current = entry.subcategories[idx];
+        if (typeof current === 'object' && current !== null) {
+          entry.subcategories[idx] = { ...current, name: trimmedNew };
+        } else {
+          entry.subcategories[idx] = trimmedNew;
+        }
+      }
+    }
   }
+
   items.forEach((it) => {
-    if (it.cc === cc && it.category === category && it.subcategory === oldSubcategory) {
-      it.subcategory = trimmedNew;
-      it.updatedAt = new Date().toISOString();
-      if (!isSupabaseConfigured) updatedCount++;
+    if (trimmedParent) {
+      if (it.cc === cc && it.category === category && it.subcategory === trimmedParent && (it.subSubcategory || '') === trimmedOld) {
+        it.subSubcategory = trimmedNew;
+        it.updatedAt = new Date().toISOString();
+        if (!isSupabaseConfigured) updatedCount++;
+      }
+    } else {
+      if (it.cc === cc && it.category === category && it.subcategory === trimmedOld) {
+        it.subcategory = trimmedNew;
+        it.updatedAt = new Date().toISOString();
+        if (!isSupabaseConfigured) updatedCount++;
+      }
     }
   });
 
@@ -732,23 +943,33 @@ export async function deleteCategoryFromStructureAsync(
 
 /**
  * Eliminar una subcategoría vacía de la estructura.
+ * Si parentSubcategory está presente, elimina la sub-subcategoría de nivel 3 dentro de ella.
  */
 export async function deleteSubcategoryFromStructureAsync(
   cc: string,
   category: string,
-  subcategory: string
+  subcategory: string,
+  parentSubcategory?: string
 ): Promise<{ success: boolean; count: number; message?: string }> {
+  const trimmedSubcat = subcategory.trim();
+  const trimmedParent = parentSubcategory ? parentSubcategory.trim() : '';
   const structId = `${cc}:::${category}`;
 
   if (isSupabaseConfigured && supabaseAdmin) {
     try {
-      const { count, error } = await supabaseAdmin
+      let query = supabaseAdmin
         .from('tarifario')
         .select('*', { count: 'exact', head: true })
         .eq('cc', cc)
-        .eq('category', category)
-        .eq('subcategory', subcategory);
+        .eq('category', category);
 
+      if (trimmedParent) {
+        query = query.eq('subcategory', trimmedParent).eq('sub_subcategory', trimmedSubcat);
+      } else {
+        query = query.eq('subcategory', trimmedSubcat);
+      }
+
+      const { count, error } = await query;
       if (error) return { success: false, count: 0, message: error.message };
 
       const numCount = count || 0;
@@ -767,7 +988,21 @@ export async function deleteSubcategoryFromStructureAsync(
         .maybeSingle();
 
       if (entry) {
-        const subcats = (entry.subcategories || []).filter((s: string) => s !== subcategory);
+        let subcats: (string | SubcategoryItem)[] = Array.isArray(entry.subcategories) ? entry.subcategories : [];
+        if (trimmedParent) {
+          const parentIdx = findSubcategoryIndex(subcats, trimmedParent);
+          if (parentIdx !== -1) {
+            const parentObj = normalizeSubcategory(subcats[parentIdx]);
+            parentObj.children = parentObj.children.filter((c) => c !== trimmedSubcat);
+            subcats[parentIdx] = parentObj;
+          }
+        } else {
+          subcats = subcats.filter((s) => {
+            const sName = typeof s === 'string' ? s : s?.name || '';
+            return sName !== trimmedSubcat;
+          });
+        }
+
         await supabaseAdmin
           .from('tarifario_structure')
           .update({ subcategories: subcats, updated_at: new Date().toISOString() })
@@ -779,9 +1014,14 @@ export async function deleteSubcategoryFromStructureAsync(
   }
 
   const { structure, items } = ensureLocalCache();
-  const localCount = items.filter(
-    (it) => it.cc === cc && it.category === category && it.subcategory === subcategory
-  ).length;
+  const localCount = items.filter((it) => {
+    if (it.cc !== cc || it.category !== category) return false;
+    if (trimmedParent) {
+      return it.subcategory === trimmedParent && (it.subSubcategory || '') === trimmedSubcat;
+    }
+    return it.subcategory === trimmedSubcat;
+  }).length;
+
   if (localCount > 0 && !isSupabaseConfigured) {
     return {
       success: false,
@@ -792,7 +1032,19 @@ export async function deleteSubcategoryFromStructureAsync(
 
   const entry = structure.find((s) => s.cc === cc && s.category === category);
   if (entry) {
-    entry.subcategories = entry.subcategories.filter((s) => s !== subcategory);
+    if (trimmedParent) {
+      const parentIdx = findSubcategoryIndex(entry.subcategories, trimmedParent);
+      if (parentIdx !== -1) {
+        const parentObj = normalizeSubcategory(entry.subcategories[parentIdx]);
+        parentObj.children = parentObj.children.filter((c) => c !== trimmedSubcat);
+        entry.subcategories[parentIdx] = parentObj;
+      }
+    } else {
+      entry.subcategories = entry.subcategories.filter((s) => {
+        const sName = typeof s === 'string' ? s : s?.name || '';
+        return sName !== trimmedSubcat;
+      });
+    }
   }
 
   return { success: true, count: 0 };

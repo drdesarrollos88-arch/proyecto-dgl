@@ -34,6 +34,10 @@ export async function GET() {
         if (it.subcategory) {
           const subKey = `${it.cc}:::${it.category}:::${it.subcategory}`;
           itemCounts[subKey] = (itemCounts[subKey] || 0) + 1;
+          if (it.subSubcategory) {
+            const subSubKey = `${it.cc}:::${it.category}:::${it.subcategory}:::${it.subSubcategory}`;
+            itemCounts[subSubKey] = (itemCounts[subSubKey] || 0) + 1;
+          }
         }
       }
     }
@@ -59,7 +63,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { type, cc, category, subcategory, subcategories } = body;
+    const { type, cc, category, subcategory, parentSubcategory, subcategories } = body;
 
     if (type === 'category') {
       if (!cc || !category) {
@@ -79,7 +83,7 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-      const result = await addSubcategoryToStructureAsync(cc, category, subcategory);
+      const result = await addSubcategoryToStructureAsync(cc, category, subcategory, parentSubcategory);
       if (!result.success) {
         return NextResponse.json({ error: result.message }, { status: 400 });
       }
@@ -103,7 +107,7 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { type, cc, oldCategory, newCategory, category, oldSubcategory, newSubcategory } = body;
+    const { type, cc, oldCategory, newCategory, category, oldSubcategory, newSubcategory, parentSubcategory } = body;
 
     if (type === 'renameCategory') {
       if (!cc || !oldCategory || !newCategory) {
@@ -130,7 +134,7 @@ export async function PUT(req: NextRequest) {
           { status: 400 }
         );
       }
-      const result = await renameSubcategoryInDbAsync(cc, category, oldSubcategory, newSubcategory);
+      const result = await renameSubcategoryInDbAsync(cc, category, oldSubcategory, newSubcategory, parentSubcategory);
       if (!result.success) {
         return NextResponse.json({ error: result.message }, { status: 400 });
       }
@@ -158,7 +162,7 @@ export async function DELETE(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { type, cc, category, subcategory } = body;
+    const { type, cc, category, subcategory, parentSubcategory } = body;
 
     if (type === 'category') {
       if (!cc || !category) {
@@ -178,7 +182,7 @@ export async function DELETE(req: NextRequest) {
           { status: 400 }
         );
       }
-      const result = await deleteSubcategoryFromStructureAsync(cc, category, subcategory);
+      const result = await deleteSubcategoryFromStructureAsync(cc, category, subcategory, parentSubcategory);
       if (!result.success) {
         return NextResponse.json({ error: result.message, count: result.count }, { status: 400 });
       }

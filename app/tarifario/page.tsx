@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import TarifarioExportModal from '@/components/TarifarioExportModal';
-import { TarifarioItem, SessionUser, CENTROS_DE_COSTO } from '@/lib/types';
+import { TarifarioItem, SessionUser, CENTROS_DE_COSTO, TarifarioCategoryStructure, SubcategoryItem } from '@/lib/types';
 import { hasPermission } from '@/lib/permissions';
 import {
   Search,
@@ -67,17 +67,29 @@ function compareHierarchical(a: string, b: string): number {
   return (a || '').localeCompare(b || '', 'es', { numeric: true, sensitivity: 'base' });
 }
 
+function normalizeSub(sub: string | SubcategoryItem): { name: string; children: string[] } {
+  if (typeof sub === 'string') return { name: sub.trim(), children: [] };
+  return {
+    name: (sub?.name || '').trim(),
+    children: Array.isArray(sub?.children)
+      ? sub.children.map((c) => (typeof c === 'string' ? c.trim() : '')).filter(Boolean)
+      : [],
+  };
+}
+
 function TarifarioContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
   const [items, setItems] = useState<TarifarioItem[]>([]);
+  const [structure, setStructure] = useState<TarifarioCategoryStructure[]>([]);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
   const [selectedCC, setSelectedCC] = useState('ALL');
   const [selectedSubcategory, setSelectedSubcategory] = useState('ALL');
+  const [selectedSubSubcategory, setSelectedSubSubcategory] = useState('ALL');
   const [sortColumn, setSortColumn] = useState<string>('default');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -89,10 +101,13 @@ function TarifarioContent() {
   const [editCC, setEditCC] = useState('');
   const [editCategory, setEditCategory] = useState('');
   const [editSubcategory, setEditSubcategory] = useState('');
+  const [editSubSubcategory, setEditSubSubcategory] = useState('');
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [isCreatingSubcategory, setIsCreatingSubcategory] = useState(false);
   const [newSubcategoryName, setNewSubcategoryName] = useState('');
+  const [isCreatingSubSubcategory, setIsCreatingSubSubcategory] = useState(false);
+  const [newSubSubcategoryName, setNewSubSubcategoryName] = useState('');
   const [editCode, setEditCode] = useState('');
   const [editSku, setEditSku] = useState('');
   const [editMinWeightKg, setEditMinWeightKg] = useState('');
@@ -105,6 +120,7 @@ function TarifarioContent() {
     code: '',
     category: 'I - ENSAYOS BASICOS',
     subcategory: 'I.1 Caracterización de suelos',
+    subSubcategory: '',
     designation: '',
     norm: '',
     minWeightKg: '0',
@@ -117,6 +133,8 @@ function TarifarioContent() {
   const [customNewCat, setCustomNewCat] = useState('');
   const [isCreatingNewSubcat, setIsCreatingNewSubcat] = useState(false);
   const [customNewSubcat, setCustomNewSubcat] = useState('');
+  const [isCreatingNewSubSubcat, setIsCreatingNewSubSubcat] = useState(false);
+  const [customNewSubSubcat, setCustomNewSubSubcat] = useState('');
 
   // Modal de personalización de exportación
   const [showExportModal, setShowExportModal] = useState(false);
@@ -132,6 +150,24 @@ function TarifarioContent() {
   const [actionsDropdownOpen, setActionsDropdownOpen] = useState(false);
   const actionsDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Helper para obtener sub-subcategorías disponibles para una categoría y subcategoría dada
+  const getChildrenForSubcat = (category: string, subcat: string): string[] => {
+    const set = new Set<string>();
+    const catObj = structure.find((s) => s.category === category);
+    if (catObj && catObj.subcategories) {
+      const subObj = catObj.subcategories.map(normalizeSub).find((s) => s.name === subcat);
+      if (subObj && subObj.children) {
+        subObj.children.forEach((c) => set.add(c));
+      }
+    }
+    items.forEach((it) => {
+      if (it.category === category && it.subcategory === subcat && it.subSubcategory) {
+        set.add(it.subSubcategory);
+      }
+    });
+    return Array.from(set).sort(compareHierarchical);
+  };
+
   useEffect(() => {
     // Obtener usuario actual
     fetch('/api/auth/me')
@@ -140,11 +176,12 @@ function TarifarioContent() {
         if (d?.user) setUser(d.user);
       });
 
-    // Cargar catálogo del tarifario
-    fetch('/api/tarifario')
+    // Cargar catálogo y estructura del tarifario
+    fetch('/api/tarifario/estructura')
       .then((res) => res.json())
       .then((d) => {
         if (d.items) setItems(d.items);
+        if (d.structure) setStructure(d.structure);
       })
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
@@ -249,6 +286,21 @@ function TarifarioContent() {
     return { list, counts };
   }, [items, selectedCC, selectedCategory]);
 
+  // Sub-subcategories dependent on selectedCC, selectedCategory, and selectedSubcategory
+  const availableSubSubcategories = useMemo(() => {
+    const counts: Record<string, number> = {};
+    items.forEach((it) => {
+      const matchCC = selectedCC === 'ALL' || it.cc === selectedCC;
+      const matchCat = selectedCategory === 'ALL' || it.category === selectedCategory;
+      const matchSub = selectedSubcategory === 'ALL' || it.subcategory === selectedSubcategory;
+      if (matchCC && matchCat && matchSub && it.subSubcategory) {
+        counts[it.subSubcategory] = (counts[it.subSubcategory] || 0) + 1;
+      }
+    });
+    const list = Object.keys(counts).sort(compareHierarchical);
+    return { list, counts };
+  }, [items, selectedCC, selectedCategory, selectedSubcategory]);
+
   // Filter handlers with cascading dependency resets
   const handleSelectCC = (newCC: string) => {
     setSelectedCC(newCC);
@@ -261,6 +313,7 @@ function TarifarioContent() {
       if (selectedSubcategory !== 'ALL' && !validSubcats.has(selectedSubcategory)) {
         setSelectedSubcategory('ALL');
       }
+      setSelectedSubSubcategory('ALL');
     }
   };
 
@@ -275,11 +328,17 @@ function TarifarioContent() {
       if (selectedSubcategory !== 'ALL' && !validSubcats.has(selectedSubcategory)) {
         setSelectedSubcategory('ALL');
       }
+      setSelectedSubSubcategory('ALL');
     }
   };
 
   const handleSelectSubcategory = (newSubcat: string) => {
     setSelectedSubcategory(newSubcat);
+    setSelectedSubSubcategory('ALL');
+  };
+
+  const handleSelectSubSubcategory = (newSubSubcat: string) => {
+    setSelectedSubSubcategory(newSubSubcat);
   };
 
   const handleResetFilters = () => {
@@ -287,6 +346,7 @@ function TarifarioContent() {
     setSelectedCC('ALL');
     setSelectedCategory('ALL');
     setSelectedSubcategory('ALL');
+    setSelectedSubSubcategory('ALL');
     setSortColumn('default');
     setSortDirection('asc');
   };
@@ -312,7 +372,10 @@ function TarifarioContent() {
       const matchesCC = selectedCC === 'ALL' || it.cc === selectedCC;
       const matchesCat = selectedCategory === 'ALL' || it.category === selectedCategory;
       const matchesSubcat = selectedSubcategory === 'ALL' || it.subcategory === selectedSubcategory;
-      if (!matchesCC || !matchesCat || !matchesSubcat) return false;
+      const matchesSubSubcat =
+        selectedSubSubcategory === 'ALL' ||
+        (it.subSubcategory && it.subSubcategory.trim() === selectedSubSubcategory.trim());
+      if (!matchesCC || !matchesCat || !matchesSubcat || !matchesSubSubcat) return false;
 
       if (!q) return true;
       return (
@@ -322,7 +385,8 @@ function TarifarioContent() {
         (it.sku && it.sku.toLowerCase().includes(q)) ||
         (it.cc && it.cc.toLowerCase().includes(q)) ||
         (it.category && it.category.toLowerCase().includes(q)) ||
-        (it.subcategory && it.subcategory.toLowerCase().includes(q))
+        (it.subcategory && it.subcategory.toLowerCase().includes(q)) ||
+        (it.subSubcategory && it.subSubcategory.toLowerCase().includes(q))
       );
     });
 
@@ -357,16 +421,18 @@ function TarifarioContent() {
         return sortDirection === 'asc' ? cmp : -cmp;
       }
 
-      // Default: Hierarchical order by category -> subcategory -> code
+      // Default: Hierarchical order by category -> subcategory -> subSubcategory -> code
       const catCmp = compareHierarchical(a.category, b.category);
       if (catCmp !== 0) return catCmp;
       const subCmp = compareHierarchical(a.subcategory, b.subcategory);
       if (subCmp !== 0) return subCmp;
+      const subSubCmp = compareHierarchical(a.subSubcategory || '', b.subSubcategory || '');
+      if (subSubCmp !== 0) return subSubCmp;
       return (a.code || '').localeCompare(b.code || '', 'es', { numeric: true, sensitivity: 'base' });
     });
 
     return result;
-  }, [items, search, selectedCategory, selectedCC, selectedSubcategory, sortColumn, sortDirection]);
+  }, [items, search, selectedCategory, selectedCC, selectedSubcategory, selectedSubSubcategory, sortColumn, sortDirection]);
 
   const handleStartEdit = (item: TarifarioItem) => {
     setEditingItem(item);
@@ -376,6 +442,7 @@ function TarifarioContent() {
     setEditCC(item.cc || '1817 - Ensayos Básicos');
     setEditCategory(item.category || categories[0] || 'I - ENSAYOS BASICOS');
     setEditSubcategory(item.subcategory || item.category || '');
+    setEditSubSubcategory(item.subSubcategory || '');
     setEditCode(item.code || '');
     setEditSku(item.sku || '');
     setEditMinWeightKg(String(item.minWeightKg || 0));
@@ -384,6 +451,8 @@ function TarifarioContent() {
     setNewCategoryName('');
     setIsCreatingSubcategory(false);
     setNewSubcategoryName('');
+    setIsCreatingSubSubcategory(false);
+    setNewSubSubcategoryName('');
   };
 
   const handleSaveEdit = async () => {
@@ -396,6 +465,9 @@ function TarifarioContent() {
     const finalSubcategory = isCreatingSubcategory
       ? newSubcategoryName.trim() || editSubcategory
       : editSubcategory || finalCategory;
+    const finalSubSubcategory = isCreatingSubSubcategory
+      ? newSubSubcategoryName.trim()
+      : editSubSubcategory.trim();
 
     try {
       const res = await fetch('/api/tarifario', {
@@ -409,6 +481,7 @@ function TarifarioContent() {
             norm: editNorm,
             category: finalCategory,
             subcategory: finalSubcategory,
+            subSubcategory: finalSubSubcategory,
             cc: editCC,
             sku: editSku,
             minWeightKg: parseFloat(editMinWeightKg) || 0,
@@ -445,6 +518,9 @@ function TarifarioContent() {
     const finalSubcat = isCreatingNewSubcat
       ? customNewSubcat.trim() || newItem.subcategory
       : newItem.subcategory || finalCat;
+    const finalSubSubcat = isCreatingNewSubSubcat
+      ? customNewSubSubcat.trim()
+      : newItem.subSubcategory.trim();
 
     try {
       const res = await fetch('/api/tarifario', {
@@ -454,6 +530,7 @@ function TarifarioContent() {
           ...newItem,
           category: finalCat,
           subcategory: finalSubcat,
+          subSubcategory: finalSubSubcat,
           ufPrice: parseFloat(newItem.ufPrice),
           minWeightKg: parseFloat(newItem.minWeightKg) || 0,
         }),
@@ -467,6 +544,7 @@ function TarifarioContent() {
           code: '',
           category: 'I - ENSAYOS BASICOS',
           subcategory: 'I.1 Caracterización de suelos',
+          subSubcategory: '',
           designation: '',
           norm: '',
           minWeightKg: '0',
@@ -479,11 +557,13 @@ function TarifarioContent() {
         setCustomNewCat('');
         setIsCreatingNewSubcat(false);
         setCustomNewSubcat('');
+        setIsCreatingNewSubSubcat(false);
+        setCustomNewSubSubcat('');
       } else {
         alert(d.error || 'Error al crear el nuevo ítem');
       }
     } catch {
-      alert('Error de conexión.');
+      alert('Error de conexión al crear el nuevo ítem.');
     }
   };
 
@@ -775,10 +855,37 @@ function TarifarioContent() {
                 </select>
               </div>
 
+              {/* 4. Sub-subcategoría / Sub-tipo (Dependiente de Subcategoría) */}
+              {availableSubSubcategories.list.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-1 sm:flex-initial min-w-[210px]">
+                  <Layers className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />
+                  <select
+                    value={selectedSubSubcategory}
+                    onChange={(e) => handleSelectSubSubcategory(e.target.value)}
+                    className={`w-full py-1.5 px-2 text-xs rounded-lg border focus:outline-none focus:ring-2 focus:ring-red-600 cursor-pointer ${
+                      selectedSubSubcategory !== 'ALL'
+                        ? 'border-red-400 bg-red-50/50 text-red-900 font-semibold'
+                        : 'border-slate-300 bg-white text-slate-700 font-normal'
+                    }`}
+                    title="Filtrar por Sub-tipo de ensayo"
+                  >
+                    <option value="ALL">
+                      Todos los Sub-tipos ({availableSubSubcategories.list.length})
+                    </option>
+                    {availableSubSubcategories.list.map((subSub) => (
+                      <option key={subSub} value={subSub}>
+                        {subSub} ({availableSubSubcategories.counts[subSub] || 0})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Limpiar Filtros button */}
               {(selectedCC !== 'ALL' ||
                 selectedCategory !== 'ALL' ||
                 selectedSubcategory !== 'ALL' ||
+                selectedSubSubcategory !== 'ALL' ||
                 search.trim() !== '' ||
                 sortColumn !== 'default') && (
                 <button
@@ -832,6 +939,18 @@ function TarifarioContent() {
                   <button
                     onClick={() => handleSelectSubcategory('ALL')}
                     className="hover:text-emerald-950 ml-0.5 cursor-pointer font-bold"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+
+              {selectedSubSubcategory !== 'ALL' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-50 text-red-800 border border-red-200 font-medium">
+                  Sub-tipo: {selectedSubSubcategory.length > 28 ? selectedSubSubcategory.substring(0, 28) + '...' : selectedSubSubcategory}
+                  <button
+                    onClick={() => handleSelectSubSubcategory('ALL')}
+                    className="hover:text-red-950 ml-0.5 cursor-pointer font-bold"
                   >
                     ×
                   </button>
@@ -1042,6 +1161,12 @@ function TarifarioContent() {
                         {item.subcategory && item.subcategory !== item.category && (
                           <div className="text-[10px] text-blue-700 mt-0.5 font-medium">
                             ↳ {item.subcategory}
+                          </div>
+                        )}
+                        {item.subSubcategory && (
+                          <div className="text-[10px] text-red-700 mt-0.5 font-semibold flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                            <span>{item.subSubcategory}</span>
                           </div>
                         )}
                       </td>
@@ -1295,6 +1420,68 @@ function TarifarioContent() {
                     ))}
                     <option value="__NEW__" className="text-blue-700 font-bold">
                       + Crear nueva subcategoría...
+                    </option>
+                  </select>
+                )}
+              </div>
+
+              {/* Sub-subcategoría (Opcional) */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 uppercase">
+                    Sub-tipo / Sub-subcategoría <span className="text-slate-400 font-normal normal-case">(Opcional)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreatingSubSubcategory(!isCreatingSubSubcategory);
+                      if (!isCreatingSubSubcategory) setNewSubSubcategoryName('');
+                    }}
+                    className="text-[11px] text-blue-700 hover:underline font-semibold flex items-center gap-0.5 cursor-pointer"
+                  >
+                    {isCreatingSubSubcategory ? '✕ Volver a lista' : '+ Nuevo sub-tipo'}
+                  </button>
+                </div>
+
+                {isCreatingSubSubcategory ? (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      placeholder="Escribe el nombre del nuevo sub-tipo..."
+                      value={newSubSubcategoryName}
+                      onChange={(e) => setNewSubSubcategoryName(e.target.value)}
+                      className="w-full p-2 border-2 border-blue-400 bg-blue-50/20 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsCreatingSubSubcategory(false)}
+                      className="px-2 py-2 text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg font-bold cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    value={editSubSubcategory}
+                    onChange={(e) => {
+                      if (e.target.value === '__NEW__') {
+                        setIsCreatingSubSubcategory(true);
+                        setNewSubSubcategoryName('');
+                      } else {
+                        setEditSubSubcategory(e.target.value);
+                      }
+                    }}
+                    className="w-full p-2 border border-slate-300 rounded-lg text-xs bg-white font-medium focus:ring-2 focus:ring-blue-600 focus:outline-none cursor-pointer"
+                  >
+                    <option value="">(Ninguno / Subcategoría general)</option>
+                    {getChildrenForSubcat(editCategory, editSubcategory).map((subSub) => (
+                      <option key={subSub} value={subSub}>
+                        {subSub}
+                      </option>
+                    ))}
+                    <option value="__NEW__" className="text-blue-700 font-bold">
+                      + Crear nuevo sub-tipo...
                     </option>
                   </select>
                 )}
@@ -1568,6 +1755,68 @@ function TarifarioContent() {
                     ))}
                     <option value="__NEW__" className="text-blue-700 font-bold">
                       + Crear nueva subcategoría...
+                    </option>
+                  </select>
+                )}
+              </div>
+
+              {/* Sub-subcategoría (Opcional) */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 uppercase">
+                    Sub-tipo / Sub-subcategoría <span className="text-slate-400 font-normal normal-case">(Opcional)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreatingNewSubSubcat(!isCreatingNewSubSubcat);
+                      if (!isCreatingNewSubSubcat) setCustomNewSubSubcat('');
+                    }}
+                    className="text-[11px] text-blue-700 hover:underline font-semibold cursor-pointer"
+                  >
+                    {isCreatingNewSubSubcat ? '✕ Volver a lista' : '+ Nuevo sub-tipo'}
+                  </button>
+                </div>
+
+                {isCreatingNewSubSubcat ? (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      placeholder="Escribe el nombre del nuevo sub-tipo..."
+                      value={customNewSubSubcat}
+                      onChange={(e) => setCustomNewSubSubcat(e.target.value)}
+                      className="w-full p-2 border-2 border-blue-400 bg-blue-50/20 rounded-lg text-xs font-semibold focus:outline-none"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setIsCreatingNewSubSubcat(false)}
+                      className="px-2 py-2 text-xs bg-slate-100 text-slate-600 rounded-lg font-bold cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    value={newItem.subSubcategory}
+                    onChange={(e) => {
+                      if (e.target.value === '__NEW__') {
+                        setIsCreatingNewSubSubcat(true);
+                        setCustomNewSubSubcat('');
+                      } else {
+                        setNewItem({ ...newItem, subSubcategory: e.target.value });
+                      }
+                    }}
+                    className="w-full p-2 border border-slate-300 rounded-lg text-xs bg-white font-medium"
+                  >
+                    <option value="">(Ninguno / Subcategoría general)</option>
+                    {getChildrenForSubcat(newItem.category, newItem.subcategory).map((subSub) => (
+                      <option key={subSub} value={subSub}>
+                        {subSub}
+                      </option>
+                    ))}
+                    <option value="__NEW__" className="text-blue-700 font-bold">
+                      + Crear nuevo sub-tipo...
                     </option>
                   </select>
                 )}

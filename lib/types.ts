@@ -69,11 +69,17 @@ export interface SessionUser {
   signature?: string;
 }
 
+export interface SubcategoryItem {
+  name: string;
+  children?: string[];
+}
+
 export interface TarifarioItem {
   id: string;
   code: string;
   category: string;
   subcategory: string;
+  subSubcategory?: string;
   designation: string;
   norm: string;
   minWeightKg: number | string;
@@ -89,7 +95,7 @@ export interface TarifarioItem {
 export interface TarifarioCategoryStructure {
   cc: string;
   category: string;
-  subcategories: string[];
+  subcategories: (string | SubcategoryItem)[];
 }
 
 export interface CotizacionItem {

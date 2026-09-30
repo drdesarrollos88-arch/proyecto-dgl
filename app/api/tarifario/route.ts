@@ -33,7 +33,7 @@ export async function PUT(req: NextRequest) {
 
     // Check for batch move operation
     if (body.action === 'batchMove') {
-      const { ids, targetCc, targetCategory, targetSubcategory } = body;
+      const { ids, targetCc, targetCategory, targetSubcategory, targetSubSubcategory } = body;
       if (!Array.isArray(ids) || ids.length === 0 || !targetCc || !targetCategory) {
         return NextResponse.json(
           { error: 'Se requiere una lista de IDs, Centro de Costo y Categoría destino.' },
@@ -46,6 +46,7 @@ export async function PUT(req: NextRequest) {
         targetCc,
         targetCategory,
         targetSubcategory || targetCategory,
+        targetSubSubcategory || '',
         currentUser.name
       );
 
@@ -100,6 +101,7 @@ export async function POST(req: NextRequest) {
         code: itemData.code || '',
         category: itemData.category || 'ENSAYOS GENERALES',
         subcategory: itemData.subcategory || itemData.category || 'ENSAYOS GENERALES',
+        subSubcategory: itemData.subSubcategory || '',
         designation: itemData.designation,
         norm: itemData.norm || '',
         minWeightKg: itemData.minWeightKg || 0,

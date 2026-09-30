@@ -495,7 +495,7 @@ export function addSubcategoryToStructure(
     structure.push(entry);
   }
 
-  if (entry.subcategories.some((s) => s.toLowerCase() === trimmedSubcat.toLowerCase())) {
+  if (entry.subcategories.some((s) => (typeof s === 'string' ? s : s.name).toLowerCase() === trimmedSubcat.toLowerCase())) {
     return { success: false, message: 'Esta subcategoría ya existe dentro de esta categoría.' };
   }
 

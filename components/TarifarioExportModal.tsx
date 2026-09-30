@@ -152,7 +152,7 @@ export default function TarifarioExportModal({
       const catMap = ccMap.get(s.cc)!;
       if (!catMap.has(s.category)) catMap.set(s.category, new Set<string>());
       const subSet = catMap.get(s.category)!;
-      (s.subcategories || []).forEach((sub) => subSet.add(sub));
+      (s.subcategories || []).forEach((sub) => subSet.add(typeof sub === 'string' ? sub : sub.name));
     });
 
     // Populate from items

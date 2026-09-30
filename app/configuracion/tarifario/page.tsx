@@ -4,7 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import TarifarioExportModal from '@/components/TarifarioExportModal';
-import { CENTROS_DE_COSTO, SessionUser, TarifarioCategoryStructure, TarifarioItem } from '@/lib/types';
+import { CENTROS_DE_COSTO, SessionUser, TarifarioCategoryStructure, TarifarioItem, SubcategoryItem } from '@/lib/types';
 import {
   FolderTree,
   FolderPlus,
@@ -34,6 +34,17 @@ import {
   CheckSquare,
 } from 'lucide-react';
 
+// Helper to normalize subcategory items
+function normalizeSub(sub: string | SubcategoryItem): { name: string; children: string[] } {
+  if (typeof sub === 'string') return { name: sub.trim(), children: [] };
+  return {
+    name: (sub?.name || '').trim(),
+    children: Array.isArray(sub?.children)
+      ? sub.children.map((c) => (typeof c === 'string' ? c.trim() : '')).filter(Boolean)
+      : [],
+  };
+}
+
 // Natural Roman Numeral and hierarchical sorting
 function parseRomanOrNum(str: string): number[] {
   const romanMap: Record<string, number> = {
@@ -52,9 +63,11 @@ function parseRomanOrNum(str: string): number[] {
   });
 }
 
-function compareHierarchical(a: string, b: string): number {
-  const partsA = parseRomanOrNum(a);
-  const partsB = parseRomanOrNum(b);
+function compareHierarchical(a: string | SubcategoryItem, b: string | SubcategoryItem): number {
+  const strA = typeof a === 'string' ? a : a?.name || '';
+  const strB = typeof b === 'string' ? b : b?.name || '';
+  const partsA = parseRomanOrNum(strA);
+  const partsB = parseRomanOrNum(strB);
 
   for (let i = 0; i < Math.max(partsA.length, partsB.length); i++) {
     const valA = partsA[i] ?? 0;
@@ -63,7 +76,7 @@ function compareHierarchical(a: string, b: string): number {
       return valA - valB;
     }
   }
-  return a.localeCompare(b, 'es', { numeric: true, sensitivity: 'base' });
+  return strA.localeCompare(strB, 'es', { numeric: true, sensitivity: 'base' });
 }
 
 function ConfiguracionTarifarioContent() {
@@ -80,6 +93,7 @@ function ConfiguracionTarifarioContent() {
   // Expand / collapse category essays & filtering state
   const [expandedCatKeys, setExpandedCatKeys] = useState<Record<string, boolean>>({});
   const [activeSubcatFilter, setActiveSubcatFilter] = useState<Record<string, string | null>>({});
+  const [activeSubSubcatFilter, setActiveSubSubcatFilter] = useState<Record<string, string | null>>({});
   const [catSearchTerm, setCatSearchTerm] = useState<Record<string, string>>({});
 
   // Reassign / Edit Item Category Modal state
@@ -91,6 +105,9 @@ function ConfiguracionTarifarioContent() {
   const [reassignSubcat, setReassignSubcat] = useState<string>('');
   const [isCustomSubcat, setIsCustomSubcat] = useState<boolean>(false);
   const [customSubcatName, setCustomSubcatName] = useState<string>('');
+  const [reassignSubSubcat, setReassignSubSubcat] = useState<string>('');
+  const [isCustomSubSubcat, setIsCustomSubSubcat] = useState<boolean>(false);
+  const [customSubSubcatName, setCustomSubSubcatName] = useState<string>('');
 
   // Modals state
   const [showExportModal, setShowExportModal] = useState(false);
@@ -100,17 +117,28 @@ function ConfiguracionTarifarioContent() {
   const [newCatInitialSubcats, setNewCatInitialSubcats] = useState('');
 
   const [showCreateSubcatModal, setShowCreateSubcatModal] = useState(false);
-  const [targetCategoryForSubcat, setTargetCategoryForSubcat] = useState<{ cc: string; category: string } | null>(null);
+  const [targetCategoryForSubcat, setTargetCategoryForSubcat] = useState<{
+    cc: string;
+    category: string;
+    parentSubcategory?: string;
+  } | null>(null);
   const [newSubcatName, setNewSubcatName] = useState('');
 
   const [renameCatData, setRenameCatData] = useState<{ cc: string; oldCategory: string; newCategory: string } | null>(null);
-  const [renameSubcatData, setRenameSubcatData] = useState<{ cc: string; category: string; oldSubcategory: string; newSubcategory: string } | null>(null);
+  const [renameSubcatData, setRenameSubcatData] = useState<{
+    cc: string;
+    category: string;
+    oldSubcategory: string;
+    newSubcategory: string;
+    parentSubcategory?: string;
+  } | null>(null);
 
   const [deleteConfirmData, setDeleteConfirmData] = useState<{
     type: 'category' | 'subcategory';
     cc: string;
     category: string;
     subcategory?: string;
+    parentSubcategory?: string;
     count: number;
   } | null>(null);
 
@@ -124,11 +152,13 @@ function ConfiguracionTarifarioContent() {
   const [draggedIds, setDraggedIds] = useState<string[] | null>(null);
   const [dragOverCatKey, setDragOverCatKey] = useState<string | null>(null);
   const [dragOverSubcatKey, setDragOverSubcatKey] = useState<string | null>(null);
+  const [dragOverSubSubcatKey, setDragOverSubSubcatKey] = useState<string | null>(null);
 
   // Batch move state
   const [batchCc, setBatchCc] = useState<string>(CENTROS_DE_COSTO[0]);
   const [batchCat, setBatchCat] = useState<string>('');
   const [batchSubcat, setBatchSubcat] = useState<string>('');
+  const [batchSubSubcat, setBatchSubSubcat] = useState<string>('');
 
   // Load structure & user
   const loadData = async () => {
@@ -180,6 +210,10 @@ function ConfiguracionTarifarioContent() {
   const availableBatchCategories = structure.filter((s) => s.cc === batchCc);
   const availableBatchSubcategories =
     availableBatchCategories.find((s) => s.category === batchCat)?.subcategories || [];
+  const selectedBatchSubObj = availableBatchSubcategories
+    .map(normalizeSub)
+    .find((s) => s.name === batchSubcat);
+  const availableBatchSubSubcategories = selectedBatchSubObj?.children || [];
 
   const handleBatchCcChange = (newCc: string) => {
     setBatchCc(newCc);
@@ -187,15 +221,23 @@ function ConfiguracionTarifarioContent() {
     if (available.length > 0) {
       setBatchCat(available[0].category);
       setBatchSubcat('');
+      setBatchSubSubcat('');
     } else {
       setBatchCat('');
       setBatchSubcat('');
+      setBatchSubSubcat('');
     }
   };
 
   const handleBatchCatChange = (newCat: string) => {
     setBatchCat(newCat);
     setBatchSubcat('');
+    setBatchSubSubcat('');
+  };
+
+  const handleBatchSubcatChange = (newSub: string) => {
+    setBatchSubcat(newSub);
+    setBatchSubSubcat('');
   };
 
   // Selection toggle
@@ -220,7 +262,8 @@ function ConfiguracionTarifarioContent() {
     ids: string[],
     targetCc: string,
     targetCategory: string,
-    targetSubcategory?: string
+    targetSubcategory?: string,
+    targetSubSubcategory?: string
   ) => {
     if (!ids || ids.length === 0) return;
     setSubmitting(true);
@@ -234,6 +277,7 @@ function ConfiguracionTarifarioContent() {
           targetCc,
           targetCategory,
           targetSubcategory: targetSubcategory || targetCategory,
+          targetSubSubcategory: targetSubSubcategory || '',
         }),
       });
 
@@ -242,11 +286,17 @@ function ConfiguracionTarifarioContent() {
         throw new Error(data.error || 'Error al mover los ensayos.');
       }
 
+      const destPath = [
+        targetCategory,
+        targetSubcategory && targetSubcategory !== targetCategory ? targetSubcategory : null,
+        targetSubSubcategory || null,
+      ]
+        .filter(Boolean)
+        .join(' > ');
+
       showAlert(
         'success',
-        `✓ Se movieron ${ids.length} ensayo(s) a "${targetCategory}${
-          targetSubcategory && targetSubcategory !== targetCategory ? ' > ' + targetSubcategory : ''
-        }" exitosamente.`
+        `✓ Se movieron ${ids.length} ensayo(s) a "${destPath}" exitosamente.`
       );
       setSelectedItemIds([]);
       setDraggedIds(null);
@@ -274,6 +324,7 @@ function ConfiguracionTarifarioContent() {
     setDraggedIds(null);
     setDragOverCatKey(null);
     setDragOverSubcatKey(null);
+    setDragOverSubSubcatKey(null);
   };
 
   const handleCategoryDragOver = (e: React.DragEvent, catKey: string) => {
@@ -296,6 +347,7 @@ function ConfiguracionTarifarioContent() {
     e.stopPropagation();
     setDragOverCatKey(null);
     setDragOverSubcatKey(null);
+    setDragOverSubSubcatKey(null);
 
     let ids = draggedIds || [];
     try {
@@ -336,6 +388,7 @@ function ConfiguracionTarifarioContent() {
     e.stopPropagation();
     setDragOverCatKey(null);
     setDragOverSubcatKey(null);
+    setDragOverSubSubcatKey(null);
 
     let ids = draggedIds || [];
     try {
@@ -347,7 +400,49 @@ function ConfiguracionTarifarioContent() {
     } catch {}
 
     if (ids.length > 0) {
-      await executeMoveItems(ids, targetCc, targetCategory, targetSubcategory);
+      await executeMoveItems(ids, targetCc, targetCategory, targetSubcategory, '');
+    }
+  };
+
+  const handleSubSubcategoryDragOver = (e: React.DragEvent, subSubKey: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverSubSubcatKey !== subSubKey) {
+      setDragOverSubSubcatKey(subSubKey);
+    }
+  };
+
+  const handleSubSubcategoryDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverSubSubcatKey(null);
+  };
+
+  const handleSubSubcategoryDrop = async (
+    e: React.DragEvent,
+    targetCc: string,
+    targetCategory: string,
+    targetSubcategory: string,
+    targetSubSubcategory: string
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverCatKey(null);
+    setDragOverSubcatKey(null);
+    setDragOverSubSubcatKey(null);
+
+    let ids = draggedIds || [];
+    try {
+      const raw = e.dataTransfer.getData('application/json');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.ids) && parsed.ids.length > 0) ids = parsed.ids;
+      }
+    } catch {}
+
+    if (ids.length > 0) {
+      await executeMoveItems(ids, targetCc, targetCategory, targetSubcategory, targetSubSubcategory);
     }
   };
 
@@ -363,10 +458,20 @@ function ConfiguracionTarifarioContent() {
 
   const handleSubcategoryClick = (catKey: string, subcat: string) => {
     setExpandedCatKeys((prev) => ({ ...prev, [catKey]: true }));
-    setActiveSubcatFilter((prev) => ({
-      ...prev,
-      [catKey]: prev[catKey] === subcat ? null : subcat,
-    }));
+    setActiveSubcatFilter((prev) => {
+      const isSame = prev[catKey] === subcat;
+      return { ...prev, [catKey]: isSame ? null : subcat };
+    });
+    setActiveSubSubcatFilter((prev) => ({ ...prev, [catKey]: null }));
+  };
+
+  const handleSubSubcategoryClick = (catKey: string, subcat: string, subSubcat: string) => {
+    setExpandedCatKeys((prev) => ({ ...prev, [catKey]: true }));
+    setActiveSubcatFilter((prev) => ({ ...prev, [catKey]: subcat }));
+    setActiveSubSubcatFilter((prev) => {
+      const isSame = prev[catKey] === subSubcat;
+      return { ...prev, [catKey]: isSame ? null : subSubcat };
+    });
   };
 
   const openReassignModal = (item: TarifarioItem) => {
@@ -379,6 +484,9 @@ function ConfiguracionTarifarioContent() {
     setReassignSubcat(item.subcategory || '');
     setIsCustomSubcat(false);
     setCustomSubcatName('');
+    setReassignSubSubcat(item.subSubcategory || '');
+    setIsCustomSubSubcat(false);
+    setCustomSubSubcatName('');
   };
 
   const handleCcChangeInModal = (newCc: string) => {
@@ -389,16 +497,21 @@ function ConfiguracionTarifarioContent() {
       setIsCustomCat(false);
       const subcats = available[0].subcategories || [];
       if (subcats.length > 0) {
-        setReassignSubcat(subcats[0]);
+        const firstSub = normalizeSub(subcats[0]);
+        setReassignSubcat(firstSub.name);
         setIsCustomSubcat(false);
+        setReassignSubSubcat('');
+        setIsCustomSubSubcat(false);
       } else {
         setReassignSubcat('');
+        setReassignSubSubcat('');
       }
     } else {
       setReassignCat('');
       setIsCustomCat(true);
       setCustomCatName('');
       setReassignSubcat('');
+      setReassignSubSubcat('');
     }
   };
 
@@ -409,16 +522,22 @@ function ConfiguracionTarifarioContent() {
       setReassignSubcat('');
       setIsCustomSubcat(true);
       setCustomSubcatName('');
+      setReassignSubSubcat('');
+      setIsCustomSubSubcat(false);
     } else {
       setIsCustomCat(false);
       setReassignCat(newCat);
       const catObj = structure.find((s) => s.cc === reassignCc && s.category === newCat);
       const subcats = catObj?.subcategories || [];
       if (subcats.length > 0) {
-        setReassignSubcat(subcats[0]);
+        const firstSub = normalizeSub(subcats[0]);
+        setReassignSubcat(firstSub.name);
         setIsCustomSubcat(false);
+        setReassignSubSubcat('');
+        setIsCustomSubSubcat(false);
       } else {
         setReassignSubcat('');
+        setReassignSubSubcat('');
       }
     }
   };
@@ -427,9 +546,23 @@ function ConfiguracionTarifarioContent() {
     if (newSub === '__CUSTOM__') {
       setIsCustomSubcat(true);
       setCustomSubcatName('');
+      setReassignSubSubcat('');
+      setIsCustomSubSubcat(false);
     } else {
       setIsCustomSubcat(false);
       setReassignSubcat(newSub);
+      setReassignSubSubcat('');
+      setIsCustomSubSubcat(false);
+    }
+  };
+
+  const handleSubSubcatChangeInModal = (newSubSub: string) => {
+    if (newSubSub === '__CUSTOM__') {
+      setIsCustomSubSubcat(true);
+      setCustomSubSubcatName('');
+    } else {
+      setIsCustomSubSubcat(false);
+      setReassignSubSubcat(newSubSub);
     }
   };
 
@@ -439,6 +572,7 @@ function ConfiguracionTarifarioContent() {
 
     const finalCategory = (isCustomCat ? customCatName : reassignCat).trim();
     const finalSubcategory = (isCustomSubcat ? customSubcatName : reassignSubcat).trim();
+    const finalSubSubcategory = (isCustomSubSubcat ? customSubSubcatName : reassignSubSubcat).trim();
 
     if (!finalCategory) {
       showAlert('error', 'Debes seleccionar o ingresar una categoría destino.');
@@ -456,6 +590,7 @@ function ConfiguracionTarifarioContent() {
             cc: reassignCc,
             category: finalCategory,
             subcategory: finalSubcategory || finalCategory,
+            subSubcategory: finalSubSubcategory,
           },
         }),
       });
@@ -487,21 +622,36 @@ function ConfiguracionTarifarioContent() {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     const matchesCat = cat.category.toLowerCase().includes(q);
-    const matchesSub = cat.subcategories.some((s) => s.toLowerCase().includes(q));
+    const matchesSub = (cat.subcategories || []).some((s) => {
+      const norm = normalizeSub(s);
+      return (
+        norm.name.toLowerCase().includes(q) ||
+        norm.children.some((c) => c.toLowerCase().includes(q))
+      );
+    });
     const catItems = items.filter((it) => it.cc === cat.cc && it.category === cat.category);
     const matchesItem = catItems.some(
       (it) =>
         it.designation.toLowerCase().includes(q) ||
         (it.sku && it.sku.toLowerCase().includes(q)) ||
         (it.code && it.code.toLowerCase().includes(q)) ||
-        (it.norm && it.norm.toLowerCase().includes(q))
+        (it.norm && it.norm.toLowerCase().includes(q)) ||
+        (it.subSubcategory && it.subSubcategory.toLowerCase().includes(q))
     );
     return matchesCat || matchesSub || matchesItem;
   });
 
   // Calculate totals for KPI cards
   const totalCategoriesCount = structure.length;
-  const totalSubcategoriesCount = structure.reduce((acc, curr) => acc + (curr.subcategories?.length || 0), 0);
+  const totalSubcategoriesCount = structure.reduce((acc, curr) => {
+    return (
+      acc +
+      (curr.subcategories || []).reduce((subAcc, s) => {
+        const norm = normalizeSub(s);
+        return subAcc + 1 + norm.children.length;
+      }, 0)
+    );
+  }, 0);
 
   // Handle Create Category
   const handleCreateCategory = async (e: React.FormEvent) => {
@@ -559,6 +709,7 @@ function ConfiguracionTarifarioContent() {
           cc: targetCategoryForSubcat.cc,
           category: targetCategoryForSubcat.category,
           subcategory: newSubcatName.trim(),
+          parentSubcategory: targetCategoryForSubcat.parentSubcategory,
         }),
       });
 
@@ -567,7 +718,12 @@ function ConfiguracionTarifarioContent() {
         throw new Error(data.error || 'Error al agregar la subcategoría.');
       }
 
-      showAlert('success', 'Subcategoría agregada exitosamente.');
+      showAlert(
+        'success',
+        targetCategoryForSubcat.parentSubcategory
+          ? 'Sub-subcategoría agregada exitosamente.'
+          : 'Subcategoría agregada exitosamente.'
+      );
       setShowCreateSubcatModal(false);
       setTargetCategoryForSubcat(null);
       setNewSubcatName('');
@@ -628,6 +784,7 @@ function ConfiguracionTarifarioContent() {
           category: renameSubcatData.category,
           oldSubcategory: renameSubcatData.oldSubcategory,
           newSubcategory: renameSubcatData.newSubcategory.trim(),
+          parentSubcategory: renameSubcatData.parentSubcategory,
         }),
       });
 
@@ -895,6 +1052,7 @@ function ConfiguracionTarifarioContent() {
               const sortedSubcats = [...(cat.subcategories || [])].sort(compareHierarchical);
               const isExpanded = !!expandedCatKeys[catKey];
               const activeSubcat = activeSubcatFilter[catKey] || null;
+              const activeSubSubcat = activeSubSubcatFilter[catKey] || null;
 
               // Items belonging to this category
               const catAllItems = items.filter(
@@ -902,9 +1060,15 @@ function ConfiguracionTarifarioContent() {
               );
 
               // Filtered by active subcategory if selected
-              const filteredBySubcat = activeSubcat
+              let filteredBySubcat = activeSubcat
                 ? catAllItems.filter((it) => (it.subcategory || '').trim() === activeSubcat.trim())
                 : catAllItems;
+
+              if (activeSubSubcat) {
+                filteredBySubcat = filteredBySubcat.filter(
+                  (it) => (it.subSubcategory || '').trim() === activeSubSubcat.trim()
+                );
+              }
 
               // Filtered by local search in this category
               const localSearch = (catSearchTerm[catKey] || '').toLowerCase().trim();
@@ -915,7 +1079,8 @@ function ConfiguracionTarifarioContent() {
                   (it.code && it.code.toLowerCase().includes(localSearch)) ||
                   (it.sku && it.sku.toLowerCase().includes(localSearch)) ||
                   (it.norm && it.norm.toLowerCase().includes(localSearch)) ||
-                  (it.subcategory && it.subcategory.toLowerCase().includes(localSearch))
+                  (it.subcategory && it.subcategory.toLowerCase().includes(localSearch)) ||
+                  (it.subSubcategory && it.subSubcategory.toLowerCase().includes(localSearch))
                 );
               });
 
@@ -1084,11 +1249,14 @@ function ConfiguracionTarifarioContent() {
                         )}
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
-                        {sortedSubcats.map((subcat) => {
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        {sortedSubcats.map((rawSubcat) => {
+                          const normSub = normalizeSub(rawSubcat);
+                          const subcat = normSub.name;
+                          const children = normSub.children || [];
                           const subKey = `${cat.cc}:::${cat.category}:::${subcat}`;
                           const subEssaysCount = itemCounts[subKey] || 0;
-                          const isSubActive = activeSubcat === subcat && isExpanded;
+                          const isSubActive = activeSubcat === subcat && isExpanded && !activeSubSubcat;
                           const isSubcatDragOver = dragOverSubcatKey === subKey;
 
                           return (
@@ -1098,9 +1266,9 @@ function ConfiguracionTarifarioContent() {
                               onDragOver={(e) => handleSubcategoryDragOver(e, subKey)}
                               onDragLeave={handleSubcategoryDragLeave}
                               onDrop={(e) => handleSubcategoryDrop(e, cat.cc, cat.category, subcat)}
-                              className={`group flex items-center justify-between gap-2 p-2.5 rounded-xl border transition-all cursor-pointer ${
+                              className={`group flex flex-col justify-between p-3 rounded-xl border transition-all cursor-pointer ${
                                 isSubcatDragOver
-                                  ? 'bg-emerald-100 border-emerald-500 ring-2 ring-emerald-400 shadow-md scale-105 font-bold text-emerald-900'
+                                  ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-400 shadow-md scale-[1.02]'
                                   : isSubActive
                                   ? 'bg-red-50/90 border-red-400 shadow-xs ring-1 ring-red-300'
                                   : 'border-slate-200 bg-slate-50/50 hover:bg-white hover:border-slate-300 hover:shadow-2xs'
@@ -1111,82 +1279,247 @@ function ConfiguracionTarifarioContent() {
                                   : `Pincha para ver los ensayos de ${subcat}`
                               }
                             >
-                              <div className="flex items-center gap-2 min-w-0 flex-1">
-                                <span
-                                  className={`w-2 h-2 rounded-full shrink-0 transition-colors ${
-                                    isSubcatDragOver
-                                      ? 'bg-emerald-600 ring-2 ring-emerald-300'
-                                      : isSubActive
-                                      ? 'bg-red-600 ring-2 ring-red-200'
-                                      : 'bg-slate-400 group-hover:bg-red-600'
-                                  }`}
-                                />
-                                <div className="min-w-0 flex-1">
-                                  <p
-                                    className={`text-xs font-semibold truncate ${
-                                      isSubActive ? 'text-red-900' : 'text-slate-800'
-                                    }`}
-                                    title={subcat}
-                                  >
-                                    {subcat}
-                                  </p>
+                              {/* Subcategory Top Row */}
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-start gap-2 min-w-0 flex-1">
                                   <span
-                                    className={`text-[10px] font-medium ${
-                                      subEssaysCount > 0 ? 'text-emerald-700' : 'text-slate-400'
+                                    className={`w-2 h-2 rounded-full shrink-0 mt-1 transition-colors ${
+                                      isSubcatDragOver
+                                        ? 'bg-emerald-600 ring-2 ring-emerald-300'
+                                        : isSubActive
+                                        ? 'bg-red-600 ring-2 ring-red-200'
+                                        : 'bg-slate-400 group-hover:bg-red-600'
                                     }`}
-                                  >
-                                    {subEssaysCount} {subEssaysCount === 1 ? 'ensayo' : 'ensayos'}
-                                  </span>
+                                  />
+                                  <div className="min-w-0 flex-1">
+                                    <p
+                                      className={`text-xs font-semibold leading-tight ${
+                                        isSubActive ? 'text-red-900' : 'text-slate-800'
+                                      }`}
+                                      title={subcat}
+                                    >
+                                      {subcat}
+                                    </p>
+                                    <span
+                                      className={`text-[10px] font-medium block mt-0.5 ${
+                                        subEssaysCount > 0 ? 'text-emerald-700' : 'text-slate-400'
+                                      }`}
+                                    >
+                                      {subEssaysCount} {subEssaysCount === 1 ? 'ensayo' : 'ensayos'}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                  {isAdmin && (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          setTargetCategoryForSubcat({
+                                            cc: cat.cc,
+                                            category: cat.category,
+                                            parentSubcategory: subcat,
+                                          });
+                                          setShowCreateSubcatModal(true);
+                                        }}
+                                        className="p-1 rounded-md text-slate-400 hover:text-red-700 hover:bg-red-50 transition-colors cursor-pointer"
+                                        title="Agregar sub-tipo (sub-subcategoría) dentro de esta subcategoría"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" />
+                                      </button>
+
+                                      <button
+                                        onClick={() => {
+                                          setRenameSubcatData({
+                                            cc: cat.cc,
+                                            category: cat.category,
+                                            oldSubcategory: subcat,
+                                            newSubcategory: subcat,
+                                          });
+                                        }}
+                                        className="p-1 rounded-md text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer"
+                                        title="Renombrar subcategoría"
+                                      >
+                                        <Edit2 className="w-3 h-3" />
+                                      </button>
+
+                                      <button
+                                        onClick={() => {
+                                          setDeleteConfirmData({
+                                            type: 'subcategory',
+                                            cc: cat.cc,
+                                            category: cat.category,
+                                            subcategory: subcat,
+                                            count: subEssaysCount,
+                                          });
+                                        }}
+                                        className={`p-1 rounded-md transition-colors ${
+                                          subEssaysCount > 0
+                                            ? 'text-slate-300 hover:text-slate-400 cursor-not-allowed'
+                                            : 'text-slate-400 hover:text-red-700 hover:bg-red-50 cursor-pointer'
+                                        }`}
+                                        title={
+                                          subEssaysCount > 0
+                                            ? `Tiene ${subEssaysCount} ensayo(s) asociado(s)`
+                                            : 'Eliminar subcategoría vacía'
+                                        }
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </>
+                                  )}
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-1 shrink-0">
-                                {isAdmin && (
-                                  <div
-                                    className="flex items-center gap-0.5 opacity-80 group-hover:opacity-100 transition-opacity"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <button
-                                      onClick={() => {
-                                        setRenameSubcatData({
-                                          cc: cat.cc,
-                                          category: cat.category,
-                                          oldSubcategory: subcat,
-                                          newSubcategory: subcat,
-                                        });
-                                      }}
-                                      className="p-1 rounded-md text-slate-500 hover:text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer"
-                                      title="Renombrar subcategoría"
-                                    >
-                                      <Edit2 className="w-3 h-3" />
-                                    </button>
-
-                                    <button
-                                      onClick={() => {
-                                        setDeleteConfirmData({
-                                          type: 'subcategory',
-                                          cc: cat.cc,
-                                          category: cat.category,
-                                          subcategory: subcat,
-                                          count: subEssaysCount,
-                                        });
-                                      }}
-                                      className={`p-1 rounded-md transition-colors ${
-                                        subEssaysCount > 0
-                                          ? 'text-slate-300 hover:text-slate-400 cursor-not-allowed'
-                                          : 'text-slate-500 hover:text-red-700 hover:bg-red-50 cursor-pointer'
-                                      }`}
-                                      title={
-                                        subEssaysCount > 0
-                                          ? `Tiene ${subEssaysCount} ensayo(s) asociado(s)`
-                                          : 'Eliminar subcategoría vacía'
-                                      }
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
+                              {/* Level 3: Nested Sub-subcategories (if any) */}
+                              {children.length > 0 && (
+                                <div className="mt-2.5 pt-2 border-t border-slate-200/80 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 px-0.5">
+                                    <span className="flex items-center gap-1">
+                                      <Layers className="w-3 h-3" />
+                                      SUB-TIPOS ({children.length})
+                                    </span>
+                                    {isAdmin && (
+                                      <button
+                                        onClick={() => {
+                                          setTargetCategoryForSubcat({
+                                            cc: cat.cc,
+                                            category: cat.category,
+                                            parentSubcategory: subcat,
+                                          });
+                                          setShowCreateSubcatModal(true);
+                                        }}
+                                        className="text-[10px] text-red-700 hover:underline font-semibold cursor-pointer"
+                                      >
+                                        + Agregar
+                                      </button>
+                                    )}
                                   </div>
-                                )}
-                              </div>
+
+                                  <div className="flex flex-col gap-1">
+                                    {children.map((child) => {
+                                      const subSubKey = `${cat.cc}:::${cat.category}:::${subcat}:::${child}`;
+                                      const childCount = itemCounts[subSubKey] || 0;
+                                      const isChildActive =
+                                        activeSubcat === subcat && activeSubSubcat === child && isExpanded;
+                                      const isChildDragOver = dragOverSubSubcatKey === subSubKey;
+
+                                      return (
+                                        <div
+                                          key={subSubKey}
+                                          onClick={() => handleSubSubcategoryClick(catKey, subcat, child)}
+                                          onDragOver={(e) => handleSubSubcategoryDragOver(e, subSubKey)}
+                                          onDragLeave={handleSubSubcategoryDragLeave}
+                                          onDrop={(e) => handleSubSubcategoryDrop(e, cat.cc, cat.category, subcat, child)}
+                                          className={`group/child flex items-center justify-between gap-1.5 px-2 py-1 rounded-lg border text-xs transition-all cursor-pointer ${
+                                            isChildDragOver
+                                              ? 'bg-emerald-100 border-emerald-500 ring-2 ring-emerald-400 shadow-xs font-bold text-emerald-900 scale-102'
+                                              : isChildActive
+                                              ? 'bg-red-100/90 border-red-400 text-red-900 font-semibold ring-1 ring-red-300'
+                                              : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-700'
+                                          }`}
+                                          title={
+                                            isChildDragOver
+                                              ? `Soltar aquí para mover al sub-tipo "${child}"`
+                                              : `Pincha para filtrar ensayos del sub-tipo ${child}`
+                                          }
+                                        >
+                                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                            <span
+                                              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                                isChildDragOver
+                                                  ? 'bg-emerald-600'
+                                                  : isChildActive
+                                                  ? 'bg-red-600'
+                                                  : 'bg-slate-400 group-hover/child:bg-red-500'
+                                              }`}
+                                            />
+                                            <span className="text-[11px] truncate flex-1 font-medium" title={child}>
+                                              {child}
+                                            </span>
+                                            <span
+                                              className={`text-[9px] px-1.5 py-0.2 rounded-full font-semibold ${
+                                                childCount > 0
+                                                  ? 'bg-emerald-100 text-emerald-800'
+                                                  : 'text-slate-400'
+                                              }`}
+                                            >
+                                              {childCount}
+                                            </span>
+                                          </div>
+
+                                          {isAdmin && (
+                                            <div
+                                              className="flex items-center gap-0.5 opacity-60 group-hover/child:opacity-100 transition-opacity"
+                                              onClick={(e) => e.stopPropagation()}
+                                            >
+                                              <button
+                                                onClick={() => {
+                                                  setRenameSubcatData({
+                                                    cc: cat.cc,
+                                                    category: cat.category,
+                                                    oldSubcategory: child,
+                                                    newSubcategory: child,
+                                                    parentSubcategory: subcat,
+                                                  });
+                                                }}
+                                                className="p-0.5 rounded text-slate-400 hover:text-blue-700 hover:bg-blue-50 cursor-pointer"
+                                                title="Renombrar sub-tipo"
+                                              >
+                                                <Edit2 className="w-2.5 h-2.5" />
+                                              </button>
+                                              <button
+                                                onClick={() => {
+                                                  setDeleteConfirmData({
+                                                    type: 'subcategory',
+                                                    cc: cat.cc,
+                                                    category: cat.category,
+                                                    subcategory: child,
+                                                    parentSubcategory: subcat,
+                                                    count: childCount,
+                                                  });
+                                                }}
+                                                className={`p-0.5 rounded cursor-pointer ${
+                                                  childCount > 0
+                                                    ? 'text-slate-300 cursor-not-allowed'
+                                                    : 'text-slate-400 hover:text-red-700 hover:bg-red-50'
+                                                }`}
+                                                title={
+                                                  childCount > 0
+                                                    ? `Tiene ${childCount} ensayo(s) asociado(s)`
+                                                    : 'Eliminar sub-tipo vacío'
+                                                }
+                                              >
+                                                <Trash2 className="w-2.5 h-2.5" />
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Subtle button to add first child if none */}
+                              {children.length === 0 && isAdmin && (
+                                <div className="mt-2 pt-1 border-t border-slate-100 flex justify-end" onClick={(e) => e.stopPropagation()}>
+                                  <button
+                                    onClick={() => {
+                                      setTargetCategoryForSubcat({
+                                        cc: cat.cc,
+                                        category: cat.category,
+                                        parentSubcategory: subcat,
+                                      });
+                                      setShowCreateSubcatModal(true);
+                                    }}
+                                    className="text-[10px] text-slate-400 hover:text-red-700 font-medium inline-flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Plus className="w-2.5 h-2.5" />
+                                    + Agregar sub-tipo
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -1199,46 +1532,106 @@ function ConfiguracionTarifarioContent() {
                     <div className="border-t border-slate-200 bg-slate-50/70 p-4 sm:p-5">
                       {/* Filter & Search Toolbar */}
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
-                        {/* Subcategory Filter Pills */}
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1">
-                            <Filter className="w-3.5 h-3.5 text-slate-400" />
-                            Filtro:
-                          </span>
-                          <button
-                            onClick={() => setActiveSubcatFilter((prev) => ({ ...prev, [catKey]: null }))}
-                            className={`px-2.5 py-1 rounded-lg text-xs transition-all cursor-pointer ${
-                              activeSubcat === null
-                                ? 'bg-slate-800 text-white shadow-xs font-semibold'
-                                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 font-medium'
-                            }`}
-                          >
-                            Todos ({catAllItems.length})
-                          </button>
-                          {sortedSubcats.map((subcat) => {
-                            const subKey = `${cat.cc}:::${cat.category}:::${subcat}`;
-                            const count = itemCounts[subKey] || 0;
-                            const isSubActive = activeSubcat === subcat;
+                        {/* Subcategory & Sub-subcategory Filter Pills */}
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-bold text-slate-500 mr-1 flex items-center gap-1">
+                              <Filter className="w-3.5 h-3.5 text-slate-400" />
+                              Subcategoría:
+                            </span>
+                            <button
+                              onClick={() => {
+                                setActiveSubcatFilter((prev) => ({ ...prev, [catKey]: null }));
+                                setActiveSubSubcatFilter((prev) => ({ ...prev, [catKey]: null }));
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-xs transition-all cursor-pointer ${
+                                activeSubcat === null
+                                  ? 'bg-slate-800 text-white shadow-xs font-semibold'
+                                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 font-medium'
+                              }`}
+                            >
+                              Todas ({catAllItems.length})
+                            </button>
+                            {sortedSubcats.map((rawSubcat) => {
+                              const normSub = normalizeSub(rawSubcat);
+                              const subcat = normSub.name;
+                              const subKey = `${cat.cc}:::${cat.category}:::${subcat}`;
+                              const count = itemCounts[subKey] || 0;
+                              const isSubActive = activeSubcat === subcat;
+                              return (
+                                <button
+                                  key={subcat}
+                                  onClick={() => {
+                                    setActiveSubcatFilter((prev) => ({
+                                      ...prev,
+                                      [catKey]: isSubActive ? null : subcat,
+                                    }));
+                                    setActiveSubSubcatFilter((prev) => ({ ...prev, [catKey]: null }));
+                                  }}
+                                  className={`px-2.5 py-1 rounded-lg text-xs transition-all truncate max-w-[240px] cursor-pointer ${
+                                    isSubActive
+                                      ? 'bg-red-700 text-white shadow-xs font-semibold'
+                                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 font-medium'
+                                  }`}
+                                  title={subcat}
+                                >
+                                  {subcat} ({count})
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Level 3 Sub-subcategories filter row if activeSubcat has children */}
+                          {activeSubcat && (() => {
+                            const currentSubObj = sortedSubcats.map(normalizeSub).find((s) => s.name === activeSubcat);
+                            const children = currentSubObj?.children || [];
+                            if (children.length === 0) return null;
+                            const parentSubKey = `${cat.cc}:::${cat.category}:::${activeSubcat}`;
+                            const totalInSubcat = itemCounts[parentSubKey] || 0;
+
                             return (
-                              <button
-                                key={subcat}
-                                onClick={() =>
-                                  setActiveSubcatFilter((prev) => ({
-                                    ...prev,
-                                    [catKey]: isSubActive ? null : subcat,
-                                  }))
-                                }
-                                className={`px-2.5 py-1 rounded-lg text-xs transition-all truncate max-w-[240px] cursor-pointer ${
-                                  isSubActive
-                                    ? 'bg-red-700 text-white shadow-xs font-semibold'
-                                    : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 font-medium'
-                                }`}
-                                title={subcat}
-                              >
-                                {subcat} ({count})
-                              </button>
+                              <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-slate-200/60">
+                                <span className="text-[11px] font-bold text-slate-500 mr-1 flex items-center gap-1">
+                                  <Layers className="w-3 h-3 text-slate-400" />
+                                  Sub-tipo:
+                                </span>
+                                <button
+                                  onClick={() => setActiveSubSubcatFilter((prev) => ({ ...prev, [catKey]: null }))}
+                                  className={`px-2 py-0.5 rounded-md text-[11px] transition-all cursor-pointer ${
+                                    activeSubSubcat === null
+                                      ? 'bg-slate-700 text-white shadow-xs font-semibold'
+                                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 font-medium'
+                                  }`}
+                                >
+                                  Todos ({totalInSubcat})
+                                </button>
+                                {children.map((child) => {
+                                  const childKey = `${cat.cc}:::${cat.category}:::${activeSubcat}:::${child}`;
+                                  const childCount = itemCounts[childKey] || 0;
+                                  const isChildActive = activeSubSubcat === child;
+                                  return (
+                                    <button
+                                      key={child}
+                                      onClick={() =>
+                                        setActiveSubSubcatFilter((prev) => ({
+                                          ...prev,
+                                          [catKey]: isChildActive ? null : child,
+                                        }))
+                                      }
+                                      className={`px-2 py-0.5 rounded-md text-[11px] transition-all truncate max-w-[200px] cursor-pointer ${
+                                        isChildActive
+                                          ? 'bg-red-700 text-white shadow-xs font-semibold'
+                                          : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 font-medium'
+                                      }`}
+                                      title={child}
+                                    >
+                                      {child} ({childCount})
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             );
-                          })}
+                          })()}
                         </div>
 
                         {/* Local Search Input */}
@@ -1392,12 +1785,23 @@ function ConfiguracionTarifarioContent() {
                                         )}
                                       </td>
                                       <td className="py-2.5 px-3 align-top">
-                                        <span
-                                          className="text-[11px] text-slate-700 bg-slate-100/80 px-2 py-0.5 rounded-md inline-block font-medium max-w-[220px] truncate"
-                                          title={item.subcategory}
-                                        >
-                                          {item.subcategory || '-'}
-                                        </span>
+                                        <div className="flex flex-col gap-1">
+                                          <span
+                                            className="text-[11px] text-slate-700 bg-slate-100/80 px-2 py-0.5 rounded-md inline-block font-medium max-w-[220px] truncate"
+                                            title={item.subcategory}
+                                          >
+                                            {item.subcategory || '-'}
+                                          </span>
+                                          {item.subSubcategory && (
+                                            <span
+                                              className="text-[10px] text-red-700 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-semibold max-w-[220px] truncate"
+                                              title={`Sub-tipo: ${item.subSubcategory}`}
+                                            >
+                                              <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                                              {item.subSubcategory}
+                                            </span>
+                                          )}
+                                        </div>
                                       </td>
                                       <td className="py-2.5 px-3 text-right whitespace-nowrap align-top">
                                         <span className="font-bold text-red-700 font-mono text-xs">
@@ -1550,10 +1954,17 @@ function ConfiguracionTarifarioContent() {
                   <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-700">
                     <Plus className="w-4 h-4" />
                   </div>
-                  <h3 className="text-sm font-bold text-slate-900">Agregar Subcategoría</h3>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    {targetCategoryForSubcat.parentSubcategory
+                      ? 'Agregar Sub-tipo (Sub-subcategoría)'
+                      : 'Agregar Subcategoría'}
+                  </h3>
                 </div>
                 <button
-                  onClick={() => setShowCreateSubcatModal(false)}
+                  onClick={() => {
+                    setShowCreateSubcatModal(false);
+                    setTargetCategoryForSubcat(null);
+                  }}
                   className="text-slate-400 hover:text-slate-600 text-sm p-1 rounded-lg"
                 >
                   ✕
@@ -1564,31 +1975,49 @@ function ConfiguracionTarifarioContent() {
                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
                   <span className="text-slate-500 block font-medium">Categoría Destino:</span>
                   <span className="text-slate-900 font-bold block mt-0.5">{targetCategoryForSubcat.category}</span>
+                  {targetCategoryForSubcat.parentSubcategory && (
+                    <div className="mt-1 pt-1 border-t border-slate-200">
+                      <span className="text-slate-500 block font-medium">Subcategoría Padre:</span>
+                      <span className="text-red-700 font-bold block">{targetCategoryForSubcat.parentSubcategory}</span>
+                    </div>
+                  )}
                   <span className="text-[11px] text-slate-500 font-normal">{targetCategoryForSubcat.cc}</span>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Nombre de la Subcategoría <span className="text-red-600">*</span>
+                    {targetCategoryForSubcat.parentSubcategory
+                      ? 'Nombre del Sub-tipo'
+                      : 'Nombre de la Subcategoría'}{' '}
+                    <span className="text-red-600">*</span>
                   </label>
                   <input
                     type="text"
                     value={newSubcatName}
                     onChange={(e) => setNewSubcatName(e.target.value)}
-                    placeholder="Ej: I.5 Ensayos de permeabilidad especial"
+                    placeholder={
+                      targetCategoryForSubcat.parentSubcategory
+                        ? 'Ej: Triaxial UU (No consolidado no drenado)'
+                        : 'Ej: I.5 Ensayos de permeabilidad especial'
+                    }
                     className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-red-600 focus:border-transparent font-medium"
                     required
                     autoFocus
                   />
                   <p className="text-[11px] text-slate-500 mt-1">
-                    Usa numeración correlativa subordinada a la categoría (ej. I.1, I.2...).
+                    {targetCategoryForSubcat.parentSubcategory
+                      ? 'Especifica el nombre del ensayo o sub-tipo dentro de esta subcategoría.'
+                      : 'Usa numeración correlativa subordinada a la categoría (ej. I.1, I.2...).'}
                   </p>
                 </div>
 
                 <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
                   <button
                     type="button"
-                    onClick={() => setShowCreateSubcatModal(false)}
+                    onClick={() => {
+                      setShowCreateSubcatModal(false);
+                      setTargetCategoryForSubcat(null);
+                    }}
                     className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
                   >
                     Cancelar
@@ -1598,7 +2027,7 @@ function ConfiguracionTarifarioContent() {
                     disabled={submitting}
                     className="px-4 py-2 rounded-xl text-xs font-semibold bg-red-700 text-white hover:bg-red-800 transition-colors shadow-xs disabled:opacity-50"
                   >
-                    {submitting ? 'Agregando...' : 'Agregar Subcategoría'}
+                    {submitting ? 'Agregando...' : 'Agregar'}
                   </button>
                 </div>
               </form>
@@ -1691,7 +2120,11 @@ function ConfiguracionTarifarioContent() {
                   <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700">
                     <Edit2 className="w-4 h-4" />
                   </div>
-                  <h3 className="text-sm font-bold text-slate-900">Renombrar Subcategoría</h3>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    {renameSubcatData.parentSubcategory
+                      ? 'Renombrar Sub-tipo'
+                      : 'Renombrar Subcategoría'}
+                  </h3>
                 </div>
                 <button
                   onClick={() => setRenameSubcatData(null)}
@@ -1708,7 +2141,9 @@ function ConfiguracionTarifarioContent() {
                     <div>
                       <span className="font-bold">Actualización en cascada:</span>
                       <p className="mt-0.5 text-[11px] text-amber-800">
-                        Al cambiar este nombre, todos los ensayos asignados a esta subcategoría se actualizarán automáticamente.
+                        Al cambiar este nombre, todos los ensayos asignados a{' '}
+                        {renameSubcatData.parentSubcategory ? 'este sub-tipo' : 'esta subcategoría'} se
+                        actualizarán automáticamente.
                       </p>
                     </div>
                   </div>
@@ -1717,6 +2152,11 @@ function ConfiguracionTarifarioContent() {
                 <div>
                   <span className="block text-[11px] text-slate-500 font-medium">Categoría:</span>
                   <p className="text-xs font-semibold text-slate-700 mt-0.5">{renameSubcatData.category}</p>
+                  {renameSubcatData.parentSubcategory && (
+                    <p className="text-[11px] text-slate-600 mt-1">
+                      Subcategoría Padre: <strong>{renameSubcatData.parentSubcategory}</strong>
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -1773,7 +2213,12 @@ function ConfiguracionTarifarioContent() {
                     <Trash2 className="w-4 h-4" />
                   </div>
                   <h3 className="text-sm font-bold text-red-900">
-                    Eliminar {deleteConfirmData.type === 'category' ? 'Categoría' : 'Subcategoría'}
+                    Eliminar{' '}
+                    {deleteConfirmData.type === 'category'
+                      ? 'Categoría'
+                      : deleteConfirmData.parentSubcategory
+                      ? 'Sub-tipo'
+                      : 'Subcategoría'}
                   </h3>
                 </div>
                 <button
@@ -1792,7 +2237,13 @@ function ConfiguracionTarifarioContent() {
                       <div>
                         <span className="font-bold text-red-900 text-sm block">Acción Bloqueada</span>
                         <p className="mt-1">
-                          No es posible eliminar esta {deleteConfirmData.type === 'category' ? 'categoría' : 'subcategoría'} porque contiene{' '}
+                          No es posible eliminar{' '}
+                          {deleteConfirmData.type === 'category'
+                            ? 'esta categoría'
+                            : deleteConfirmData.parentSubcategory
+                            ? 'este sub-tipo'
+                            : 'esta subcategoría'}{' '}
+                          porque contiene{' '}
                           <strong>{deleteConfirmData.count} ensayo(s)</strong> asociado(s) en la base de datos oficial.
                         </p>
                         <p className="mt-2 text-[11px] text-red-700">
@@ -1804,14 +2255,23 @@ function ConfiguracionTarifarioContent() {
                 ) : (
                   <div className="space-y-3 text-xs text-slate-700">
                     <p>
-                      ¿Estás seguro de que deseas eliminar permanentemente la{' '}
-                      <strong>{deleteConfirmData.type === 'category' ? 'categoría' : 'subcategoría'}</strong>:
+                      ¿Estás seguro de que deseas eliminar permanentemente{' '}
+                      {deleteConfirmData.type === 'category'
+                        ? 'la categoría'
+                        : deleteConfirmData.parentSubcategory
+                        ? 'el sub-tipo'
+                        : 'la subcategoría'}:
                     </p>
                     <p className="p-2.5 rounded-lg bg-slate-100 font-mono text-xs font-semibold text-slate-900">
                       {deleteConfirmData.type === 'category'
                         ? deleteConfirmData.category
                         : deleteConfirmData.subcategory}
                     </p>
+                    {deleteConfirmData.parentSubcategory && (
+                      <p className="text-[11px] text-slate-500">
+                        Subcategoría Padre: <strong>{deleteConfirmData.parentSubcategory}</strong>
+                      </p>
+                    )}
                     <p className="text-slate-500 text-[11px]">
                       Esta acción no afecta a ningún ensayo porque actualmente no tiene ítems asignados.
                     </p>
@@ -1968,10 +2428,11 @@ function ConfiguracionTarifarioContent() {
                           structure.find((s) => s.cc === reassignCc && s.category === reassignCat)
                             ?.subcategories || []
                         )
-                          .sort(compareHierarchical)
-                          .map((subName) => (
-                            <option key={subName} value={subName}>
-                              {subName}
+                          .map(normalizeSub)
+                          .sort((a, b) => compareHierarchical(a.name, b.name))
+                          .map((subObj) => (
+                            <option key={subObj.name} value={subObj.name}>
+                              {subObj.name}
                             </option>
                           ))}
                         <option value="__CUSTOM__">+ Nueva subcategoría personalizada...</option>
@@ -1998,6 +2459,55 @@ function ConfiguracionTarifarioContent() {
                     </div>
                   )}
                 </div>
+
+                {/* Sub-subcategoría Destino (Opcional) */}
+                {reassignSubcat && !isCustomSubcat && !isCustomCat && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Sub-tipo / Sub-subcategoría <span className="text-slate-400 font-normal">(Opcional)</span>
+                    </label>
+                    {!isCustomSubSubcat ? (
+                      <div className="space-y-1.5">
+                        <select
+                          value={reassignSubSubcat}
+                          onChange={(e) => handleSubSubcatChangeInModal(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-red-600 focus:border-transparent font-medium cursor-pointer"
+                        >
+                          <option value="">(Ninguno / Subcategoría general)</option>
+                          {(() => {
+                            const catObj = structure.find((s) => s.cc === reassignCc && s.category === reassignCat);
+                            const subObj = (catObj?.subcategories || [])
+                              .map(normalizeSub)
+                              .find((s) => s.name === reassignSubcat);
+                            return (subObj?.children || []).map((childName) => (
+                              <option key={childName} value={childName}>
+                                {childName}
+                              </option>
+                            ));
+                          })()}
+                          <option value="__CUSTOM__">+ Nuevo sub-tipo personalizado...</option>
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <input
+                          type="text"
+                          value={customSubSubcatName}
+                          onChange={(e) => setCustomSubSubcatName(e.target.value)}
+                          placeholder="Escribe el nombre del nuevo sub-tipo..."
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-red-600 focus:border-transparent font-medium"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setIsCustomSubSubcat(false)}
+                          className="text-[11px] text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                        >
+                          ← Volver a seleccionar sub-tipo existente
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Action Buttons */}
                 <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
@@ -2061,17 +2571,33 @@ function ConfiguracionTarifarioContent() {
 
               <select
                 value={batchSubcat}
-                onChange={(e) => setBatchSubcat(e.target.value)}
+                onChange={(e) => {
+                  setBatchSubcat(e.target.value);
+                  setBatchSubSubcat('');
+                }}
                 className="px-2.5 py-1.5 rounded-lg text-xs bg-slate-800 border border-slate-700 text-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500 font-medium max-w-[180px] truncate cursor-pointer"
               >
                 <option value="">(Misma que categoría)</option>
-                {availableBatchSubcategories.map((sub) => (
-                  <option key={sub} value={sub}>{sub}</option>
+                {availableBatchSubcategories.map(normalizeSub).map((sub) => (
+                  <option key={sub.name} value={sub.name}>{sub.name}</option>
                 ))}
               </select>
 
+              {availableBatchSubSubcategories.length > 0 && (
+                <select
+                  value={batchSubSubcat}
+                  onChange={(e) => setBatchSubSubcat(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg text-xs bg-slate-800 border border-slate-700 text-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500 font-medium max-w-[180px] truncate cursor-pointer"
+                >
+                  <option value="">(Sin sub-tipo específico)</option>
+                  {availableBatchSubSubcategories.map((child) => (
+                    <option key={child} value={child}>{child}</option>
+                  ))}
+                </select>
+              )}
+
               <button
-                onClick={() => executeMoveItems(selectedItemIds, batchCc, batchCat, batchSubcat)}
+                onClick={() => executeMoveItems(selectedItemIds, batchCc, batchCat, batchSubcat, batchSubSubcat)}
                 disabled={submitting || !batchCat}
                 className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors shadow-xs disabled:opacity-50 cursor-pointer whitespace-nowrap"
               >

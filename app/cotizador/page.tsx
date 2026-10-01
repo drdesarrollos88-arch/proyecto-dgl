@@ -17,13 +17,13 @@ import {
   ReglaAprendida,
 } from '@/lib/types';
 import { generateCotizacionPdf } from '@/lib/pdf-generator';
-import UnifiedAiAssistantModal from '@/components/UnifiedAiAssistantModal';
+import UnifiedAiAssistantModal, { DisplayChatMessage } from '@/components/UnifiedAiAssistantModal';
 import CommercialConditionsEditor from '@/components/CommercialConditionsEditor';
 import {
   DEFAULT_OBSERVACIONES,
   getDefaultCondicionesComerciales,
 } from '@/lib/default-conditions';
-import { AiDatosProyecto, AiEnsayoSugerido, AiChatAction } from '@/lib/ai-service';
+import { AiDatosProyecto, AiEnsayoSugerido, AiChatAction, AiAnalisisResponse } from '@/lib/ai-service';
 import { smartSearchTarifario } from '@/lib/search-utils';
 import { hasPermission, isAdminRole } from '@/lib/permissions';
 import Link from 'next/link';
@@ -184,6 +184,8 @@ function CotizadorContent() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showUnifiedAiModal, setShowUnifiedAiModal] = useState(false);
   const [unifiedAiTab, setUnifiedAiTab] = useState<'chat' | 'analizar' | 'memoria'>('chat');
+  const [assistantChatMessages, setAssistantChatMessages] = useState<DisplayChatMessage[] | null>(null);
+  const [assistantActiveAnalisis, setAssistantActiveAnalisis] = useState<AiAnalisisResponse | null>(null);
   const [showIndicatorsInPdf, setShowIndicatorsInPdf] = useState<boolean>(true);
 
   // Items in current quotation
@@ -521,6 +523,15 @@ function CotizadorContent() {
             setShowIndicatorsInPdf(c.showEconomicIndicators !== false);
           }
           if (Array.isArray(c.items)) setItems(c.items);
+          if (c.aiChatState?.messages && Array.isArray(c.aiChatState.messages) && c.aiChatState.messages.length > 0) {
+            setAssistantChatMessages(c.aiChatState.messages);
+            if (c.aiChatState.activeAnalisis) {
+              setAssistantActiveAnalisis(c.aiChatState.activeAnalisis);
+            }
+          } else {
+            setAssistantChatMessages(null);
+            setAssistantActiveAnalisis(null);
+          }
         }
       })
       .catch((err) => {
@@ -1064,6 +1075,11 @@ function CotizadorContent() {
       condicionesComerciales,
       showEconomicIndicators: showIndicatorsInPdf,
       status: 'Borrador' as const,
+      aiChatState: assistantChatMessages && assistantChatMessages.length > 0 ? {
+        messages: assistantChatMessages,
+        activeAnalisis: assistantActiveAnalisis,
+        updatedAt: new Date().toISOString(),
+      } : undefined,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       createdBy: user?.name || 'Comercial',
@@ -1097,6 +1113,8 @@ function CotizadorContent() {
     condicionesComerciales,
     showIndicatorsInPdf,
     user,
+    assistantChatMessages,
+    assistantActiveAnalisis,
   ]);
 
   // Save draft quote to database (no PDF generation)
@@ -1258,6 +1276,45 @@ function CotizadorContent() {
       } catch (saveErr) {
         console.warn('Error al guardar cotización finalizada:', saveErr);
       }
+
+      // 3. Si hubo diálogo con el Asistente IA, registrarlo en la Bibliografía Histórica
+      if (assistantChatMessages && assistantChatMessages.some((m) => m.role === 'user')) {
+        try {
+          const transcript = assistantChatMessages
+            .map((m) => `[${m.role === 'user' ? 'EJECUTIVO COMERCIAL' : 'ASISTENTE IA'}] (${m.timestamp}):\n${m.content}`)
+            .join('\n\n');
+
+          const itemsSummary = items
+            .map((it) => `- [Cód ${it.code}] ${it.designation} (${it.quantity} ${it.unit || 'c/u'}) - UF ${it.ufPrice}`)
+            .join('\n');
+
+          fetch('/api/bibliografia', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tipo: 'historica',
+              titulo: `Cotización Finalizada ${code} - ${clientName || 'Cliente'} (${new Date().toLocaleDateString('es-CL')})`,
+              descripcion: `Cotización oficial emitida con ${items.length} ensayos por valor UF ${cotizacionForPdf.totalUf?.toFixed(2) || '0'}.`,
+              contenidoTexto: `COTIZACIÓN OFICIAL: ${code}\nCLIENTE: ${clientName}\nPROYECTO: ${projectName}\nCENTRO DE COSTO: ${centroCosto}\n\nBATERÍA DE ENSAYOS FINALIZADA:\n${itemsSummary}\n\nHISTORIAL DE CONSULTAS Y DIÁLOGO CON IA:\n${transcript}`,
+              tipoArchivo: 'chat',
+              tags: ['Cotización Finalizada', 'Histórica', centroCosto.slice(0, 4)],
+              metadatos: {
+                cliente: clientName,
+                proyecto: projectName,
+                centroCosto: centroCosto,
+                codigoCotizacion: code,
+                totalUf: cotizacionForPdf.totalUf,
+              },
+            }),
+          }).catch((e) => console.error('Error archivando cotización finalizada en histórica:', e));
+        } catch (archErr) {
+          console.error('Error registrando bibliografía histórica:', archErr);
+        }
+      }
+
+      // 4. Forzar reinicio del asistente IA para comenzar con chat limpio en futuras cotizaciones
+      setAssistantChatMessages(null);
+      setAssistantActiveAnalisis(null);
 
       setModalMode('finalized');
       setShowSuccessModal(true);
@@ -1448,6 +1505,8 @@ function CotizadorContent() {
     setShowIndicatorsInPdf(true);
     setStatusMessage(null);
     setShowSuccessModal(false);
+    setAssistantChatMessages(null);
+    setAssistantActiveAnalisis(null);
     if (typeof window !== 'undefined') {
       window.history.replaceState(null, '', '/cotizador');
     }
@@ -3429,6 +3488,13 @@ function CotizadorContent() {
           projectName,
           centroCosto,
           currency,
+          cotizacionCode: code,
+        }}
+        initialChatMessages={assistantChatMessages}
+        initialActiveAnalisis={assistantActiveAnalisis}
+        onChatStateChange={(msgs, analisis) => {
+          setAssistantChatMessages(msgs);
+          setAssistantActiveAnalisis(analisis);
         }}
       />
     </div>

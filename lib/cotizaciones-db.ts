@@ -1,6 +1,6 @@
 import { Cotizacion, CotizacionItem } from './types';
 import { isSupabaseConfigured, supabaseAdmin } from './supabase';
-import { advanceCorrelativo } from './db';
+import { advanceCorrelativo, saveCotizacion } from './db';
 import initialDbData from '../data/db.json';
 
 // Cache en memoria para soporte resiliente e instantáneo
@@ -82,6 +82,7 @@ export function mapSupabaseToCotizacion(row: any): Cotizacion {
     totalWeightKg,
     observations: Array.isArray(row.observations) ? row.observations : [],
     status: (row.status as any) || 'Borrador',
+    aiChatState: row.ai_chat_state || row.aiChatState || undefined,
     createdAt,
     updatedAt,
     createdBy: row.user_name || 'Diego Román',
@@ -273,13 +274,16 @@ export async function saveCotizacionAsync(
     updatedAt: now,
   } as Cotizacion;
 
-  // 1. Actualizar caché en memoria
+  // 1. Actualizar caché en memoria y archivo local db.json
   const idx = cached.findIndex((c) => c.id === targetId);
   if (idx >= 0) {
     cached[idx] = fullCotizacion;
   } else {
     cached.unshift(fullCotizacion);
   }
+  try {
+    saveCotizacion(fullCotizacion);
+  } catch {}
 
   // 2. Persistir en Supabase
   if (isSupabaseConfigured && supabaseAdmin) {

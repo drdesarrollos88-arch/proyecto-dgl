@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findUserByIdentifier, verifyPassword, createSessionToken, AUTH_COOKIE_NAME } from '@/lib/auth';
 import { checkDualRateLimit, recordDualFailedAttempt, resetDualLoginAttempts } from '@/lib/security';
+import { registrarAuditoria } from '@/lib/audit-db';
 
 export async function POST(req: NextRequest) {
   try {
@@ -31,6 +32,13 @@ export async function POST(req: NextRequest) {
     const user = await findUserByIdentifier(identifier);
     if (!user) {
       recordDualFailedAttempt(ip, identifier);
+      registrarAuditoria({
+        action: 'LOGIN_FAILED',
+        module: 'Acceso',
+        description: `Intento de acceso fallido para identificador: ${identifier}`,
+        details: { identifier, motivo: 'Usuario no encontrado' },
+        ip,
+      }).catch(() => {});
       return NextResponse.json(
         { error: 'Credenciales inválidas. Verifique su correo/RUT y contraseña.' },
         { status: 401 }
@@ -40,6 +48,17 @@ export async function POST(req: NextRequest) {
     const passwordMatch = await verifyPassword(password, user.passwordHash);
     if (!passwordMatch) {
       recordDualFailedAttempt(ip, identifier);
+      registrarAuditoria({
+        userId: user.id,
+        userName: user.name,
+        userEmail: user.email,
+        userRole: user.role,
+        action: 'LOGIN_FAILED',
+        module: 'Acceso',
+        description: `Contraseña incorrecta para usuario: ${user.name} (${user.email})`,
+        details: { identifier, motivo: 'Contraseña errónea' },
+        ip,
+      }).catch(() => {});
       return NextResponse.json(
         { error: 'Credenciales inválidas. Verifique su correo/RUT y contraseña.' },
         { status: 401 }
@@ -56,6 +75,18 @@ export async function POST(req: NextRequest) {
       email: user.email,
       role: user.role,
     };
+
+    registrarAuditoria({
+      userId: user.id,
+      userName: user.name,
+      userEmail: user.email,
+      userRole: user.role,
+      action: 'LOGIN',
+      module: 'Acceso',
+      description: `Inicio de sesión exitoso en DGL: ${user.name} [${user.role}]`,
+      details: { identifier, email: user.email, rut: user.rut },
+      ip,
+    }).catch(() => {});
 
     const token = await createSessionToken(sessionUser);
 

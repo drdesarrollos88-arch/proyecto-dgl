@@ -52,7 +52,19 @@ import {
   Plus,
   Filter,
   MessageSquare,
+  History,
+  BookmarkCheck,
 } from 'lucide-react';
+
+export interface DisplayChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  acciones?: AiChatAction[];
+  analisis?: AiAnalisisResponse;
+  archivoAdjunto?: { nombre: string; tamanoKb: number };
+  timestamp: string;
+}
 
 export interface UnifiedAiAssistantModalProps {
   isOpen: boolean;
@@ -71,17 +83,11 @@ export interface UnifiedAiAssistantModalProps {
     projectName?: string;
     centroCosto?: string;
     currency?: string;
+    cotizacionCode?: string;
   };
-}
-
-interface DisplayChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  acciones?: AiChatAction[];
-  analisis?: AiAnalisisResponse;
-  archivoAdjunto?: { nombre: string; tamanoKb: number };
-  timestamp: string;
+  initialChatMessages?: DisplayChatMessage[] | null;
+  initialActiveAnalisis?: AiAnalisisResponse | null;
+  onChatStateChange?: (messages: DisplayChatMessage[], activeAnalisis: AiAnalisisResponse | null) => void;
 }
 
 const CHAT_SUGGESTIONS = [
@@ -197,6 +203,9 @@ export default function UnifiedAiAssistantModal({
   onApplyActions,
   onApplyCampaign,
   contexto = {},
+  initialChatMessages,
+  initialActiveAnalisis,
+  onChatStateChange,
 }: UnifiedAiAssistantModalProps) {
   // Pestaña principal: 'workbench' | 'memoria'
   const [activeTab, setActiveTab] = useState<'workbench' | 'memoria'>(
@@ -291,18 +300,28 @@ export default function UnifiedAiAssistantModal({
     } catch {}
   };
 
+  // Modal de confirmación para Reiniciar (Guardar en Histórica / Solo Reiniciar / Cancelar)
+  const [showResetConfirmModal, setShowResetConfirmModal] = useState(false);
+  const [isArchivingHistory, setIsArchivingHistory] = useState(false);
+  const [archiveSuccessToast, setArchiveSuccessToast] = useState(false);
+
+  const defaultWelcomeMessage: DisplayChatMessage = {
+    id: 'welcome',
+    role: 'assistant',
+    content:
+      '¡Hola! Soy tu **Asistente Técnico-Comercial DGL IDIEM impulsado por Gemini**.\n\nPuedes ver el documento preliminar en el panel izquierdo y la propuesta de ensayos en el panel derecho. Indícame cualquier instrucción técnica en este chat (ej. *"agrega 3 proctor"*, *"revisa la pág 4"*, *"aplica 10% de descuento"* o consultas sobre NCh1508) y ajustaré la campaña en tiempo real.',
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+  };
+
   // ==========================================
   // ESTADOS DEL WORKBENCH (CHAT, ANÁLISIS & ENSAYOS)
   // ==========================================
-  const [chatMessages, setChatMessages] = useState<DisplayChatMessage[]>([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      content:
-        '¡Hola! Soy tu **Asistente Técnico-Comercial DGL IDIEM impulsado por Gemini**.\n\nPuedes ver el documento preliminar en el panel izquierdo y la propuesta de ensayos en el panel derecho. Indícame cualquier instrucción técnica en este chat (ej. *"agrega 3 proctor"*, *"revisa la pág 4"*, *"aplica 10% de descuento"* o consultas sobre NCh1508) y ajustaré la campaña en tiempo real.',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    },
-  ]);
+  const [chatMessages, setChatMessages] = useState<DisplayChatMessage[]>(() => {
+    if (initialChatMessages && Array.isArray(initialChatMessages) && initialChatMessages.length > 0) {
+      return initialChatMessages;
+    }
+    return [defaultWelcomeMessage];
+  });
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [analisisLoading, setAnalisisLoading] = useState(false);
@@ -310,8 +329,33 @@ export default function UnifiedAiAssistantModal({
   const [analisisError, setAnalisisError] = useState<string | null>(null);
 
   // Campaña y propuesta técnica activa
-  const [activeAnalisis, setActiveAnalisis] = useState<AiAnalisisResponse | null>(null);
-  const [ensayosSeleccionados, setEnsayosSeleccionados] = useState<AiEnsayoSugerido[]>([]);
+  const [activeAnalisis, setActiveAnalisis] = useState<AiAnalisisResponse | null>(() => initialActiveAnalisis || null);
+  const [ensayosSeleccionados, setEnsayosSeleccionados] = useState<AiEnsayoSugerido[]>(() => initialActiveAnalisis?.ensayos_sugeridos || []);
+
+  // Sincronizar mensajes cuando cambian desde cotización (e.g. cargar borrador o nueva cotización)
+  useEffect(() => {
+    if (initialChatMessages && Array.isArray(initialChatMessages) && initialChatMessages.length > 0) {
+      setChatMessages(initialChatMessages);
+    } else if (initialChatMessages === null) {
+      setChatMessages([defaultWelcomeMessage]);
+    }
+  }, [initialChatMessages]);
+
+  useEffect(() => {
+    if (initialActiveAnalisis !== undefined) {
+      setActiveAnalisis(initialActiveAnalisis);
+      if (initialActiveAnalisis?.ensayos_sugeridos) {
+        setEnsayosSeleccionados(initialActiveAnalisis.ensayos_sugeridos);
+      }
+    }
+  }, [initialActiveAnalisis]);
+
+  // Notificar al componente padre sobre cambios en la conversación para persistencia de borrador
+  useEffect(() => {
+    if (onChatStateChange) {
+      onChatStateChange(chatMessages, activeAnalisis);
+    }
+  }, [chatMessages, activeAnalisis, onChatStateChange]);
   const [campanaCargada, setCampanaCargada] = useState(false);
   const [activeRightSubTab, setActiveRightSubTab] = useState<'ensayos' | 'consultas' | 'alertas'>('ensayos');
   const [searchEnsayoQuery, setSearchEnsayoQuery] = useState('');
@@ -694,26 +738,81 @@ export default function UnifiedAiAssistantModal({
     }
   };
 
-  const handleClearChat = () => {
-    if (confirm('¿Deseas reiniciar la conversación y limpiar la mesa de trabajo?')) {
-      setChatMessages([
-        {
-          id: 'welcome-reset',
-          role: 'assistant',
-          content:
-            'Mesa de trabajo reiniciada. Puedes subir un nuevo documento o formular una consulta técnica en el chat.',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        },
-      ]);
-      setActiveAnalisis(null);
-      setEnsayosSeleccionados([]);
-      setCampanaCargada(false);
-      setAttachedFile(null);
-      setLastAnalyzedFile(null);
-      setLastAnalyzedText('');
-      setPastedText('');
-      setRawFileText(null);
+  const handleRequestClearChat = () => {
+    // Si hay interacción real del usuario, consultar si desea guardarlo en la Bibliografía Histórica
+    const hasUserMessages = chatMessages.some((m) => m.role === 'user');
+    if (hasUserMessages) {
+      setShowResetConfirmModal(true);
+    } else {
+      executeResetChat(false);
     }
+  };
+
+  const executeResetChat = async (saveToHistory: boolean) => {
+    if (saveToHistory) {
+      setIsArchivingHistory(true);
+      try {
+        const transcript = chatMessages
+          .map((m) => `[${m.role === 'user' ? 'EJECUTIVO COMERCIAL' : 'ASISTENTE IA'}] (${m.timestamp}):\n${m.content}`)
+          .join('\n\n');
+
+        const activeEnsayosSummary =
+          ensayosSeleccionados.length > 0
+            ? `\n\nBATERÍA DE ENSAYOS REVISADA:\n` +
+              ensayosSeleccionados.map((e) => `- [Cód ${e.codigo}] ${e.designacion} (cant: ${e.cantidad_estimada})`).join('\n')
+            : '';
+
+        await fetch('/api/bibliografia', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tipo: 'historica',
+            titulo: `Chat Asistente - ${contexto.projectName || contexto.clientName || 'Consulta Técnica'} (${new Date().toLocaleDateString('es-CL')})`,
+            descripcion: `Interacción guardada al reiniciar el asistente. Consultas: ${chatMessages
+              .filter((m) => m.role === 'user')
+              .map((m) => m.content)
+              .slice(0, 3)
+              .join('; ')
+              .slice(0, 200)}`,
+            contenidoTexto: transcript + activeEnsayosSummary,
+            tipoArchivo: 'chat',
+            tags: ['Chat Asistente', 'Histórica', ...(contexto.centroCosto ? [contexto.centroCosto.slice(0, 4)] : [])],
+            metadatos: {
+              cliente: contexto.clientName,
+              proyecto: contexto.projectName,
+              centroCosto: contexto.centroCosto,
+              codigoCotizacion: contexto.cotizacionCode,
+            },
+          }),
+        });
+
+        setArchiveSuccessToast(true);
+        setTimeout(() => setArchiveSuccessToast(false), 3000);
+      } catch (err) {
+        console.error('Error guardando en bibliografía histórica:', err);
+      } finally {
+        setIsArchivingHistory(false);
+      }
+    }
+
+    setChatMessages([
+      {
+        id: 'welcome-reset',
+        role: 'assistant',
+        content:
+          'Mesa de trabajo reiniciada. Puedes subir un nuevo documento o formular una consulta técnica en el chat.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+    ]);
+    setActiveAnalisis(null);
+    setEnsayosSeleccionados([]);
+    setCampanaCargada(false);
+    setAttachedFile(null);
+    setLastAnalyzedFile(null);
+    setLastAnalyzedText('');
+    setPastedText('');
+    setRawFileText(null);
+    setShowResetConfirmModal(false);
   };
 
   // Manejo de la tabla interactiva de ensayos
@@ -1074,7 +1173,7 @@ export default function UnifiedAiAssistantModal({
                   </span>
                   <button
                     type="button"
-                    onClick={handleClearChat}
+                    onClick={handleRequestClearChat}
                     title="Reiniciar conversación"
                     className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded transition cursor-pointer flex items-center gap-1 text-[11px]"
                   >
@@ -2210,6 +2309,87 @@ export default function UnifiedAiAssistantModal({
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Toast de Éxito al Archivar en Bibliografía Histórica */}
+        {archiveSuccessToast && (
+          <div className="fixed top-5 right-5 z-70 bg-emerald-700 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-3">
+            <CheckCircle2 className="w-4 h-4 text-emerald-200 shrink-0" />
+            <span>Conversación guardada con éxito en la Bibliografía Histórica</span>
+          </div>
+        )}
+
+        {/* Modal de Confirmación al Reiniciar Asistente (Guardar en Histórica / Solo Reiniciar / Cancelar) */}
+        {showResetConfirmModal && (
+          <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <div className="bg-white rounded-2xl p-6 shadow-2xl border border-slate-200 w-full max-w-lg space-y-4 text-slate-800 animate-in fade-in zoom-in-95">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0">
+                  <History className="w-5 h-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base font-bold text-slate-900 leading-tight">
+                    ¿Deseas guardar esta conversación en la Bibliografía Histórica?
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-1.5 leading-relaxed">
+                    Al archivarla en la <strong>Bibliografía Histórica</strong>, el Asistente IA podrá consultar estos antecedentes en futuras cotizaciones (la <em>Bibliografía Técnica</em> siempre tendrá máxima prioridad sobre ella).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowResetConfirmModal(false)}
+                  className="text-slate-400 hover:text-slate-700 cursor-pointer p-1"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 space-y-1">
+                <div className="font-semibold text-slate-700 flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Resumen de la sesión a archivar:</span>
+                </div>
+                <div className="text-[11px] text-slate-500 pl-5">
+                  • {chatMessages.filter((m) => m.role === 'user').length} consultas del ejecutivo comercial.
+                  {ensayosSeleccionados.length > 0 && ` • ${ensayosSeleccionados.length} ensayos estructurados en la batería.`}
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowResetConfirmModal(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isArchivingHistory}
+                  onClick={() => executeResetChat(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 border border-slate-300 transition cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Solo Reiniciar</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isArchivingHistory}
+                  onClick={() => executeResetChat(true)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition cursor-pointer flex items-center justify-center gap-2 shadow-xs disabled:opacity-50"
+                >
+                  {isArchivingHistory ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <BookmarkCheck className="w-3.5 h-3.5" />
+                  )}
+                  <span>Guardar en Histórica y Reiniciar</span>
+                </button>
+              </div>
             </div>
           </div>
         )}

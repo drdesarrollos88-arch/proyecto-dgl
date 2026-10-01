@@ -10,6 +10,8 @@ import {
 import { upsertContacto } from '@/lib/contactos-db';
 import { createOrGetProyecto } from '@/lib/proyectos-db';
 import { hasPermission, isAdminRole } from '@/lib/permissions';
+import { registrarAuditoria } from '@/lib/audit-db';
+import { AuditAction } from '@/lib/types';
 
 export async function GET() {
   const currentUser = await getCurrentUser();
@@ -154,6 +156,44 @@ export async function POST(req: NextRequest) {
       updatedBy: currentUser.name,
     });
 
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+    let action: AuditAction = 'COTIZACION_CREAR';
+    if (data.status === 'Borrador') {
+      action = 'COTIZACION_BORRADOR';
+    } else if (data.status === 'Finalizada') {
+      action = 'COTIZACION_FINALIZAR';
+    } else if (data.id) {
+      action = 'COTIZACION_EDITAR';
+    }
+
+    registrarAuditoria({
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action,
+      module: 'Cotizaciones',
+      description: `${
+        action === 'COTIZACION_BORRADOR'
+          ? 'Guardado de borrador'
+          : action === 'COTIZACION_FINALIZAR'
+          ? 'Emisión y finalización oficial'
+          : action === 'COTIZACION_EDITAR'
+          ? 'Modificación de cotización'
+          : 'Creación de cotización'
+      }: ${saved.code || saved.id} - ${saved.clientName} (${saved.projectName || 'Sin obra'})`,
+      details: {
+        id: saved.id,
+        code: saved.code,
+        cliente: saved.clientName,
+        proyecto: saved.projectName,
+        totalUf: saved.totalUf,
+        status: saved.status,
+        itemsCount: saved.items?.length || 0,
+      },
+      ip,
+    }).catch(() => {});
+
     return NextResponse.json({ success: true, cotizacion: saved });
   } catch (err) {
     console.error('Error saving cotizacion:', err);
@@ -190,6 +230,19 @@ export async function DELETE(req: NextRequest) {
       currentUser.id,
       isAdmin
     );
+
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+    registrarAuditoria({
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: 'COTIZACION_ELIMINAR',
+      module: 'Cotizaciones',
+      description: `Eliminación de ${ids.length} cotización(es): ${ids.join(', ')}`,
+      details: { ids, resultado: result },
+      ip,
+    }).catch(() => {});
 
     return NextResponse.json(result);
   } catch (err) {

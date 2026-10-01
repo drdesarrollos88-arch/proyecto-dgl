@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { searchClientes, createCliente } from '@/lib/clientes-db';
+import { registrarAuditoria } from '@/lib/audit-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,10 +54,24 @@ export async function POST(req: NextRequest) {
       contactPerson: body.contactPerson || '',
     });
 
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+    registrarAuditoria({
+      userId: user.id,
+      userName: user.name,
+      userEmail: user.email,
+      userRole: user.role,
+      action: 'CLIENTE_CREAR',
+      module: 'Clientes',
+      description: `Registro de nueva empresa cliente: "${cliente.name}" (RUT: ${cliente.rut})`,
+      details: { id: cliente.id, name: cliente.name, rut: cliente.rut, email: cliente.email },
+      ip,
+    }).catch(() => {});
+
     return NextResponse.json({ success: true, cliente }, { status: 201 });
   } catch (err) {
     console.error('Error creating cliente:', err);
     return NextResponse.json({ error: 'Error al registrar cliente' }, { status: 500 });
   }
 }
+
 

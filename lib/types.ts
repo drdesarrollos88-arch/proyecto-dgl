@@ -147,6 +147,11 @@ export interface Cotizacion {
   condicionesComerciales?: CotizacionCondicionesComerciales;
   showEconomicIndicators?: boolean; // Determina si se imprimen los valores UF/Dólar en el documento PDF
   status: 'Borrador' | 'Finalizada' | 'Enviada' | 'Aprobada' | 'Rechazada';
+  aiChatState?: {
+    messages: any[];
+    activeAnalisis?: any;
+    updatedAt?: string;
+  };
   createdAt: string;
   updatedAt: string;
   createdBy: string;
@@ -275,5 +280,82 @@ export interface CasoReferenciaRAG {
 export interface CorrelativoConfig {
   defaultInitialNumber: number; // Por defecto 598 (del sistema manual externo)
   sequences: Record<string, number>; // ej: { "2339": 598, "1817": 579, "2340": 100, "2341": 588 }
+}
+
+// ==================== AUDITORÍA Y TRAZABILIDAD (ADMIN / SOPORTE) ====================
+
+export type AuditAction =
+  | 'LOGIN'
+  | 'LOGOUT'
+  | 'LOGIN_FAILED'
+  | 'COTIZACION_CREAR'
+  | 'COTIZACION_EDITAR'
+  | 'COTIZACION_BORRADOR'
+  | 'COTIZACION_FINALIZAR'
+  | 'COTIZACION_ELIMINAR'
+  | 'TARIFARIO_EDITAR'
+  | 'TARIFARIO_MOVER'
+  | 'TARIFARIO_NUEVO'
+  | 'CLIENTE_CREAR'
+  | 'CLIENTE_EDITAR'
+  | 'CLIENTE_ELIMINAR'
+  | 'USUARIO_CREAR'
+  | 'USUARIO_EDITAR'
+  | 'BIBLIOGRAFIA_SUBIR'
+  | 'BIBLIOGRAFIA_ESTADO'
+  | 'BIBLIOGRAFIA_ELIMINAR'
+  | 'ASISTENTE_CHAT_ARCHIVADO';
+
+export type AuditModule =
+  | 'Acceso'
+  | 'Cotizaciones'
+  | 'Tarifario'
+  | 'Clientes'
+  | 'Configuración'
+  | 'Usuarios'
+  | 'Bibliografía'
+  | 'Asistente IA';
+
+export interface AuditLog {
+  id: string;
+  timestamp: string; // ISO string
+  userId?: string;
+  userName?: string;
+  userEmail?: string;
+  userRole?: string;
+  action: AuditAction | string;
+  module: AuditModule;
+  description: string;
+  details?: any;
+  ip?: string;
+}
+
+// ==================== BIBLIOGRAFÍA TÉCNICA E HISTÓRICA (RAG ASISTENTE IA) ====================
+
+export type TipoBibliografia = 'tecnica' | 'historica';
+export type EstadoBibliografia = 'activo' | 'inactivo';
+
+export interface BibliografiaItem {
+  id: string;
+  tipo: TipoBibliografia; // 'tecnica' (normas, manuales oficiales) | 'historica' (chats archivados, casos cotizados)
+  titulo: string;
+  descripcion?: string;
+  contenidoTexto: string; // Texto extraído para indexación y RAG
+  nombreArchivoOriginal?: string;
+  tipoArchivo?: string; // 'pdf' | 'docx' | 'txt' | 'chat' | 'cotizacion'
+  tamanoBytes?: number;
+  tags?: string[];
+  metadatos?: {
+    codigoCotizacion?: string;
+    cliente?: string;
+    proyecto?: string;
+    autor?: string;
+    normaRef?: string;
+    centroCosto?: string;
+  };
+  estado: EstadoBibliografia;
+  creadoPor?: string;
+  creadoEn: string;
+  actualizadoEn: string;
 }
 

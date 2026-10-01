@@ -7,6 +7,7 @@ import {
   batchMoveTarifarioItemsAsync,
 } from '@/lib/tarifario-db';
 import { isAdminRole } from '@/lib/permissions';
+import { registrarAuditoria } from '@/lib/audit-db';
 
 export async function GET() {
   const currentUser = await getCurrentUser();
@@ -54,6 +55,19 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ error: result.error || 'Error al mover los ensayos en lote.' }, { status: 500 });
       }
 
+      const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+      registrarAuditoria({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: 'TARIFARIO_MOVER',
+        module: 'Tarifario',
+        description: `Reorganización de ${result.count} ensayos a destino: [${targetCc}] ${targetCategory} > ${targetSubcategory || targetCategory}`,
+        details: { ids, targetCc, targetCategory, targetSubcategory, count: result.count },
+        ip,
+      }).catch(() => {});
+
       return NextResponse.json({
         success: true,
         message: `Se movieron ${result.count} ensayo(s) exitosamente.`,
@@ -70,6 +84,19 @@ export async function PUT(req: NextRequest) {
     if (!updated) {
       return NextResponse.json({ error: 'Ítem no encontrado en el tarifario' }, { status: 404 });
     }
+
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+    registrarAuditoria({
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: 'TARIFARIO_EDITAR',
+      module: 'Tarifario',
+      description: `Edición de ensayo [Cód: ${updated.code}]: "${updated.designation}" (UF: ${updated.ufPrice})`,
+      details: { id: updated.id, code: updated.code, updates },
+      ip,
+    }).catch(() => {});
 
     return NextResponse.json({ success: true, item: updated });
   } catch (err) {
@@ -112,6 +139,19 @@ export async function POST(req: NextRequest) {
       },
       currentUser.name
     );
+
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+    registrarAuditoria({
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: 'TARIFARIO_NUEVO',
+      module: 'Tarifario',
+      description: `Creación de nuevo ensayo oficial [Cód: ${newItem.code}]: "${newItem.designation}" en CC ${newItem.cc}`,
+      details: { id: newItem.id, code: newItem.code, cc: newItem.cc, ufPrice: newItem.ufPrice },
+      ip,
+    }).catch(() => {});
 
     return NextResponse.json({ success: true, item: newItem });
   } catch (err) {

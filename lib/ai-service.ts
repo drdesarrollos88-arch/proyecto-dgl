@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { getTarifario, getReglasAprendidas } from './db';
 import { buscarCasosHistoricosSimilares } from './rag-service';
+import { buscarBibliografiaRelevante } from './bibliografia-db';
 import { TarifarioItem } from './types';
 
 export interface AiAnalisisInput {
@@ -151,8 +152,9 @@ export async function analizarSolicitudConIa(input: AiAnalisisInput): Promise<Ai
       const ai = new GoogleGenAI({ apiKey });
       const catalogText = formatCatalogForPrompt(tarifario);
 
-      // 1. Recuperar Casos Históricos de Referencia (Opción A - RAG)
+      // 1. Recuperar Bibliografía Técnica e Histórica con Prevalencia Técnica
       const fullText = (input.texto || '') + ' ' + (input.fileName || '');
+      const biblioInfo = await buscarBibliografiaRelevante(fullText, 2, 2);
       const ragInfo = buscarCasosHistoricosSimilares(fullText, undefined, 2);
 
       // 2. Recuperar Reglas y Sinónimos Aprendidos por el equipo (Opción B)
@@ -172,6 +174,7 @@ export async function analizarSolicitudConIa(input: AiAnalisisInput): Promise<Ai
 CATÁLOGO MAESTRO DE ENSAYOS OFICIALES DGL IDIEM:
 ${catalogText}
 
+${biblioInfo.promptSnippet ? `${biblioInfo.promptSnippet}\n` : ''}
 ${ragInfo.promptSnippet ? `${ragInfo.promptSnippet}\n` : ''}
 ${reglasText ? `${reglasText}\n` : ''}
 
@@ -956,7 +959,8 @@ export async function chatAsistenteTecnicoComercial(params: {
           .join('\n')
       : 'No hay mensajes previos en esta sesión.';
 
-  // 1. Recuperar casos históricos RAG (Opción A)
+  // 1. Recuperar Bibliografía Técnica e Histórica con Prevalencia Técnica
+  const biblioInfo = await buscarBibliografiaRelevante(params.mensaje, 2, 1);
   const ragInfo = buscarCasosHistoricosSimilares(params.mensaje, params.contexto?.centroCosto, 1);
 
   // 2. Recuperar reglas y sinónimos aprendidos (Opción B)
@@ -978,6 +982,7 @@ CONTEXTO DEL PRESUPUESTO ACTUAL:
 - Centro de Costo activo: ${params.contexto?.centroCosto || 'General'}
 - Moneda: ${params.contexto?.currency || 'UF'}
 
+${biblioInfo.promptSnippet ? `${biblioInfo.promptSnippet}\n` : ''}
 ${reglasChatText ? `${reglasChatText}\n` : ''}
 ${ragInfo.promptSnippet ? `${ragInfo.promptSnippet}\n` : ''}
 

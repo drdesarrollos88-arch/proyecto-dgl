@@ -1811,42 +1811,6 @@ function CotizadorContent() {
           </div>
         )}
 
-        {/* Asistente IA - Acceso Rápido y Destacado */}
-        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-red-950 text-white rounded-xl p-3.5 border border-slate-700 shadow-md mb-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center shrink-0 shadow-sm shadow-red-900/50">
-              <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold tracking-tight text-white">
-                  Asistente IA de Cotización
-                </h3>
-                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  Gemini 3 Flash Activo
-                </span>
-                <span className="hidden md:inline-flex text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full border border-slate-700">
-                  Zero Data Training
-                </span>
-              </div>
-              <p className="text-xs text-slate-300 mt-0.5">
-                Carga un PDF, Word o Excel, o pega un correo para estructurar la cotización e interactúa en tiempo real con la IA para ajustar ensayos, cantidades y descuentos.
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setUnifiedAiTab('analizar');
-              setShowUnifiedAiModal(true);
-            }}
-            className="w-full sm:w-auto px-4 py-2 rounded-lg text-xs font-bold bg-gradient-to-r from-red-600 to-indigo-700 hover:from-red-700 hover:to-indigo-800 text-white shadow-sm transition flex items-center justify-center gap-2 cursor-pointer shrink-0"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-            <span>Abrir Asistente IA</span>
-          </button>
-        </div>
 
         {/* 3 Blocks: 1. Empresa | 2. Contacto | 3. Proyecto y Presupuesto */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5 mb-3.5">
@@ -2537,22 +2501,9 @@ function CotizadorContent() {
               </p>
             </div>
 
-            {/* Smart Search Bar & AI Import Button */}
+            {/* Buscador inteligente de Ensayos */}
             <div className="flex items-center gap-2 w-full md:w-auto">
-              <button
-                type="button"
-                onClick={() => {
-                  setUnifiedAiTab('chat');
-                  setShowUnifiedAiModal(true);
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-800 hover:to-indigo-800 text-white shadow-xs shadow-indigo-700/20 transition cursor-pointer shrink-0"
-                title="Abrir Asistente IA Técnico-Comercial DGL"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
-                <span>Asistente IA DGL</span>
-              </button>
-
-              <div ref={searchRef} className="relative w-full md:w-[430px]">
+              <div ref={searchRef} className="relative w-full md:w-[480px]">
                 <div className="relative flex items-center">
                   <Search className="w-3.5 h-3.5 text-blue-600 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input

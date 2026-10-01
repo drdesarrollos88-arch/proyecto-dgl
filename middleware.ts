@@ -59,8 +59,13 @@ export async function middleware(request: NextRequest) {
   }
 
   // Admin-only routes (Permite roles 'admin' y 'superadmin')
+  // /usuarios: Administración de usuarios y perfiles
+  // /auditoria: Trazabilidad y auditoría
+  // /configuracion/correlativos: Correlativos oficiales
   if (
-    (pathname.startsWith('/usuarios') || pathname.startsWith('/configuracion')) &&
+    (pathname.startsWith('/usuarios') ||
+      pathname.startsWith('/auditoria') ||
+      pathname.startsWith('/configuracion/correlativos')) &&
     user.role !== 'admin' &&
     user.role !== 'superadmin'
   ) {

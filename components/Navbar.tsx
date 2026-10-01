@@ -203,6 +203,25 @@ export default function Navbar() {
                 >
                   <div className="py-1">
                     <Link
+                      href="/cotizador"
+                      onClick={() => setActiveDropdown(null)}
+                      className="flex items-start gap-2.5 px-3.5 py-2 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 transition-colors group"
+                    >
+                      <PlusCircle className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0 group-hover:scale-110 transition-transform" />
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold leading-snug text-slate-900 group-hover:text-emerald-800 flex items-center gap-1.5">
+                          <span>Nueva Cotización</span>
+                          <span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1.5 py-0.2 rounded-full">
+                            + Crear
+                          </span>
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-normal">
+                          Crear y emitir nueva propuesta comercial
+                        </span>
+                      </div>
+                    </Link>
+
+                    <Link
                       href="/cotizaciones"
                       onClick={() => setActiveDropdown(null)}
                       className="flex items-start gap-2.5 px-3.5 py-2 hover:bg-red-50 text-slate-700 hover:text-red-700 transition-colors group"
@@ -214,22 +233,6 @@ export default function Navbar() {
                         </span>
                         <span className="text-[11px] text-slate-500 font-normal">
                           Panel comercial y seguimiento de propuestas
-                        </span>
-                      </div>
-                    </Link>
-
-                    <Link
-                      href="/cotizador"
-                      onClick={() => setActiveDropdown(null)}
-                      className="flex items-start gap-2.5 px-3.5 py-2 hover:bg-red-50 text-slate-700 hover:text-red-700 transition-colors group"
-                    >
-                      <Calculator className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0 group-hover:scale-110 transition-transform" />
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold leading-snug text-slate-800 group-hover:text-red-700">
-                          Generador de Cotizaciones
-                        </span>
-                        <span className="text-[11px] text-slate-500 font-normal">
-                          Crear y emitir nueva propuesta comercial
                         </span>
                       </div>
                     </Link>
@@ -766,7 +769,7 @@ export default function Navbar() {
           }`}
         >
           <Calculator className="w-3.5 h-3.5" />
-          <span>Cotizar</span>
+          <span>Nueva Cotización</span>
         </Link>
         <Link
           href="/clientes"

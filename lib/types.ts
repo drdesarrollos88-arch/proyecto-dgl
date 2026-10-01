@@ -12,6 +12,9 @@ export const PERMISSION_KEYS = [
   'tarifario.editar',
   'clientes.gestionar',
   'configuracion.formato',
+  'configuracion.aprendizaje',
+  'configuracion.bibliografia',
+  'auditoria.ver',
   'usuarios.administrar',
 ] as const;
 

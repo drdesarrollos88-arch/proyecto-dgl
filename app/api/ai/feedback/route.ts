@@ -96,8 +96,11 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  // Verificar permiso de administración
-  const canAdmin = hasPermission(user, 'configuracion.formato') || isAdminRole(user.role);
+  // Verificar permiso de administración o gestión de aprendizaje
+  const canAdmin =
+    hasPermission(user, 'configuracion.aprendizaje') ||
+    hasPermission(user, 'configuracion.formato') ||
+    isAdminRole(user.role);
   if (!canAdmin) {
     return NextResponse.json(
       { error: 'No tienes permisos para modificar reglas de aprendizaje.' },
@@ -148,7 +151,10 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const canAdmin = hasPermission(user, 'configuracion.formato') || isAdminRole(user.role);
+  const canAdmin =
+    hasPermission(user, 'configuracion.aprendizaje') ||
+    hasPermission(user, 'configuracion.formato') ||
+    isAdminRole(user.role);
   if (!canAdmin) {
     return NextResponse.json(
       { error: 'No tienes permisos para eliminar reglas de aprendizaje.' },

@@ -332,17 +332,28 @@ export default function UnifiedAiAssistantModal({
   const [activeAnalisis, setActiveAnalisis] = useState<AiAnalisisResponse | null>(() => initialActiveAnalisis || null);
   const [ensayosSeleccionados, setEnsayosSeleccionados] = useState<AiEnsayoSugerido[]>(() => initialActiveAnalisis?.ensayos_sugeridos || []);
 
-  // Sincronizar mensajes cuando cambian desde cotización (e.g. cargar borrador o nueva cotización)
+  const onChatStateChangeRef = useRef(onChatStateChange);
   useEffect(() => {
-    if (initialChatMessages && Array.isArray(initialChatMessages) && initialChatMessages.length > 0) {
-      setChatMessages(initialChatMessages);
-    } else if (initialChatMessages === null) {
-      setChatMessages([defaultWelcomeMessage]);
+    onChatStateChangeRef.current = onChatStateChange;
+  }, [onChatStateChange]);
+
+  // Sincronizar mensajes cuando cambian desde cotización (e.g. cargar borrador o nueva cotización)
+  const lastInitialMessagesRef = useRef<DisplayChatMessage[] | null | undefined>(undefined);
+  useEffect(() => {
+    if (initialChatMessages !== undefined && initialChatMessages !== lastInitialMessagesRef.current) {
+      lastInitialMessagesRef.current = initialChatMessages;
+      if (initialChatMessages && Array.isArray(initialChatMessages) && initialChatMessages.length > 0) {
+        setChatMessages(initialChatMessages);
+      } else if (initialChatMessages === null) {
+        setChatMessages([defaultWelcomeMessage]);
+      }
     }
   }, [initialChatMessages]);
 
+  const lastInitialAnalisisRef = useRef<AiAnalisisResponse | null | undefined>(undefined);
   useEffect(() => {
-    if (initialActiveAnalisis !== undefined) {
+    if (initialActiveAnalisis !== undefined && initialActiveAnalisis !== lastInitialAnalisisRef.current) {
+      lastInitialAnalisisRef.current = initialActiveAnalisis;
       setActiveAnalisis(initialActiveAnalisis);
       if (initialActiveAnalisis?.ensayos_sugeridos) {
         setEnsayosSeleccionados(initialActiveAnalisis.ensayos_sugeridos);
@@ -351,11 +362,16 @@ export default function UnifiedAiAssistantModal({
   }, [initialActiveAnalisis]);
 
   // Notificar al componente padre sobre cambios en la conversación para persistencia de borrador
+  const isFirstSyncRef = useRef(true);
   useEffect(() => {
-    if (onChatStateChange) {
-      onChatStateChange(chatMessages, activeAnalisis);
+    if (isFirstSyncRef.current) {
+      isFirstSyncRef.current = false;
+      return;
     }
-  }, [chatMessages, activeAnalisis, onChatStateChange]);
+    if (onChatStateChangeRef.current) {
+      onChatStateChangeRef.current(chatMessages, activeAnalisis);
+    }
+  }, [chatMessages, activeAnalisis]);
   const [campanaCargada, setCampanaCargada] = useState(false);
   const [activeRightSubTab, setActiveRightSubTab] = useState<'ensayos' | 'consultas' | 'alertas'>('ensayos');
   const [searchEnsayoQuery, setSearchEnsayoQuery] = useState('');

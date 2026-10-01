@@ -186,6 +186,14 @@ function CotizadorContent() {
   const [unifiedAiTab, setUnifiedAiTab] = useState<'chat' | 'analizar' | 'memoria'>('chat');
   const [assistantChatMessages, setAssistantChatMessages] = useState<DisplayChatMessage[] | null>(null);
   const [assistantActiveAnalisis, setAssistantActiveAnalisis] = useState<AiAnalisisResponse | null>(null);
+  const assistantChatMessagesRef = useRef<DisplayChatMessage[] | null>(null);
+  const assistantActiveAnalisisRef = useRef<AiAnalisisResponse | null>(null);
+
+  const handleChatStateChange = React.useCallback((msgs: DisplayChatMessage[], analisis: AiAnalisisResponse | null) => {
+    assistantChatMessagesRef.current = msgs;
+    assistantActiveAnalisisRef.current = analisis;
+  }, []);
+
   const [showIndicatorsInPdf, setShowIndicatorsInPdf] = useState<boolean>(true);
 
   // Items in current quotation
@@ -524,11 +532,15 @@ function CotizadorContent() {
           }
           if (Array.isArray(c.items)) setItems(c.items);
           if (c.aiChatState?.messages && Array.isArray(c.aiChatState.messages) && c.aiChatState.messages.length > 0) {
+            assistantChatMessagesRef.current = c.aiChatState.messages;
+            assistantActiveAnalisisRef.current = c.aiChatState.activeAnalisis || null;
             setAssistantChatMessages(c.aiChatState.messages);
             if (c.aiChatState.activeAnalisis) {
               setAssistantActiveAnalisis(c.aiChatState.activeAnalisis);
             }
           } else {
+            assistantChatMessagesRef.current = null;
+            assistantActiveAnalisisRef.current = null;
             setAssistantChatMessages(null);
             setAssistantActiveAnalisis(null);
           }
@@ -1075,11 +1087,15 @@ function CotizadorContent() {
       condicionesComerciales,
       showEconomicIndicators: showIndicatorsInPdf,
       status: 'Borrador' as const,
-      aiChatState: assistantChatMessages && assistantChatMessages.length > 0 ? {
+      aiChatState: assistantChatMessagesRef.current && assistantChatMessagesRef.current.length > 0 ? {
+        messages: assistantChatMessagesRef.current,
+        activeAnalisis: assistantActiveAnalisisRef.current,
+        updatedAt: new Date().toISOString(),
+      } : (assistantChatMessages && assistantChatMessages.length > 0 ? {
         messages: assistantChatMessages,
         activeAnalisis: assistantActiveAnalisis,
         updatedAt: new Date().toISOString(),
-      } : undefined,
+      } : undefined),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       createdBy: user?.name || 'Comercial',
@@ -1113,8 +1129,6 @@ function CotizadorContent() {
     condicionesComerciales,
     showIndicatorsInPdf,
     user,
-    assistantChatMessages,
-    assistantActiveAnalisis,
   ]);
 
   // Save draft quote to database (no PDF generation)
@@ -1147,10 +1161,17 @@ function CotizadorContent() {
         } catch {}
       }
 
+      const currentMsgs = assistantChatMessagesRef.current || assistantChatMessages;
+      const currentAnalisis = assistantActiveAnalisisRef.current || assistantActiveAnalisis;
       const cotizacionToSave = {
         ...currentCotizacion,
         commercialSignature: activeSig || currentCotizacion.commercialSignature,
         status: 'Borrador' as const,
+        aiChatState: currentMsgs && currentMsgs.length > 0 ? {
+          messages: currentMsgs,
+          activeAnalisis: currentAnalisis,
+          updatedAt: new Date().toISOString(),
+        } : undefined,
       };
 
       const res = await fetch('/api/cotizaciones', {
@@ -1239,11 +1260,18 @@ function CotizadorContent() {
         }
       }
 
+      const finalMsgs = assistantChatMessagesRef.current || assistantChatMessages;
+      const finalAnalisis = assistantActiveAnalisisRef.current || assistantActiveAnalisis;
       const cotizacionForPdf: Cotizacion = {
         ...currentCotizacion,
         commercialSignature: activeSig || currentCotizacion.commercialSignature,
         showEconomicIndicators: showIndicatorsInPdf,
         status: 'Finalizada',
+        aiChatState: finalMsgs && finalMsgs.length > 0 ? {
+          messages: finalMsgs,
+          activeAnalisis: finalAnalisis,
+          updatedAt: new Date().toISOString(),
+        } : undefined,
       };
 
       // 1. Generar y descargar el PDF oficial limpio (sin marca de agua de borrador)
@@ -1278,9 +1306,9 @@ function CotizadorContent() {
       }
 
       // 3. Si hubo diálogo con el Asistente IA, registrarlo en la Bibliografía Histórica
-      if (assistantChatMessages && assistantChatMessages.some((m) => m.role === 'user')) {
+      if (finalMsgs && finalMsgs.some((m) => m.role === 'user')) {
         try {
-          const transcript = assistantChatMessages
+          const transcript = finalMsgs
             .map((m) => `[${m.role === 'user' ? 'EJECUTIVO COMERCIAL' : 'ASISTENTE IA'}] (${m.timestamp}):\n${m.content}`)
             .join('\n\n');
 
@@ -1313,6 +1341,8 @@ function CotizadorContent() {
       }
 
       // 4. Forzar reinicio del asistente IA para comenzar con chat limpio en futuras cotizaciones
+      assistantChatMessagesRef.current = null;
+      assistantActiveAnalisisRef.current = null;
       setAssistantChatMessages(null);
       setAssistantActiveAnalisis(null);
 
@@ -1372,11 +1402,18 @@ function CotizadorContent() {
         }
       }
 
+      const draftMsgs = assistantChatMessagesRef.current || assistantChatMessages;
+      const draftAnalisis = assistantActiveAnalisisRef.current || assistantActiveAnalisis;
       const cotizacionForPdf: Cotizacion = {
         ...currentCotizacion,
         commercialSignature: activeSig || currentCotizacion.commercialSignature,
         showEconomicIndicators: showIndicatorsInPdf,
         status: 'Borrador',
+        aiChatState: draftMsgs && draftMsgs.length > 0 ? {
+          messages: draftMsgs,
+          activeAnalisis: draftAnalisis,
+          updatedAt: new Date().toISOString(),
+        } : undefined,
       };
 
       // 1. Guardar en base de datos como Borrador
@@ -1505,6 +1542,8 @@ function CotizadorContent() {
     setShowIndicatorsInPdf(true);
     setStatusMessage(null);
     setShowSuccessModal(false);
+    assistantChatMessagesRef.current = null;
+    assistantActiveAnalisisRef.current = null;
     setAssistantChatMessages(null);
     setAssistantActiveAnalisis(null);
     if (typeof window !== 'undefined') {
@@ -3441,12 +3480,9 @@ function CotizadorContent() {
           currency,
           cotizacionCode: code,
         }}
-        initialChatMessages={assistantChatMessages}
-        initialActiveAnalisis={assistantActiveAnalisis}
-        onChatStateChange={(msgs, analisis) => {
-          setAssistantChatMessages(msgs);
-          setAssistantActiveAnalisis(analisis);
-        }}
+        initialChatMessages={assistantChatMessagesRef.current || assistantChatMessages}
+        initialActiveAnalisis={assistantActiveAnalisisRef.current || assistantActiveAnalisis}
+        onChatStateChange={handleChatStateChange}
       />
     </div>
   );

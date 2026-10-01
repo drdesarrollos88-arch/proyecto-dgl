@@ -135,6 +135,95 @@ function parseDesignation(raw: string): { title: string; detail: string } {
   return { title: clean, detail: '' };
 }
 
+// Componente para ingresar descuentos o aumentos en formato porcentaje (+20% o -20%)
+function FactorPercentInput({
+  factor,
+  onChange,
+}: {
+  factor: number;
+  onChange: (newFactor: number) => void;
+}) {
+  const formatFactor = (f: number): string => {
+    const pct = Math.round((f - 1) * 1000) / 10;
+    if (pct === 0) return '0%';
+    if (pct > 0) return `+${pct}%`;
+    return `${pct}%`;
+  };
+
+  const [text, setText] = useState<string>(() => formatFactor(factor));
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) {
+      setText(formatFactor(factor));
+    }
+  }, [factor, isFocused]);
+
+  const parseAndApply = (raw: string) => {
+    const trimmed = raw.trim();
+    if (
+      !trimmed ||
+      trimmed === '0' ||
+      trimmed === '0%' ||
+      trimmed === '+0' ||
+      trimmed === '-0' ||
+      trimmed === '+0%' ||
+      trimmed === '-0%'
+    ) {
+      onChange(1.0);
+      setText('0%');
+      return;
+    }
+
+    const clean = trimmed.replace(/%/g, '').replace(/\s+/g, '');
+    const num = parseFloat(clean);
+    if (isNaN(num)) {
+      onChange(1.0);
+      setText('0%');
+      return;
+    }
+
+    // -20 o -20% -> factor = 1 + (-20 / 100) = 0.80
+    // +20 o +20% o 20 -> factor = 1 + (20 / 100) = 1.20
+    const newFactor = Math.max(0, Math.round((1 + num / 100) * 10000) / 10000);
+    onChange(newFactor);
+    setText(formatFactor(newFactor));
+  };
+
+  const isDiscount = factor < 0.9999;
+  const isSurcharge = factor > 1.0001;
+
+  return (
+    <input
+      type="text"
+      value={text}
+      onFocus={(e) => {
+        setIsFocused(true);
+        e.target.select();
+      }}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => {
+        setIsFocused(false);
+        parseAndApply(text);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      className={`w-20 p-1 text-center font-mono text-xs font-bold rounded border transition-colors focus:ring-2 focus:outline-none ${
+        isDiscount
+          ? 'text-emerald-700 bg-emerald-50 border-emerald-300 focus:ring-emerald-500 focus:border-emerald-500'
+          : isSurcharge
+          ? 'text-amber-800 bg-amber-50 border-amber-300 focus:ring-amber-500 focus:border-amber-500'
+          : 'text-slate-700 bg-white border-slate-300 focus:ring-blue-600 focus:border-blue-600'
+      }`}
+      placeholder="0%"
+      title="Descuento o recargo (ej. -20% descuento, +20% recargo, 0% normal)"
+    />
+  );
+}
+
 function CotizadorContent() {
   const searchParams = useSearchParams();
   const editId = searchParams.get('edit');
@@ -952,20 +1041,22 @@ function CotizadorContent() {
     setDropdownOpen(false);
   };
 
-  // Update item field (quantity or factor)
-  const handleItemChange = (id: string, field: 'quantity' | 'factor', val: number) => {
+  // Update item field (quantity, factor, or base ufPrice)
+  const handleItemChange = (id: string, field: 'quantity' | 'factor' | 'ufPrice', val: number) => {
     setItems((prev) =>
       prev.map((it) => {
         if (it.id !== id) return it;
         const newQty = field === 'quantity' ? Math.max(0, val) : it.quantity;
         const newFactor = field === 'factor' ? Math.max(0, val) : it.factor;
-        const newSubtotalUf = Math.round(it.ufPrice * newFactor * newQty * 100) / 100;
+        const newPrice = field === 'ufPrice' ? Math.max(0, val) : it.ufPrice;
+        const newSubtotalUf = Math.round(newPrice * newFactor * newQty * 100) / 100;
         const newSubtotalClp = Math.round(newSubtotalUf * ufValue);
 
         return {
           ...it,
           quantity: newQty,
           factor: newFactor,
+          ufPrice: newPrice,
           subtotalUf: newSubtotalUf,
           subtotalClp: newSubtotalClp,
         };
@@ -2769,16 +2860,21 @@ function CotizadorContent() {
                       <th className="py-3 px-3 w-40 min-w-[140px] max-w-[180px]">Norma</th>
                       <th className="py-3 px-2 w-20 min-w-[70px] text-center">Masa</th>
                       <th className="py-3 px-2 w-16 min-w-[60px] text-center">Unidad</th>
-                      <th className="py-3 px-3 w-24 min-w-[85px] text-right">
-                        {currency === 'USD' ? 'Precio USD' : 'Precio UF'}
+                      <th className="py-3 px-3 w-28 min-w-[95px] text-right">
+                        <div className="flex flex-col items-end leading-tight">
+                          <span className="text-[11px] font-bold text-slate-700">
+                            {currency === 'USD' ? 'Precio USD' : 'Precio UF'}
+                          </span>
+                          <span className="text-[9px] font-normal text-blue-600 lowercase">(editable)</span>
+                        </div>
                       </th>
                       <th
-                        className="py-3 px-2 w-24 min-w-[85px] text-center"
-                        title="Factor multiplicador (1.0 = Precio lista, 0.9 = 10% desc., 1.15 = 15% recargo)"
+                        className="py-3 px-2 w-24 min-w-[90px] text-center"
+                        title="Descuento o recargo porcentual (ej. -20% descuento, +20% recargo, 0% normal)"
                       >
                         <div className="flex flex-col items-center leading-tight">
                           <span className="text-[11px] font-bold text-slate-700">Desc./Aum.</span>
-                          <span className="text-[9px] font-normal text-slate-400 lowercase">(factor)</span>
+                          <span className="text-[9px] font-semibold text-blue-600 lowercase">(%)</span>
                         </div>
                       </th>
                       <th className="py-3 px-2 w-16 min-w-[65px] text-center">Cant.</th>
@@ -2933,20 +3029,45 @@ function CotizadorContent() {
                             <td className="py-3 px-2 text-center text-xs font-semibold text-slate-600 align-top pt-3.5">
                               {item.unit}
                             </td>
-                            <td className="py-3 px-3 text-right font-mono font-medium text-slate-700 align-top pt-3.5">
-                              {finalUnitDisplay}
+                            {/* Precio base unitario editable */}
+                            <td className="py-3 px-2 text-right align-top pt-2.5">
+                              <div className="flex items-center justify-end gap-1">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  value={
+                                    currency === 'USD'
+                                      ? Math.round(((item.ufPrice * ufValue) / dollarValue) * 100) / 100
+                                      : item.ufPrice
+                                  }
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value);
+                                    const safeVal = isNaN(val) ? 0 : Math.max(0, val);
+                                    if (currency === 'USD') {
+                                      const convertedUf = (safeVal * dollarValue) / ufValue;
+                                      handleItemChange(item.id, 'ufPrice', Math.round(convertedUf * 100) / 100);
+                                    } else {
+                                      handleItemChange(item.id, 'ufPrice', safeVal);
+                                    }
+                                  }}
+                                  className="w-20 p-1 text-right font-mono text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded focus:ring-2 focus:ring-blue-600 focus:border-blue-600 focus:outline-none hover:border-slate-400 transition-colors shadow-2xs"
+                                  title={`Editar precio unitario base (${currency}) para este ensayo en la cotización`}
+                                />
+                                <span className="text-[10px] text-slate-400 font-bold">{currency}</span>
+                              </div>
+                              {item.factor !== 1.0 && (
+                                <div className="text-[9px] text-slate-400 font-medium text-right mt-0.5">
+                                  c/desc: UF {(item.ufPrice * item.factor).toFixed(2)}
+                                </div>
+                              )}
                             </td>
+
+                            {/* Descuento o Aumento (%) con formato +% o -% */}
                             <td className="py-3 px-2 text-center align-top pt-2.5">
-                              <input
-                                type="number"
-                                step="0.05"
-                                min="0"
-                                value={item.factor}
-                                onChange={(e) =>
-                                  handleItemChange(item.id, 'factor', parseFloat(e.target.value) || 0)
-                                }
-                                className="w-16 p-1 text-center font-mono text-xs border border-slate-300 rounded focus:ring-2 focus:ring-blue-600 focus:outline-none"
-                                title="Factor multiplicador (1.0 = 100%, 0.9 = 10% desc.)"
+                              <FactorPercentInput
+                                factor={item.factor}
+                                onChange={(newFactor) => handleItemChange(item.id, 'factor', newFactor)}
                               />
                             </td>
                             <td className="py-3 px-2 text-center align-top pt-2.5">

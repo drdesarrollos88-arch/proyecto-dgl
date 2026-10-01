@@ -32,6 +32,8 @@ import {
   Calculator,
   FolderArchive,
   Lock,
+  Check,
+  Save,
 } from 'lucide-react';
 
 const romanMap: Record<string, number> = {
@@ -149,6 +151,149 @@ function TarifarioContent() {
   // Menú desplegable compacto
   const [actionsDropdownOpen, setActionsDropdownOpen] = useState(false);
   const actionsDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Estados para modo de edición rápida de precios en la tabla
+  const [quickPriceEditMode, setQuickPriceEditMode] = useState(false);
+  const [editedPrices, setEditedPrices] = useState<Record<string, string>>({});
+  const [savingPrices, setSavingPrices] = useState(false);
+  const [priceToast, setPriceToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Edición rápida individual (clic directo en celda de precio)
+  const [singleInlineEditId, setSingleInlineEditId] = useState<string | null>(null);
+  const [singleInlinePrice, setSingleInlinePrice] = useState('');
+  const [savingSinglePriceId, setSavingSinglePriceId] = useState<string | null>(null);
+
+  // Precios pendientes de guardar calculados
+  const pendingPriceChanges = useMemo(() => {
+    const changes: Array<{ id: string; oldPrice: number; newPrice: number }> = [];
+    for (const [id, valStr] of Object.entries(editedPrices)) {
+      const num = parseFloat(valStr);
+      if (!isNaN(num) && num >= 0) {
+        const item = items.find((it) => it.id === id);
+        if (item && Math.abs(item.ufPrice - num) > 0.0001) {
+          changes.push({ id, oldPrice: item.ufPrice, newPrice: num });
+        }
+      }
+    }
+    return changes;
+  }, [editedPrices, items]);
+
+  const handlePriceChange = (id: string, val: string) => {
+    setEditedPrices((prev) => ({
+      ...prev,
+      [id]: val,
+    }));
+  };
+
+  const handleRevertPrice = (id: string) => {
+    setEditedPrices((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const handleDiscardAllPrices = () => {
+    setEditedPrices({});
+    setSingleInlineEditId(null);
+  };
+
+  const handleSaveAllPrices = async () => {
+    if (pendingPriceChanges.length === 0) return;
+    setSavingPrices(true);
+    setPriceToast(null);
+
+    try {
+      const payload = {
+        action: 'batchUpdatePrices',
+        updates: pendingPriceChanges.map((c) => ({
+          id: c.id,
+          ufPrice: c.newPrice,
+        })),
+      };
+
+      const res = await fetch('/api/tarifario', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const count = pendingPriceChanges.length;
+        setItems((prev) =>
+          prev.map((it) => {
+            const ch = pendingPriceChanges.find((p) => p.id === it.id);
+            return ch ? { ...it, ufPrice: ch.newPrice } : it;
+          })
+        );
+        setEditedPrices({});
+        setSingleInlineEditId(null);
+        setPriceToast({
+          type: 'success',
+          message: `¡${count} precio${count > 1 ? 's' : ''} actualizado${count > 1 ? 's' : ''} exitosamente!`,
+        });
+        setTimeout(() => setPriceToast(null), 4000);
+      } else {
+        setPriceToast({
+          type: 'error',
+          message: data.error || 'Error al guardar los precios modificados.',
+        });
+      }
+    } catch {
+      setPriceToast({
+        type: 'error',
+        message: 'Error de conexión al guardar los precios.',
+      });
+    } finally {
+      setSavingPrices(false);
+    }
+  };
+
+  const handleStartSingleInlineEdit = (item: TarifarioItem) => {
+    setSingleInlineEditId(item.id);
+    setSingleInlinePrice(item.ufPrice.toString());
+  };
+
+  const handleSaveSingleInlinePrice = async (item: TarifarioItem) => {
+    const num = parseFloat(singleInlinePrice);
+    if (isNaN(num) || num < 0) {
+      alert('Debe ingresar un valor numérico válido mayor o igual a 0.');
+      return;
+    }
+    if (Math.abs(item.ufPrice - num) < 0.0001) {
+      setSingleInlineEditId(null);
+      return;
+    }
+
+    setSavingSinglePriceId(item.id);
+    try {
+      const res = await fetch('/api/tarifario', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'batchUpdatePrices',
+          updates: [{ id: item.id, ufPrice: num }],
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, ufPrice: num } : it)));
+        setSingleInlineEditId(null);
+        setPriceToast({
+          type: 'success',
+          message: `Precio de [${item.code || item.designation.slice(0, 20)}] actualizado a UF ${num.toFixed(2)}.`,
+        });
+        setTimeout(() => setPriceToast(null), 3000);
+      } else {
+        alert(data.error || 'Error al actualizar precio.');
+      }
+    } catch {
+      alert('Error de conexión al actualizar precio.');
+    } finally {
+      setSavingSinglePriceId(null);
+    }
+  };
 
   // Helper para obtener sub-subcategorías disponibles para una categoría y subcategoría dada
   const getChildrenForSubcat = (category: string, subcat: string): string[] => {
@@ -687,6 +832,40 @@ function TarifarioContent() {
               </button>
             )}
 
+            {/* Botón de Edición Rápida de Precios en Lista (Permiso tarifario.editar) */}
+            {hasPermission(user, 'tarifario.editar') && (
+              <button
+                onClick={() => {
+                  if (quickPriceEditMode && pendingPriceChanges.length > 0) {
+                    if (confirm('Tienes cambios de precios sin guardar. ¿Deseas descartarlos al salir del modo edición?')) {
+                      handleDiscardAllPrices();
+                      setQuickPriceEditMode(false);
+                    }
+                  } else {
+                    setQuickPriceEditMode((prev) => !prev);
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-2xs transition-all cursor-pointer border ${
+                  quickPriceEditMode
+                    ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold border-amber-600 ring-2 ring-amber-300'
+                    : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 hover:border-amber-400'
+                }`}
+                title={
+                  quickPriceEditMode
+                    ? 'Salir del modo edición de precios'
+                    : 'Habilitar edición rápida de precios directamente en la tabla'
+                }
+              >
+                <Edit2 className="w-3.5 h-3.5 text-amber-800" />
+                <span>{quickPriceEditMode ? '✓ Modo Edición Precios' : 'Editar Precios en Lista'}</span>
+                {pendingPriceChanges.length > 0 && (
+                  <span className="bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full animate-pulse">
+                    {pendingPriceChanges.length}
+                  </span>
+                )}
+              </button>
+            )}
+
             {/* Opciones de edición y carga de Excel (Solo con permiso tarifario.editar) */}
             {hasPermission(user, 'tarifario.editar') && (
               <div className="relative">
@@ -700,6 +879,16 @@ function TarifarioContent() {
 
                 {actionsDropdownOpen && (
                   <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 divide-y divide-slate-100">
+                    <button
+                      onClick={() => {
+                        setActionsDropdownOpen(false);
+                        setQuickPriceEditMode((prev) => !prev);
+                      }}
+                      className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs font-medium text-amber-800 hover:bg-amber-50 cursor-pointer"
+                    >
+                      <Edit2 className="w-3.5 h-3.5 text-amber-600" />
+                      <span>{quickPriceEditMode ? 'Desactivar Edición Precios' : 'Editar Precios en Lista'}</span>
+                    </button>
                     <button
                       onClick={() => {
                         setActionsDropdownOpen(false);
@@ -727,6 +916,32 @@ function TarifarioContent() {
             )}
           </div>
         </div>
+
+        {/* Notificación de actualización de precios */}
+        {priceToast && (
+          <div
+            className={`mb-3 p-3 rounded-xl flex items-center justify-between gap-2.5 border text-xs animate-in fade-in slide-in-from-top-2 duration-150 ${
+              priceToast.type === 'success'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : 'bg-red-50 text-red-800 border-red-200'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {priceToast.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+              )}
+              <span className="font-semibold">{priceToast.message}</span>
+            </div>
+            <button
+              onClick={() => setPriceToast(null)}
+              className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Upload feedback alert */}
         {uploadMessage && (
@@ -1080,10 +1295,19 @@ function TarifarioContent() {
 
                   <th
                     onClick={() => handleSort('price')}
-                    className="py-2.5 px-3 w-24 text-right bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
+                    className={`py-2.5 px-3 w-32 text-right transition-colors cursor-pointer ${
+                      quickPriceEditMode
+                        ? 'bg-amber-100/90 text-amber-950 border-b-2 border-amber-500 font-bold'
+                        : 'bg-slate-100 hover:bg-slate-200'
+                    }`}
                     title="Clic para ordenar por Tarifa UF"
                   >
-                    <div className="inline-flex items-center justify-end gap-1 w-full">
+                    <div className="inline-flex items-center justify-end gap-1.5 w-full">
+                      {quickPriceEditMode && (
+                        <span className="text-[9px] bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded shadow-2xs">
+                          EDITABLE
+                        </span>
+                      )}
                       <span>Tarifa (UF)</span>
                       {sortColumn === 'price' ? (
                         sortDirection === 'asc' ? (
@@ -1186,10 +1410,119 @@ function TarifarioContent() {
                         {item.unit}
                       </td>
 
-                      {/* Price UF */}
-                      <td className="py-2 px-3 text-right font-bold text-slate-900 font-mono">
-                        {item.ufPrice.toFixed(2)}
-                      </td>
+                      {/* Price UF (Edición rápida directa en lista) */}
+                      {quickPriceEditMode && hasPermission(user, 'tarifario.editar') ? (
+                        <td
+                          className={`py-1 px-2 text-right font-mono transition-colors ${
+                            editedPrices[item.id] !== undefined &&
+                            parseFloat(editedPrices[item.id]) !== item.ufPrice &&
+                            !isNaN(parseFloat(editedPrices[item.id]))
+                              ? 'bg-amber-100/80 border-l-2 border-amber-500'
+                              : 'bg-amber-50/25'
+                          }`}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={
+                                editedPrices[item.id] !== undefined
+                                  ? editedPrices[item.id]
+                                  : item.ufPrice
+                              }
+                              onChange={(e) => handlePriceChange(item.id, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  (e.target as HTMLElement).blur();
+                                }
+                              }}
+                              className={`w-20 text-right font-mono font-bold text-xs py-1 px-1.5 rounded border focus:outline-none transition-all ${
+                                editedPrices[item.id] !== undefined &&
+                                parseFloat(editedPrices[item.id]) !== item.ufPrice &&
+                                !isNaN(parseFloat(editedPrices[item.id]))
+                                  ? 'bg-white text-amber-900 border-amber-400 ring-2 ring-amber-300 shadow-xs'
+                                  : 'bg-white text-slate-900 border-slate-300 focus:border-amber-500 focus:ring-1 focus:ring-amber-400'
+                              }`}
+                              placeholder="0.00"
+                            />
+                            {editedPrices[item.id] !== undefined &&
+                              parseFloat(editedPrices[item.id]) !== item.ufPrice && (
+                                <button
+                                  onClick={() => handleRevertPrice(item.id)}
+                                  title={`Revertir a UF ${item.ufPrice.toFixed(2)}`}
+                                  className="p-1 text-slate-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors cursor-pointer"
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                </button>
+                              )}
+                          </div>
+                          {editedPrices[item.id] !== undefined &&
+                            parseFloat(editedPrices[item.id]) !== item.ufPrice &&
+                            !isNaN(parseFloat(editedPrices[item.id])) && (
+                              <div className="text-[9px] text-amber-800 font-semibold text-right pr-1 mt-0.5">
+                                Ant: UF {item.ufPrice.toFixed(2)}
+                              </div>
+                            )}
+                        </td>
+                      ) : singleInlineEditId === item.id ? (
+                        <td className="py-1 px-2 text-right font-mono bg-blue-50/80 border-2 border-blue-400 rounded">
+                          <div className="flex items-center justify-end gap-1">
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              autoFocus
+                              value={singleInlinePrice}
+                              onChange={(e) => setSingleInlinePrice(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveSingleInlinePrice(item);
+                                if (e.key === 'Escape') setSingleInlineEditId(null);
+                              }}
+                              className="w-20 text-right font-mono font-bold text-xs py-1 px-1.5 bg-white text-slate-900 border border-blue-500 rounded focus:outline-none ring-2 ring-blue-200"
+                            />
+                            <button
+                              onClick={() => handleSaveSingleInlinePrice(item)}
+                              disabled={savingSinglePriceId === item.id}
+                              title="Guardar precio (Enter)"
+                              className="p-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded cursor-pointer transition-colors shadow-2xs"
+                            >
+                              {savingSinglePriceId === item.id ? (
+                                <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <Check className="w-3 h-3" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => setSingleInlineEditId(null)}
+                              title="Cancelar (Esc)"
+                              className="p-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded cursor-pointer transition-colors"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </td>
+                      ) : (
+                        <td
+                          className="py-2 px-3 text-right font-bold text-slate-900 font-mono group/price relative"
+                          onDoubleClick={() =>
+                            hasPermission(user, 'tarifario.editar') && handleStartSingleInlineEdit(item)
+                          }
+                        >
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span>{item.ufPrice.toFixed(2)}</span>
+                            {hasPermission(user, 'tarifario.editar') && (
+                              <button
+                                onClick={() => handleStartSingleInlineEdit(item)}
+                                title="Editar precio rápidamente (Doble clic o clic aquí)"
+                                className="opacity-0 group-hover/price:opacity-100 text-slate-400 hover:text-amber-600 hover:bg-amber-50 p-1 rounded transition-all cursor-pointer"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
 
                       {/* Centro de Costo (Visualización estática, limpia, sin dropdowns en la celda) */}
                       <td className="py-2 px-3 border-x border-slate-100 bg-blue-50/20">
@@ -1222,6 +1555,55 @@ function TarifarioContent() {
             </table>
           </div>
         </div>
+
+        {/* Barra flotante para guardar cambios masivos de precio */}
+        {pendingPriceChanges.length > 0 && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700/80 backdrop-blur-md flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-200">
+            <div className="flex items-center gap-2">
+              <span className="flex h-2.5 w-2.5 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+              </span>
+              <span className="text-xs font-semibold text-slate-100">
+                <strong className="text-amber-400 font-bold">{pendingPriceChanges.length}</strong>{' '}
+                {pendingPriceChanges.length === 1 ? 'precio modificado' : 'precios modificados'} pendiente
+                {pendingPriceChanges.length > 1 ? 's' : ''} de guardar
+              </span>
+            </div>
+
+            <div className="h-4 w-[1px] bg-slate-700"></div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleDiscardAllPrices}
+                disabled={savingPrices}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Descartar
+              </button>
+              <button
+                onClick={handleSaveAllPrices}
+                disabled={savingPrices}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 transition-all shadow-md shadow-amber-500/20 cursor-pointer disabled:opacity-50"
+              >
+                {savingPrices ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Guardando...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>
+                      Guardar {pendingPriceChanges.length}{' '}
+                      {pendingPriceChanges.length === 1 ? 'Precio' : 'Precios'}
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Modal Custom Download Excel */}

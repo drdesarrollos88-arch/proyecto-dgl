@@ -349,6 +349,69 @@ export async function updateTarifarioItemAsync(
 }
 
 /**
+ * Actualizar precios de múltiples ítems del tarifario en una sola operación masiva.
+ */
+export async function batchUpdateTarifarioPricesAsync(
+  updates: Array<{ id: string; ufPrice: number }>,
+  updatedBy: string = 'Sistema'
+): Promise<{ success: boolean; count: number; updatedItems: TarifarioItem[]; error?: string }> {
+  if (!Array.isArray(updates) || updates.length === 0) {
+    return { success: true, count: 0, updatedItems: [] };
+  }
+
+  const now = new Date().toISOString();
+  const updatedItems: TarifarioItem[] = [];
+
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      for (const u of updates) {
+        const { data, error } = await supabaseAdmin
+          .from('tarifario')
+          .update({
+            uf_price: Number(u.ufPrice) || 0,
+            updated_at: now,
+            updated_by: updatedBy,
+          })
+          .eq('id', u.id)
+          .select()
+          .single();
+
+        if (!error && data) {
+          const item = mapRowToTarifarioItem(data);
+          updatedItems.push(item);
+          // Actualizar memoria
+          const { items } = ensureLocalCache();
+          const idx = items.findIndex((it) => it.id === u.id);
+          if (idx !== -1) items[idx] = item;
+        } else if (error) {
+          console.warn(`Error actualizando precio en Supabase para ítem ${u.id}:`, error.message);
+        }
+      }
+      return { success: true, count: updatedItems.length, updatedItems };
+    } catch (err: any) {
+      console.error('Supabase batchUpdateTarifarioPrices exception:', err.message);
+    }
+  }
+
+  // Fallback in-memory
+  const { items } = ensureLocalCache();
+  for (const u of updates) {
+    const idx = items.findIndex((it) => it.id === u.id);
+    if (idx !== -1) {
+      items[idx] = {
+        ...items[idx],
+        ufPrice: Number(u.ufPrice) || 0,
+        updatedAt: now,
+        updatedBy,
+      };
+      updatedItems.push(items[idx]);
+    }
+  }
+
+  return { success: true, count: updatedItems.length, updatedItems };
+}
+
+/**
  * Crear un nuevo ítem en el tarifario.
  */
 export async function createTarifarioItemAsync(

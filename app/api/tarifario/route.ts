@@ -5,6 +5,7 @@ import {
   updateTarifarioItemAsync,
   createTarifarioItemAsync,
   batchMoveTarifarioItemsAsync,
+  batchUpdateTarifarioPricesAsync,
 } from '@/lib/tarifario-db';
 import { isAdminRole } from '@/lib/permissions';
 import { registrarAuditoria } from '@/lib/audit-db';
@@ -72,6 +73,53 @@ export async function PUT(req: NextRequest) {
         success: true,
         message: `Se movieron ${result.count} ensayo(s) exitosamente.`,
         count: result.count,
+      });
+    }
+
+    // Check for batch price update
+    if (body.action === 'batchUpdatePrices') {
+      const { updates } = body;
+      if (!Array.isArray(updates) || updates.length === 0) {
+        return NextResponse.json(
+          { error: 'Se requiere una lista de actualizaciones de precios.' },
+          { status: 400 }
+        );
+      }
+
+      const validUpdates = updates
+        .filter((u: any) => u && typeof u.id === 'string' && u.ufPrice !== undefined && !isNaN(Number(u.ufPrice)))
+        .map((u: any) => ({
+          id: String(u.id),
+          ufPrice: Number(u.ufPrice),
+        }));
+
+      if (validUpdates.length === 0) {
+        return NextResponse.json(
+          { error: 'No se encontraron actualizaciones de precios válidas.' },
+          { status: 400 }
+        );
+      }
+
+      const result = await batchUpdateTarifarioPricesAsync(validUpdates, currentUser.name);
+
+      const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+      registrarAuditoria({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: 'TARIFARIO_EDITAR_MASIVO',
+        module: 'Tarifario',
+        description: `Actualización rápida de precios en lista para ${result.count} ensayo(s) del tarifario`,
+        details: { count: result.count, updates: validUpdates.slice(0, 50) },
+        ip,
+      }).catch(() => {});
+
+      return NextResponse.json({
+        success: true,
+        message: `Se actualizaron ${result.count} precio(s) exitosamente.`,
+        count: result.count,
+        updatedItems: result.updatedItems,
       });
     }
 

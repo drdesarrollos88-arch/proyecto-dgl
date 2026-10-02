@@ -14,7 +14,16 @@ var API_SECRET_TOKEN = 'dgl_secret_workspace_2026';
  * Construye la interfaz visual en el panel lateral derecho.
  */
 function buildAddOn(e) {
-  var messageId = e.gmail.messageId;
+  // Activar el token de acceso al mensaje actual (obligatorio por seguridad en Gmail Add-ons)
+  if (e && e.gmail && e.gmail.accessToken) {
+    GmailApp.setCurrentMessageAccessToken(e.gmail.accessToken);
+  }
+
+  var messageId = e.gmail ? e.gmail.messageId : '';
+  if (!messageId) {
+    return buildErrorCard('No se pudo identificar el correo seleccionado.');
+  }
+
   var message = GmailApp.getMessageById(messageId);
   var subject = message.getSubject() || 'Sin Asunto';
   var from = message.getFrom() || 'Desconocido';
@@ -82,7 +91,10 @@ function buildAddOn(e) {
 
   var btnAction = CardService.newAction()
     .setFunctionName('onGenerarBorrador')
-    .setParameters({ messageId: messageId });
+    .setParameters({
+      messageId: messageId,
+      accessToken: e.gmail ? e.gmail.accessToken : ''
+    });
 
   var btnGenerar = CardService.newTextButton()
     .setText('⚡ Crear Borrador en DGL')
@@ -101,7 +113,12 @@ function buildAddOn(e) {
  * e invoca a la IA en la plataforma DGL para crear el borrador oficial.
  */
 function onGenerarBorrador(e) {
-  var messageId = e.parameters.messageId;
+  var accessToken = (e.gmail && e.gmail.accessToken) || (e.parameters && e.parameters.accessToken);
+  if (accessToken) {
+    GmailApp.setCurrentMessageAccessToken(accessToken);
+  }
+
+  var messageId = (e.parameters && e.parameters.messageId) || (e.gmail && e.gmail.messageId);
   var message = GmailApp.getMessageById(messageId);
   var subject = message.getSubject() || '';
   var from = message.getFrom() || '';

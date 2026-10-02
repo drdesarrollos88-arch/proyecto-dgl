@@ -5,74 +5,8 @@ import path from 'path';
 
 const DB_PATH = path.join(process.cwd(), 'data', 'db.json');
 
-// Registros de auditoría iniciales para trazabilidad base de la plataforma
-const INITIAL_AUDIT_LOGS: AuditLog[] = [
-  {
-    id: 'aud-init-1',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 18).toISOString(),
-    userId: 'usr-1',
-    userName: 'Diego Román',
-    userEmail: 'diego.roman@idiem.cl',
-    userRole: 'superadmin',
-    action: 'LOGIN',
-    module: 'Acceso',
-    description: 'Inicio de sesión exitoso en la plataforma oficial DGL.',
-    details: { metodo: 'credenciales_rut' },
-    ip: '190.161.42.10',
-  },
-  {
-    id: 'aud-init-2',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 16).toISOString(),
-    userId: 'usr-1',
-    userName: 'Diego Román',
-    userEmail: 'diego.roman@idiem.cl',
-    userRole: 'superadmin',
-    action: 'TARIFARIO_EDITAR',
-    module: 'Tarifario',
-    description: 'Modificación de parámetros y valor UF en ensayo de Mecánica de Rocas.',
-    details: { codigo: '210', ensayo: 'Compresión simple probeta testigo de roca', cc: '2339' },
-    ip: '190.161.42.10',
-  },
-  {
-    id: 'aud-init-3',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 8).toISOString(),
-    userId: 'usr-2',
-    userName: 'Alejandra Pérez',
-    userEmail: 'alejandra.perez@idiem.cl',
-    userRole: 'comercial',
-    action: 'LOGIN',
-    module: 'Acceso',
-    description: 'Inicio de sesión comercial desde terminal de oficina.',
-    details: { metodo: 'correo_corporativo' },
-    ip: '200.75.12.85',
-  },
-  {
-    id: 'aud-init-4',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
-    userId: 'usr-2',
-    userName: 'Alejandra Pérez',
-    userEmail: 'alejandra.perez@idiem.cl',
-    userRole: 'comercial',
-    action: 'COTIZACION_BORRADOR',
-    module: 'Cotizaciones',
-    description: 'Guardado de propuesta en borrador para cliente ESVAL S.A.',
-    details: { correlativo: 'PR.DGL.2339.2026.0598-V1', montoUf: 22.45, itemsCount: 6 },
-    ip: '200.75.12.85',
-  },
-  {
-    id: 'aud-init-5',
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-    userId: 'usr-1',
-    userName: 'Diego Román',
-    userEmail: 'diego.roman@idiem.cl',
-    userRole: 'superadmin',
-    action: 'COTIZACION_FINALIZAR',
-    module: 'Cotizaciones',
-    description: 'Finalización y emisión de PDF oficial DGL para proyecto de Minería.',
-    details: { correlativo: 'PR.DGL.2340.2026.0319-V1', estado: 'Finalizada', totalUf: 47.4 },
-    ip: '190.161.42.10',
-  },
-];
+// Bitácora de auditoría real del sistema (inicia vacía para registrar únicamente eventos reales de usuarios autenticados)
+const INITIAL_AUDIT_LOGS: AuditLog[] = [];
 
 let _cachedAuditLogs: AuditLog[] | null = null;
 

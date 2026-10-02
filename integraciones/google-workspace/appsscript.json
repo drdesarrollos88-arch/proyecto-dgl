@@ -1,0 +1,30 @@
+{
+  "timeZone": "America/Santiago",
+  "dependencies": {},
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/gmail.addons.execute",
+    "https://www.googleapis.com/auth/gmail.addons.current.message.readonly",
+    "https://www.googleapis.com/auth/script.external_request",
+    "https://www.googleapis.com/auth/userinfo.email"
+  ],
+  "addOns": {
+    "common": {
+      "name": "Cotizador DGL IDIEM",
+      "logoUrl": "https://img.icons8.com/color/48/artificial-intelligence.png",
+      "layoutProperties": {
+        "primaryColor": "#0F172A",
+        "secondaryColor": "#E20000"
+      }
+    },
+    "gmail": {
+      "contextualTriggers": [
+        {
+          "unconditional": {},
+          "onTriggerFunction": "buildAddOn"
+        }
+      ]
+    }
+  }
+}

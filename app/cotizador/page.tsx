@@ -1041,14 +1041,30 @@ function CotizadorContent() {
     setDropdownOpen(false);
   };
 
-  // Update item field (quantity, factor, or base ufPrice)
-  const handleItemChange = (id: string, field: 'quantity' | 'factor' | 'ufPrice', val: number) => {
+  // Update item field (quantity, factor, base ufPrice, designation text, or norm)
+  const handleItemChange = (
+    id: string,
+    field: 'quantity' | 'factor' | 'ufPrice' | 'designation' | 'norm' | 'unit',
+    val: number | string
+  ) => {
     setItems((prev) =>
       prev.map((it) => {
         if (it.id !== id) return it;
-        const newQty = field === 'quantity' ? Math.max(0, val) : it.quantity;
-        const newFactor = field === 'factor' ? Math.max(0, val) : it.factor;
-        const newPrice = field === 'ufPrice' ? Math.max(0, val) : it.ufPrice;
+
+        if (field === 'designation') {
+          return { ...it, designation: String(val) };
+        }
+        if (field === 'norm') {
+          return { ...it, norm: String(val) };
+        }
+        if (field === 'unit') {
+          return { ...it, unit: String(val) };
+        }
+
+        const numVal = typeof val === 'number' ? val : parseFloat(val) || 0;
+        const newQty = field === 'quantity' ? Math.max(0, numVal) : it.quantity;
+        const newFactor = field === 'factor' ? Math.max(0, numVal) : it.factor;
+        const newPrice = field === 'ufPrice' ? Math.max(0, numVal) : it.ufPrice;
         const newSubtotalUf = Math.round(newPrice * newFactor * newQty * 100) / 100;
         const newSubtotalClp = Math.round(newSubtotalUf * ufValue);
 
@@ -1839,7 +1855,7 @@ function CotizadorContent() {
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <Navbar />
 
-      <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 flex-1">
+      <main className="max-w-[1720px] w-full mx-auto px-2 sm:px-4 lg:px-6 py-4 flex-1">
         {/* Top Header - Compact */}
         <div className="bg-white rounded-xl px-4 py-2.5 border border-slate-200 shadow-xs mb-3.5 flex flex-wrap items-center justify-between gap-2.5">
           <div className="flex items-center gap-2.5">
@@ -2816,11 +2832,11 @@ function CotizadorContent() {
 
             return (
               <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-xs bg-white">
-                <table className="w-full min-w-[1100px] text-left text-sm text-slate-700">
+                <table className="w-full min-w-[1050px] text-left text-sm text-slate-700">
                   <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 text-xs uppercase tracking-wider">
                     <tr>
                       <th
-                        className="py-3 px-2 w-20 min-w-[76px] text-center"
+                        className="py-3 px-1.5 w-16 min-w-[65px] text-center"
                         title="Reorganizar posición: arrastra la fila o usa las flechas"
                       >
                         <div className="flex items-center justify-center gap-1">
@@ -2828,9 +2844,14 @@ function CotizadorContent() {
                           <span>Item</span>
                         </div>
                       </th>
-                      <th className="py-3 px-4 min-w-[340px] lg:min-w-[420px]">
+                      <th className="py-3 px-3 min-w-[280px]">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="font-bold text-slate-800">Designación Ensayo</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-800">Designación Ensayo</span>
+                            <span className="text-[10px] font-normal text-blue-600 lowercase tracking-normal">
+                              (editable)
+                            </span>
+                          </div>
                           {hasAnyDetails && (
                             <button
                               type="button"
@@ -2857,10 +2878,15 @@ function CotizadorContent() {
                           )}
                         </div>
                       </th>
-                      <th className="py-3 px-3 w-40 min-w-[140px] max-w-[180px]">Norma</th>
-                      <th className="py-3 px-2 w-20 min-w-[70px] text-center">Masa</th>
-                      <th className="py-3 px-2 w-16 min-w-[60px] text-center">Unidad</th>
-                      <th className="py-3 px-3 w-28 min-w-[95px] text-right">
+                      <th className="py-3 px-2 w-36 min-w-[110px] max-w-[160px]">
+                        <div className="flex items-center gap-1">
+                          <span>Norma</span>
+                          <span className="text-[9px] font-normal text-slate-400 lowercase">(editable)</span>
+                        </div>
+                      </th>
+                      <th className="py-3 px-1 w-14 min-w-[50px] text-center">Masa</th>
+                      <th className="py-3 px-1 w-14 min-w-[50px] text-center">Unidad</th>
+                      <th className="py-3 px-2 w-26 min-w-[90px] text-right">
                         <div className="flex flex-col items-end leading-tight">
                           <span className="text-[11px] font-bold text-slate-700">
                             {currency === 'USD' ? 'Precio USD' : 'Precio UF'}
@@ -2869,7 +2895,7 @@ function CotizadorContent() {
                         </div>
                       </th>
                       <th
-                        className="py-3 px-2 w-24 min-w-[90px] text-center"
+                        className="py-3 px-1.5 w-20 min-w-[75px] text-center"
                         title="Descuento o recargo porcentual (ej. -20% descuento, +20% recargo, 0% normal)"
                       >
                         <div className="flex flex-col items-center leading-tight">
@@ -2877,12 +2903,12 @@ function CotizadorContent() {
                           <span className="text-[9px] font-semibold text-blue-600 lowercase">(%)</span>
                         </div>
                       </th>
-                      <th className="py-3 px-2 w-16 min-w-[65px] text-center">Cant.</th>
-                      <th className="py-3 px-3 w-28 min-w-[95px] text-right">
+                      <th className="py-3 px-1.5 w-14 min-w-[55px] text-center">Cant.</th>
+                      <th className="py-3 px-2 w-24 min-w-[85px] text-right">
                         {currency === 'USD' ? 'Subtotal USD' : 'Subtotal UF'}
                       </th>
-                      <th className="py-3 px-3 w-32 min-w-[110px] text-right">Subtotal CLP</th>
-                      <th className="py-3 px-2 w-10 min-w-[40px] text-center"></th>
+                      <th className="py-3 px-2 w-28 min-w-[95px] text-right">Subtotal CLP</th>
+                      <th className="py-3 px-1 w-9 min-w-[36px] text-center"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -2914,6 +2940,11 @@ function CotizadorContent() {
 
                         const { title, detail } = parseDesignation(item.designation);
                         const isExpanded = !!expandedDetails[item.id];
+                        const originalTarifarioItem = tarifario.find((t) => t.code === item.code);
+                        const isCustomized = !!(
+                          originalTarifarioItem &&
+                          item.designation.trim() !== originalTarifarioItem.designation.trim()
+                        );
 
                         return (
                           <tr
@@ -2931,18 +2962,18 @@ function CotizadorContent() {
                                 : 'hover:bg-slate-50/80'
                             }`}
                           >
-                            <td className="py-3 px-2 text-center align-top">
-                              <div className="flex items-center justify-center gap-1 pt-0.5">
+                            <td className="py-2.5 px-1.5 text-center align-top">
+                              <div className="flex items-center justify-center gap-1 pt-1">
                                 {/* Grip Handle for Drag & Drop */}
                                 <div
-                                  className="cursor-grab active:cursor-grabbing p-1 text-slate-300 hover:text-slate-600 rounded transition"
+                                  className="cursor-grab active:cursor-grabbing p-0.5 text-slate-300 hover:text-slate-600 rounded transition"
                                   title="Arrastra para reordenar"
                                 >
                                   <GripVertical className="w-3.5 h-3.5" />
                                 </div>
 
                                 {/* Item Number 1.1.X */}
-                                <span className="font-mono text-xs font-semibold text-slate-600 min-w-[36px]">
+                                <span className="font-mono text-xs font-semibold text-slate-600 min-w-[34px]">
                                   1.1.{idx + 1}
                                 </span>
 
@@ -2975,62 +3006,139 @@ function CotizadorContent() {
                                 </div>
                               </div>
                             </td>
-                            <td className="py-3 px-4 align-top">
-                              <div className="font-semibold text-slate-900 leading-snug text-[13px] md:text-sm">
-                                {title}
-                              </div>
 
-                              {detail && (
-                                <div className="mt-1">
-                                  {!isExpanded ? (
+                            {/* Designación Ensayo Editable */}
+                            <td className="py-2.5 px-3 align-top">
+                              <div className="relative group">
+                                <div className="flex items-start gap-1">
+                                  <textarea
+                                    value={title}
+                                    rows={Math.max(1, Math.min(3, Math.ceil((title.length || 1) / 45)))}
+                                    onChange={(e) => {
+                                      const newTitle = e.target.value;
+                                      const newFull = detail ? `${newTitle}\n${detail}` : newTitle;
+                                      handleItemChange(item.id, 'designation', newFull);
+                                    }}
+                                    className="w-full font-semibold text-slate-900 leading-snug text-[13px] md:text-sm bg-transparent hover:bg-slate-50 focus:bg-white border border-transparent hover:border-slate-300 focus:border-blue-500 rounded px-1.5 py-0.5 focus:ring-2 focus:ring-blue-100 focus:outline-none transition resize-none"
+                                    placeholder="Nombre del ensayo..."
+                                    title="Haz clic para editar la designación de este ensayo para esta cotización"
+                                  />
+                                  <div
+                                    className="opacity-0 group-hover:opacity-100 transition-opacity pt-1 text-slate-400 shrink-0"
+                                    title="Texto editable para esta cotización"
+                                  >
+                                    <Edit3 className="w-3 h-3" />
+                                  </div>
+                                </div>
+
+                                {isCustomized && originalTarifarioItem && (
+                                  <div className="flex items-center gap-1.5 mt-0.5 px-1.5">
+                                    <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded font-medium inline-flex items-center gap-0.5">
+                                      <Edit3 className="w-2.5 h-2.5 text-amber-600" />
+                                      Personalizado
+                                    </span>
                                     <button
                                       type="button"
-                                      onClick={() => toggleExpandDetail(item.id)}
-                                      className="inline-flex items-center gap-1.5 text-[11px] font-medium text-blue-600 hover:text-blue-800 bg-blue-50/80 hover:bg-blue-100 px-2 py-0.5 rounded-md transition cursor-pointer border border-blue-200/60"
-                                      title="Ver especificaciones técnicas y condiciones del ensayo"
+                                      onClick={() =>
+                                        handleItemChange(item.id, 'designation', originalTarifarioItem.designation)
+                                      }
+                                      className="text-[10px] text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                      title="Restaurar el texto original del catálogo oficial"
                                     >
-                                      <Info className="w-3 h-3 text-blue-500" />
-                                      <span>Ver detalle del ensayo</span>
-                                      <ChevronDown className="w-3 h-3 text-blue-500" />
+                                      Restaurar original
                                     </button>
-                                  ) : (
-                                    <div className="mt-1.5 p-2.5 bg-slate-50 border border-slate-200 border-l-4 border-l-blue-600 rounded-r-md">
-                                      <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 mb-1">
-                                        <span className="flex items-center gap-1 text-slate-700">
-                                          <Info className="w-3 h-3 text-blue-600" /> Especificaciones / Detalle:
-                                        </span>
-                                        <button
-                                          type="button"
-                                          onClick={() => toggleExpandDetail(item.id)}
-                                          className="text-slate-400 hover:text-slate-700 flex items-center gap-0.5 cursor-pointer text-[10px] font-medium hover:underline"
-                                        >
-                                          <ChevronUp className="w-3 h-3" /> Ocultar detalle
-                                        </button>
+                                  </div>
+                                )}
+
+                                {detail ? (
+                                  <div className="mt-1">
+                                    {!isExpanded ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleExpandDetail(item.id)}
+                                        className="inline-flex items-center gap-1.5 text-[11px] font-medium text-blue-600 hover:text-blue-800 bg-blue-50/80 hover:bg-blue-100 px-2 py-0.5 rounded-md transition cursor-pointer border border-blue-200/60"
+                                        title="Ver y editar especificaciones técnicas del ensayo"
+                                      >
+                                        <Info className="w-3 h-3 text-blue-500" />
+                                        <span>Ver / editar detalle del ensayo</span>
+                                        <ChevronDown className="w-3 h-3 text-blue-500" />
+                                      </button>
+                                    ) : (
+                                      <div className="mt-1.5 p-2 bg-slate-50 border border-slate-200 border-l-4 border-l-blue-600 rounded-r-md">
+                                        <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 mb-1">
+                                          <span className="flex items-center gap-1 text-slate-700">
+                                            <Info className="w-3 h-3 text-blue-600" /> Especificaciones / Detalle (editable):
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleExpandDetail(item.id)}
+                                            className="text-slate-400 hover:text-slate-700 flex items-center gap-0.5 cursor-pointer text-[10px] font-medium hover:underline"
+                                          >
+                                            <ChevronUp className="w-3 h-3" /> Ocultar detalle
+                                          </button>
+                                        </div>
+                                        <textarea
+                                          value={detail}
+                                          rows={Math.max(2, Math.min(5, detail.split('\n').length))}
+                                          onChange={(e) => {
+                                            const newDetail = e.target.value;
+                                            const newFull = `${title}\n${newDetail}`;
+                                            handleItemChange(item.id, 'designation', newFull);
+                                          }}
+                                          className="w-full text-xs text-slate-700 bg-white border border-slate-300 rounded p-1.5 focus:ring-2 focus:ring-blue-500 focus:outline-none leading-relaxed resize-y font-normal"
+                                          placeholder="Especificaciones técnicas y notas particulares..."
+                                          title="Editar las notas o especificaciones de este ensayo para esta cotización"
+                                        />
                                       </div>
-                                      <div className="text-xs text-slate-600 font-normal whitespace-pre-line leading-relaxed">
-                                        {detail}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                            <td className="py-3 px-3 text-xs text-slate-600 align-top">
-                              <div
-                                className="line-clamp-2 hover:line-clamp-none transition-all cursor-default whitespace-pre-line leading-relaxed"
-                                title={item.norm || undefined}
-                              >
-                                {item.norm || <span className="text-slate-400 italic">-</span>}
+                                    )}
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleItemChange(item.id, 'designation', `${title}\nNota: `);
+                                      setExpandedDetails((prev) => ({ ...prev, [item.id]: true }));
+                                    }}
+                                    className="inline-flex items-center gap-1 text-[10px] text-slate-400 hover:text-blue-600 mt-0.5 px-1.5 cursor-pointer hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
+                                    title="Agregar notas o especificaciones técnicas a este ensayo"
+                                  >
+                                    <Plus className="w-2.5 h-2.5" />
+                                    <span>+ Agregar nota técnica</span>
+                                  </button>
+                                )}
                               </div>
                             </td>
-                            <td className="py-3 px-2 text-center text-xs font-mono text-slate-600 align-top pt-3.5">
+
+                            {/* Norma Editable */}
+                            <td className="py-2.5 px-2 text-xs text-slate-600 align-top">
+                              <textarea
+                                value={item.norm || ''}
+                                rows={2}
+                                onChange={(e) => handleItemChange(item.id, 'norm', e.target.value)}
+                                className="w-full text-xs text-slate-700 bg-transparent hover:bg-slate-50 focus:bg-white border border-transparent hover:border-slate-300 focus:border-blue-500 rounded p-1 focus:ring-1 focus:ring-blue-200 focus:outline-none transition resize-none leading-relaxed"
+                                placeholder="Norma técnica..."
+                                title="Editar norma para esta cotización"
+                              />
+                            </td>
+
+                            {/* Masa */}
+                            <td className="py-2.5 px-1 text-center text-xs font-mono text-slate-600 align-top pt-3">
                               {item.minWeightKg ? `${item.minWeightKg} kg` : '-'}
                             </td>
-                            <td className="py-3 px-2 text-center text-xs font-semibold text-slate-600 align-top pt-3.5">
-                              {item.unit}
+
+                            {/* Unidad Editable */}
+                            <td className="py-2.5 px-1 text-center align-top pt-2.5">
+                              <input
+                                type="text"
+                                value={item.unit}
+                                onChange={(e) => handleItemChange(item.id, 'unit', e.target.value)}
+                                className="w-14 text-center text-xs font-semibold text-slate-600 bg-transparent hover:bg-slate-50 focus:bg-white border border-transparent hover:border-slate-300 focus:border-blue-500 rounded p-0.5 focus:ring-1 focus:ring-blue-200 focus:outline-none transition"
+                                title="Editar unidad de medida"
+                              />
                             </td>
+
                             {/* Precio base unitario editable */}
-                            <td className="py-3 px-2 text-right align-top pt-2.5">
+                            <td className="py-2.5 px-2 text-right align-top pt-2">
                               <div className="flex items-center justify-end gap-1">
                                 <input
                                   type="number"
@@ -3064,13 +3172,15 @@ function CotizadorContent() {
                             </td>
 
                             {/* Descuento o Aumento (%) con formato +% o -% */}
-                            <td className="py-3 px-2 text-center align-top pt-2.5">
+                            <td className="py-2.5 px-1.5 text-center align-top pt-2">
                               <FactorPercentInput
                                 factor={item.factor}
                                 onChange={(newFactor) => handleItemChange(item.id, 'factor', newFactor)}
                               />
                             </td>
-                            <td className="py-3 px-2 text-center align-top pt-2.5">
+
+                            {/* Cantidad Editable */}
+                            <td className="py-2.5 px-1.5 text-center align-top pt-2">
                               <input
                                 type="number"
                                 min="1"
@@ -3081,17 +3191,23 @@ function CotizadorContent() {
                                 className="w-14 p-1 text-center font-mono text-xs font-bold border border-slate-300 rounded focus:ring-2 focus:ring-blue-600 focus:outline-none bg-blue-50/30"
                               />
                             </td>
-                            <td className="py-3 px-3 text-right font-bold font-mono text-slate-900 align-top pt-3.5">
+
+                            {/* Subtotal UF / USD */}
+                            <td className="py-2.5 px-2 text-right font-bold font-mono text-slate-900 align-top pt-3 text-xs">
                               {finalSubtotalDisplay}
                             </td>
-                            <td className="py-3 px-3 text-right font-mono text-slate-700 align-top pt-3.5">
+
+                            {/* Subtotal CLP */}
+                            <td className="py-2.5 px-2 text-right font-mono text-slate-700 align-top pt-3 text-xs">
                               ${item.subtotalClp.toLocaleString('es-CL')}
                             </td>
-                            <td className="py-3 px-2 text-center align-top pt-2.5">
+
+                            {/* Eliminar */}
+                            <td className="py-2.5 px-1 text-center align-top pt-2">
                               <button
                                 onClick={() => handleRemoveItem(item.id)}
-                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                                title="Eliminar ensayo"
+                                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                title="Eliminar ensayo de esta cotización"
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>

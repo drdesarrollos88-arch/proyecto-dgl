@@ -1,4 +1,4 @@
-import { Cotizacion } from '@/lib/types';
+import { Cotizacion, getDGLInfoByCC } from '@/lib/types';
 import { getValidSalesforceClient } from './salesforce-client';
 import { generateCotizacionPdf } from '@/lib/pdf-generator';
 import { getFormatoSettings, getUsers } from '@/lib/db';
@@ -144,6 +144,52 @@ export function buildUnifiedSalesforceName(cotizacion: Cotizacion, unitCode: str
 }
 
 /**
+ * Diccionario oficial de PricebookEntries de Servicios Especiales por Centro de Costo / Unidad DGL
+ * en Standard Price Book (01sf4000003UUHYAA4) de Salesforce
+ */
+const DGL_PBE_BY_UNIT: Record<
+  string,
+  { pricebookEntryId: string; product2Id: string; pricebook2Id: string; sku: string }
+> = {
+  '2340': {
+    pricebook2Id: '01sf4000003UUHYAA4',
+    pricebookEntryId: '01uf400000GVf4yAAD',
+    product2Id: '01tf4000003mbfWAAQ',
+    sku: '23400259', // 2340 UEB - Unidad Ensayos Básicos
+  },
+  '1817': {
+    pricebook2Id: '01sf4000003UUHYAA4',
+    pricebookEntryId: '01u5G00000LtKHxQAN',
+    product2Id: '01t5G000005EeBsQAK',
+    sku: '18170002', // 1817 UGB - Unidad Ensayos Geotécnicos Básicos
+  },
+  '2339': {
+    pricebook2Id: '01sf4000003UUHYAA4',
+    pricebookEntryId: '01uf400000L4mr7AAB',
+    product2Id: '01tf4000004CKlbAAG',
+    sku: '23390101', // 2339 UER - Unidad Ensayos Rocas
+  },
+  '2341': {
+    pricebook2Id: '01sf4000003UUHYAA4',
+    pricebookEntryId: '01uf400000L4mqxAAB',
+    product2Id: '01tf4000004CKlWAAW',
+    sku: '23410014', // 2341 UGE - Unidad Ensayos Geotécnicos Especiales
+  },
+  '3340': {
+    pricebook2Id: '01sf4000003UUHYAA4',
+    pricebookEntryId: '01u5G00000LtKHtQAN',
+    product2Id: '01t5G000005EeBiQAK',
+    sku: '33400001', // 3340 USM - Unidad Sondajes Menores
+  },
+  '2344': {
+    pricebook2Id: '01sf4000003UUHYAA4',
+    pricebookEntryId: '01uPk000001r2XnIAI',
+    product2Id: '01tPk000009Sf7tIAC',
+    sku: '23440001', // 2344 UGA - Unidad Geotecnia Antofagasta
+  },
+};
+
+/**
  * Obtiene la Entrada de Lista de Precios (PricebookEntry) para "Servicios Especiales" en Standard Price Book
  */
 async function getServiciosEspecialesPricebookEntry(
@@ -151,12 +197,12 @@ async function getServiciosEspecialesPricebookEntry(
   accessToken: string,
   unitCode: string
 ): Promise<{ pricebookEntryId: string; product2Id: string; pricebook2Id: string }> {
-  const fallback = {
-    pricebook2Id: '01sf4000003UUHYAA4', // Standard Price Book
-    pricebookEntryId: '01uf400000GVf4yAAD', // PBE Standard para 23400259
-    product2Id: '01tf4000003mbfWAAQ', // Servicios Especiales 23400259
-  };
+  // 1. Verificación directa en el mapa verificado por CC
+  if (DGL_PBE_BY_UNIT[unitCode]) {
+    return DGL_PBE_BY_UNIT[unitCode];
+  }
 
+  // 2. Consulta dinámica por si la unidad no está en el mapa estático
   try {
     const query = encodeURIComponent(
       `SELECT Id, Pricebook2Id, Product2Id, Product2.ProductCode, Product2.Name FROM PricebookEntry WHERE Pricebook2.IsStandard = true AND Product2.Name LIKE '%Servicios Especiales%' AND (Product2.ProductCode LIKE '${unitCode}%' OR Product2.ProductCode = '23400259') AND IsActive = true LIMIT 1`
@@ -174,7 +220,7 @@ async function getServiciosEspecialesPricebookEntry(
     console.warn('Aviso buscando PricebookEntry dinámica, usando fallback Standard:', err);
   }
 
-  return fallback;
+  return DGL_PBE_BY_UNIT['2340'];
 }
 
 /**
@@ -223,14 +269,20 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
     cotizacion.clientRut
   );
 
-  // 5. Determinar unidad/centro de costo para IDIEM
-  let unitCode = '2340';
-  if (cotizacion.centroCosto) {
-    const match = cotizacion.centroCosto.match(/^(\d{4})/);
-    if (match) unitCode = match[1];
-  } else if (cotizacion.code) {
-    const match = cotizacion.code.match(/PR\.DGL\.(\d{4})/i);
-    if (match) unitCode = match[1];
+  // 5. Determinar unidad y sección oficial IDIEM
+  const dglInfo = getDGLInfoByCC(cotizacion.centroCosto || cotizacion.code || '2340');
+  const unitCode = dglInfo.unitCode;
+
+  // Determinar código API para Seccion__c ('SLG' | 'SLGP' | 'DGL')
+  let seccionSfCode = dglInfo.seccionSfCode;
+  if (cotizacion.seccion) {
+    if (cotizacion.seccion.includes('Sin sección') || cotizacion.seccion === 'DGL') {
+      seccionSfCode = 'DGL';
+    } else if (cotizacion.seccion.includes('SLGP') || cotizacion.seccion.includes('Geomecánico Prat')) {
+      seccionSfCode = 'SLGP';
+    } else if (cotizacion.seccion.includes('SGL') || cotizacion.seccion.includes('Geotecnia')) {
+      seccionSfCode = 'SLG';
+    }
   }
 
   // 6. Obtener nombre unificado y lista de precios oficial Standard
@@ -247,12 +299,12 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
     RecordTypeId: '012f4000000OfXyAAK',
     Pricebook2Id: standardPricebook.pricebook2Id,
     Division__c: 'DGL',
-    Seccion__c: 'SLG',
+    Seccion__c: seccionSfCode,
     Unidad__c: unitCode,
     Tipo_de_servicio_por_CC__c: 'Ensayos',
-    Subsector_del_Proyecto__c: 'No Aplica',
-    Sector_del_Proyecto__c: 'Otros',
-    Zona_Proyecto__c: 'Nacional',
+    Sector_del_Proyecto__c: cotizacion.sectorProyecto || 'Inmobiliario',
+    Subsector_del_Proyecto__c: cotizacion.subsectorProyecto || 'No Aplica',
+    Zona_Proyecto__c: cotizacion.zonaProyecto || 'Región Metropolitana',
     LeadSource: 'Directo División',
     Amount: amount,
     Description: `Cotización IDIEM: ${cotizacion.code}\nCliente: ${cotizacion.clientName}\nProyecto: ${cotizacion.projectName || 'Sin especificar'}\nCentro de Costo: ${cotizacion.centroCosto || unitCode}\nTotal: ${amount} (${cotizacion.currency || 'UF'})`,

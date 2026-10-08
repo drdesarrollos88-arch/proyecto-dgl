@@ -31,16 +31,119 @@ export interface UserProfile {
   updatedAt?: string;
 }
 
+// Estructura oficial División DGL IDIEM
+export const SECCIONES_DGL = [
+  'SGL - Sección Laboratorio de Geotecnia',
+  'SLGP - Sección Laboratorio de Geomecánico Prat',
+  'Sin sección DGL',
+] as const;
+
+export type SeccionDGL = typeof SECCIONES_DGL[number];
+
+export interface DGLUnidadItem {
+  code: string;
+  name: string;
+  seccion: SeccionDGL;
+  seccionSfCode: 'SLG' | 'SLGP' | 'DGL';
+}
+
+export const DGL_UNIDADES: DGLUnidadItem[] = [
+  // SGL - Sección Laboratorio de Geotecnia
+  { code: '2340', name: '2340 UEB - Unidad Ensayos Básicos', seccion: 'SGL - Sección Laboratorio de Geotecnia', seccionSfCode: 'SLG' },
+  { code: '2341', name: '2341 UGE - Unidad Ensayos Geotécnicos Especiales', seccion: 'SGL - Sección Laboratorio de Geotecnia', seccionSfCode: 'SLG' },
+  { code: '2344', name: '2344 UGA - Unidad Geotecnia Antofagasta', seccion: 'SGL - Sección Laboratorio de Geotecnia', seccionSfCode: 'SLG' },
+  // SLGP - Sección Laboratorio de Geomecánico Prat
+  { code: '1817', name: '1817 UGB - Unidad Ensayos Geotécnicos Básicos', seccion: 'SLGP - Sección Laboratorio de Geomecánico Prat', seccionSfCode: 'SLGP' },
+  { code: '2339', name: '2339 UER - Unidad Ensayos Rocas', seccion: 'SLGP - Sección Laboratorio de Geomecánico Prat', seccionSfCode: 'SLGP' },
+  // Sin sección DGL
+  { code: '3340', name: '3340 USM - Unidad Sondajes Menores', seccion: 'Sin sección DGL', seccionSfCode: 'DGL' },
+];
+
 export const CENTROS_DE_COSTO = [
-  '1817 - Ensayos Básicos',
-  '2340 - Ensayos Especiales',
-  '2341 - Ensayos Grandes Partículas',
-  '2339 - Ensayos Rocas',
-  '2344 - Ensayos Antofagasta',
-  '3340 - Ensayos de terreno',
+  '2340 - Ensayos Básicos (UEB)',
+  '2341 - Ensayos Geotécnicos Especiales (UGE)',
+  '2344 - Geotecnia Antofagasta (UGA)',
+  '1817 - Ensayos Geotécnicos Básicos (UGB)',
+  '2339 - Ensayos Rocas (UER)',
+  '3340 - Sondajes Menores (USM)',
 ] as const;
 
 export type CentroDeCosto = typeof CENTROS_DE_COSTO[number];
+
+// Clasificación de Proyectos para Salesforce IDIEM
+export const SECTORES_PROYECTO = [
+  'Inmobiliario',
+  'Minería',
+  'Energía',
+  'Industrial',
+  'Forestal',
+  'Puertos',
+  'Retail',
+  'Sector Públicas',
+  'Tecnología',
+  'Otros',
+] as const;
+export type SectorProyecto = typeof SECTORES_PROYECTO[number];
+
+export const SUBSECTORES_PROYECTO = [
+  'No Aplica',
+  'Aeropuerto',
+  'Aguas',
+  'Edificios públicos',
+  'Educación',
+  'Embalse',
+  'Fuerzas armadas',
+  'Infraestructura urbana (parques, estadios, otros)',
+  'Obras hidráulicas',
+  'Obras municipales',
+  'Obras viales',
+  'Otros',
+  'Poder judicial',
+  'Puentes',
+  'Puertos',
+  'Salud',
+  'Vivienda pública',
+  'Metro',
+  'EFE',
+  'OPEX',
+  'CAPEX',
+] as const;
+export type SubsectorProyecto = typeof SUBSECTORES_PROYECTO[number];
+
+export const ZONAS_PROYECTO = [
+  'Región Metropolitana',
+  'Zona Norte',
+  'Zona Centro',
+  'Zona Sur',
+  'Nacional',
+  'Extranjero',
+] as const;
+export type ZonaProyecto = typeof ZONAS_PROYECTO[number];
+
+export function getDGLInfoByCC(ccStr: string): {
+  unitCode: string;
+  seccion: SeccionDGL;
+  seccionSfCode: 'SLG' | 'SLGP' | 'DGL';
+  fullName: string;
+} {
+  const match = (ccStr || '').match(/^(\d{4})/);
+  const code = match ? match[1] : '2340';
+  const found = DGL_UNIDADES.find((u) => u.code === code);
+  if (found) {
+    return {
+      unitCode: found.code,
+      seccion: found.seccion,
+      seccionSfCode: found.seccionSfCode,
+      fullName: found.name,
+    };
+  }
+  return {
+    unitCode: code,
+    seccion: 'SGL - Sección Laboratorio de Geotecnia',
+    seccionSfCode: 'SLG',
+    fullName: `${code} - Centro de Costo`,
+  };
+}
 
 export interface User {
   id: string;
@@ -132,6 +235,10 @@ export interface Cotizacion {
   city: string; // ej. "Santiago" o "Concepción"
   paymentCondition?: string;
   centroCosto?: string;
+  seccion?: string;
+  sectorProyecto?: SectorProyecto | string;
+  subsectorProyecto?: SubsectorProyecto | string;
+  zonaProyecto?: ZonaProyecto | string;
   currency?: 'UF' | 'USD' | 'CLP';
   commercialName: string;
   commercialTitle: string;

@@ -15,6 +15,16 @@ import {
   CENTROS_DE_COSTO,
   CotizacionCondicionesComerciales,
   ReglaAprendida,
+  SECCIONES_DGL,
+  DGL_UNIDADES,
+  SECTORES_PROYECTO,
+  SUBSECTORES_PROYECTO,
+  ZONAS_PROYECTO,
+  getDGLInfoByCC,
+  SectorProyecto,
+  SubsectorProyecto,
+  ZonaProyecto,
+  SeccionDGL,
 } from '@/lib/types';
 import { generateCotizacionPdf } from '@/lib/pdf-generator';
 import UnifiedAiAssistantModal, { DisplayChatMessage } from '@/components/UnifiedAiAssistantModal';
@@ -243,6 +253,10 @@ function CotizadorContent() {
   // Client and Project Information Form
   const defaultCc = '2339 - Ensayos Rocas';
   const [centroCosto, setCentroCosto] = useState<string>(defaultCc);
+  const [seccion, setSeccion] = useState<SeccionDGL>('SLGP - Sección Laboratorio de Geomecánico Prat');
+  const [sectorProyecto, setSectorProyecto] = useState<SectorProyecto>('Inmobiliario');
+  const [subsectorProyecto, setSubsectorProyecto] = useState<SubsectorProyecto>('No Aplica');
+  const [zonaProyecto, setZonaProyecto] = useState<ZonaProyecto>('Región Metropolitana');
   const [currency, setCurrency] = useState<'UF' | 'USD' | 'CLP'>('UF');
   const [code, setCode] = useState(() => {
     const year = new Date().getFullYear();
@@ -594,10 +608,20 @@ function CotizadorContent() {
           if (c.projectId) setProjectId(c.projectId);
           if (c.centroCosto) {
             setCentroCosto(c.centroCosto);
+            const dglInfo = getDGLInfoByCC(c.centroCosto);
+            setSeccion(dglInfo.seccion);
           } else {
             const foundCc = CENTROS_DE_COSTO.find((cc) => cc.startsWith(c.code.split('.')[2] || ''));
-            if (foundCc) setCentroCosto(foundCc);
+            if (foundCc) {
+              setCentroCosto(foundCc);
+              const dglInfo = getDGLInfoByCC(foundCc);
+              setSeccion(dglInfo.seccion);
+            }
           }
+          if (c.seccion) setSeccion(c.seccion as SeccionDGL);
+          if (c.sectorProyecto) setSectorProyecto(c.sectorProyecto as SectorProyecto);
+          if (c.subsectorProyecto) setSubsectorProyecto(c.subsectorProyecto as SubsectorProyecto);
+          if (c.zonaProyecto) setZonaProyecto(c.zonaProyecto as ZonaProyecto);
           if (c.currency) setCurrency(c.currency);
           if (c.commercialName) setCommercialName(c.commercialName);
           if (c.commercialTitle) setCommercialTitle(c.commercialTitle);
@@ -647,6 +671,9 @@ function CotizadorContent() {
 
   const handleCentroCostoChange = (newCc: string) => {
     setCentroCosto(newCc);
+    const dglInfo = getDGLInfoByCC(newCc);
+    setSeccion(dglInfo.seccion);
+
     if (!isVersionMode && !savedId) {
       fetch(`/api/cotizaciones/next-code?centroCosto=${encodeURIComponent(newCc)}`)
         .then((res) => (res.ok ? res.json() : null))
@@ -662,6 +689,16 @@ function CotizadorContent() {
         });
     } else {
       setCode((prevCode) => updateCodeWithCc(prevCode, newCc));
+    }
+  };
+
+  const handleSeccionChange = (newSec: SeccionDGL) => {
+    setSeccion(newSec);
+    const validForSec = DGL_UNIDADES.filter((u) => u.seccion === newSec);
+    const currentCode = (centroCosto.match(/^(\d{4})/) || [])[1];
+    if (!validForSec.some((u) => u.code === currentCode) && validForSec.length > 0) {
+      const matchCc = CENTROS_DE_COSTO.find((cc) => cc.startsWith(validForSec[0].code)) || validForSec[0].name;
+      handleCentroCostoChange(matchCc);
     }
   };
 
@@ -1178,6 +1215,10 @@ function CotizadorContent() {
       city,
       paymentCondition,
       centroCosto,
+      seccion,
+      sectorProyecto,
+      subsectorProyecto,
+      zonaProyecto,
       currency,
       commercialName,
       commercialTitle,
@@ -1222,6 +1263,10 @@ function CotizadorContent() {
     city,
     paymentCondition,
     centroCosto,
+    seccion,
+    sectorProyecto,
+    subsectorProyecto,
+    zonaProyecto,
     currency,
     commercialName,
     commercialTitle,
@@ -2450,25 +2495,131 @@ function CotizadorContent() {
                   </div>
                 </div>
 
-                {/* CC Dropdown & Currency Selector */}
-                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                      Centro de Costo (CC) *
-                    </label>
-                    <select
-                      value={centroCosto}
-                      onChange={(e) => handleCentroCostoChange(e.target.value)}
-                      className="w-full py-1.5 px-2 rounded-lg border border-blue-300 bg-blue-50/40 text-xs font-semibold text-blue-950 focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                    >
-                      {CENTROS_DE_COSTO.map((cc) => (
-                        <option key={cc} value={cc}>
-                          {cc}
-                        </option>
-                      ))}
-                    </select>
+                {/* Estructura Oficial DGL */}
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                      Estructura División DGL
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      <span>División: DGL</span>
+                      <span>•</span>
+                      <span>Servicio: Ensayos</span>
+                    </span>
                   </div>
 
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                        Sección DGL *
+                      </label>
+                      <select
+                        value={seccion}
+                        onChange={(e) => handleSeccionChange(e.target.value as SeccionDGL)}
+                        className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                      >
+                        {SECCIONES_DGL.map((sec) => (
+                          <option key={sec} value={sec}>
+                            {sec}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                        Unidad / Centro de Costo (CC) *
+                      </label>
+                      <select
+                        value={centroCosto}
+                        onChange={(e) => handleCentroCostoChange(e.target.value)}
+                        className="w-full py-1.5 px-2 rounded-lg border border-blue-300 bg-blue-50/40 text-xs font-semibold text-blue-950 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                      >
+                        {SECCIONES_DGL.map((secGroup) => {
+                          const unitsInSec = DGL_UNIDADES.filter((u) => u.seccion === secGroup);
+                          return (
+                            <optgroup key={secGroup} label={secGroup}>
+                              {unitsInSec.map((u) => {
+                                const ccMatch = CENTROS_DE_COSTO.find((cc) => cc.startsWith(u.code)) || u.name;
+                                return (
+                                  <option key={u.code} value={ccMatch}>
+                                    {u.name}
+                                  </option>
+                                );
+                              })}
+                            </optgroup>
+                          );
+                        })}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Clasificación Salesforce del Proyecto */}
+                <div className="pt-2 border-t border-slate-100 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                      Clasificación Proyecto (Salesforce)
+                    </span>
+                    <span className="text-[10px] text-slate-400">Requerido para CRM</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                        Sector *
+                      </label>
+                      <select
+                        value={sectorProyecto}
+                        onChange={(e) => setSectorProyecto(e.target.value as SectorProyecto)}
+                        className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                      >
+                        {SECTORES_PROYECTO.map((sec) => (
+                          <option key={sec} value={sec}>
+                            {sec}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                        Subsector *
+                      </label>
+                      <select
+                        value={subsectorProyecto}
+                        onChange={(e) => setSubsectorProyecto(e.target.value as SubsectorProyecto)}
+                        className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                      >
+                        {SUBSECTORES_PROYECTO.map((sub) => (
+                          <option key={sub} value={sub}>
+                            {sub}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                        Zona *
+                      </label>
+                      <select
+                        value={zonaProyecto}
+                        onChange={(e) => setZonaProyecto(e.target.value as ZonaProyecto)}
+                        className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                      >
+                        {ZONAS_PROYECTO.map((zona) => (
+                          <option key={zona} value={zona}>
+                            {zona}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Moneda & Código de Presupuesto */}
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
                       Moneda Propuesta *
@@ -2483,19 +2634,18 @@ function CotizadorContent() {
                       <option value="CLP">CLP (Pesos Chilenos)</option>
                     </select>
                   </div>
-                </div>
 
-                {/* Resulting Code */}
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                    Código de Presupuesto
-                  </label>
-                  <input
-                    type="text"
-                    value={code}
-                    onChange={(e) => setCode(e.target.value)}
-                    className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 font-mono text-xs font-bold text-blue-900 bg-blue-50/40 focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                  />
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                      Código de Presupuesto
+                    </label>
+                    <input
+                      type="text"
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                      className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 font-mono text-xs font-bold text-blue-900 bg-blue-50/40 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                    />
+                  </div>
                 </div>
 
                 {/* Validador Oficial UF / Dólar */}

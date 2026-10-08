@@ -117,6 +117,67 @@ async function getDefaultStageName(instanceUrl: string, accessToken: string): Pr
 }
 
 /**
+ * Construye el nombre unificado estricto para Oportunidad y Cotización (Quote):
+ * PR.DGL.CCCC.2026.XXXX - NOMBRE CLIENTE - NOMBRE PROPUESTA
+ * Sin corchetes ni sufijos de versión (-V2).
+ */
+export function buildUnifiedSalesforceName(cotizacion: Cotizacion, unitCode: string): string {
+  const cleanCode = (cotizacion.code || '').replace(/[\[\]]/g, '').trim();
+  let correlativoNum = '0001';
+
+  // Buscar número de 4 dígitos al final del código
+  const match = cleanCode.match(/(\d{4})(?:-V\d+)?$/i);
+  if (match) {
+    correlativoNum = match[1];
+  } else {
+    const anyNumMatch = cleanCode.match(/\.(\d+)(?:-V\d+)?$/i);
+    if (anyNumMatch) {
+      correlativoNum = anyNumMatch[1].padStart(4, '0');
+    }
+  }
+
+  const prefix = `PR.DGL.${unitCode}.2026.${correlativoNum}`;
+  const client = (cotizacion.clientName || 'Cliente').replace(/[\[\]]/g, '').trim();
+  const project = (cotizacion.projectName || cotizacion.clientName || 'Propuesta').replace(/[\[\]]/g, '').trim();
+
+  return `${prefix} - ${client} - ${project}`.slice(0, 120);
+}
+
+/**
+ * Obtiene la Entrada de Lista de Precios (PricebookEntry) para "Servicios Especiales" en Standard Price Book
+ */
+async function getServiciosEspecialesPricebookEntry(
+  instanceUrl: string,
+  accessToken: string,
+  unitCode: string
+): Promise<{ pricebookEntryId: string; product2Id: string; pricebook2Id: string }> {
+  const fallback = {
+    pricebook2Id: '01sf4000003UUHYAA4', // Standard Price Book
+    pricebookEntryId: '01uf400000GVf4yAAD', // PBE Standard para 23400259
+    product2Id: '01tf4000003mbfWAAQ', // Servicios Especiales 23400259
+  };
+
+  try {
+    const query = encodeURIComponent(
+      `SELECT Id, Pricebook2Id, Product2Id, Product2.ProductCode, Product2.Name FROM PricebookEntry WHERE Pricebook2.IsStandard = true AND Product2.Name LIKE '%Servicios Especiales%' AND (Product2.ProductCode LIKE '${unitCode}%' OR Product2.ProductCode = '23400259') AND IsActive = true LIMIT 1`
+    );
+    const res = await sfRequest(instanceUrl, accessToken, `query?q=${query}`);
+    if (res?.records && res.records.length > 0) {
+      const rec = res.records[0];
+      return {
+        pricebookEntryId: rec.Id,
+        product2Id: rec.Product2Id,
+        pricebook2Id: rec.Pricebook2Id,
+      };
+    }
+  } catch (err) {
+    console.warn('Aviso buscando PricebookEntry dinámica, usando fallback Standard:', err);
+  }
+
+  return fallback;
+}
+
+/**
  * Orquestador principal de sincronización hacia Salesforce
  */
 export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promise<SalesforceSyncResult> {
@@ -157,14 +218,19 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
     if (match) unitCode = match[1];
   }
 
-  // 6. PASO 1: Crear la Oportunidad en etapa Elaboración con la cadena de dependencias oficial IDIEM
+  // 6. Obtener nombre unificado y lista de precios oficial Standard
+  const unifiedName = buildUnifiedSalesforceName(cotizacion, unitCode);
+  const standardPricebook = await getServiciosEspecialesPricebookEntry(instanceUrl, accessToken, unitCode);
+
+  // 7. PASO 1: Crear la Oportunidad en etapa Elaboración con la cadena de dependencias oficial IDIEM
   const requestDate = (cotizacion.date ? new Date(cotizacion.date) : new Date()).toISOString().slice(0, 10);
   const oppPayload: Record<string, any> = {
-    Name: `[${cotizacion.code}] ${cotizacion.projectName || cotizacion.clientName}`.slice(0, 120),
+    Name: unifiedName,
     CloseDate: closeDate,
     Fecha_de_la_Solicitud__c: requestDate,
     StageName: 'Elaboración',
     RecordTypeId: '012f4000000OfXyAAK',
+    Pricebook2Id: standardPricebook.pricebook2Id,
     Division__c: 'DGL',
     Seccion__c: 'SLG',
     Unidad__c: unitCode,
@@ -193,13 +259,14 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
   const opportunityId = oppRes.id;
   const opportunityUrl = `${instanceUrl}/lightning/r/Opportunity/${opportunityId}/view`;
 
-  // 7. PASO 2: Crear la Cotización (POST a Quote)
+  // 8. PASO 2: Crear la Cotización (POST a Quote) con el MISMO nombre
   let quoteId: string | undefined;
   let quoteUrl: string | undefined;
   try {
     const quotePayload: Record<string, any> = {
       OpportunityId: opportunityId,
-      Name: `Presupuesto ${cotizacion.code}`.slice(0, 120),
+      Name: unifiedName,
+      Pricebook2Id: standardPricebook.pricebook2Id,
       ExpirationDate: closeDate,
       Status: cotizacion.status === 'Finalizada' ? 'Presentada' : 'Borrador',
       Description: `Generado desde Cotizador DGL IDIEM. Correlativo: ${cotizacion.code}`,
@@ -213,6 +280,28 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
     if (quoteRes?.id) {
       quoteId = quoteRes.id;
       quoteUrl = `${instanceUrl}/lightning/r/Quote/${quoteId}/view`;
+
+      // PASO 2.1: Crear el Servicio Cotización (QuoteLineItem) con Servicios Especiales
+      try {
+        const ufTotal = cotizacion.totalUf || (cotizacion.ufValue ? Number((amount / cotizacion.ufValue).toFixed(2)) : 0);
+        const qliPayload: Record<string, any> = {
+          QuoteId: quoteId,
+          PricebookEntryId: standardPricebook.pricebookEntryId,
+          Product2Id: standardPricebook.product2Id,
+          Quantity: 1,
+          UnitPrice: amount,
+          Precio_del_Servicio_UF__c: ufTotal,
+          IsLast__c: true,
+        };
+
+        await sfRequest(instanceUrl, accessToken, 'sobjects/QuoteLineItem', {
+          method: 'POST',
+          body: JSON.stringify(qliPayload),
+        });
+        console.log('✓ QuoteLineItem Servicios Especiales agregado exitosamente a Quote en Salesforce.');
+      } catch (qliErr: any) {
+        console.warn('Aviso: No se pudo agregar QuoteLineItem a Quote en Salesforce:', qliErr?.message);
+      }
     }
   } catch (quoteErr: any) {
     console.warn('Aviso: No se pudo crear el objeto Quote (puede que no esté habilitado en esta org), adjuntando directo a Opportunity:', quoteErr?.message);

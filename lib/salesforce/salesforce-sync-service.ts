@@ -147,16 +147,34 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
     cotizacion.clientRut
   );
 
-  // 5. Obtener Etapa válida
-  const stageName = await getDefaultStageName(instanceUrl, accessToken);
+  // 5. Determinar unidad/centro de costo para IDIEM
+  let unitCode = '2340';
+  if (cotizacion.centroCosto) {
+    const match = cotizacion.centroCosto.match(/^(\d{4})/);
+    if (match) unitCode = match[1];
+  } else if (cotizacion.code) {
+    const match = cotizacion.code.match(/PR\.DGL\.(\d{4})/i);
+    if (match) unitCode = match[1];
+  }
 
-  // 6. PASO 1: Crear la Oportunidad (POST a Opportunity)
+  // 6. PASO 1: Crear la Oportunidad en etapa Elaboración con la cadena de dependencias oficial IDIEM
+  const requestDate = (cotizacion.date ? new Date(cotizacion.date) : new Date()).toISOString().slice(0, 10);
   const oppPayload: Record<string, any> = {
     Name: `[${cotizacion.code}] ${cotizacion.projectName || cotizacion.clientName}`.slice(0, 120),
     CloseDate: closeDate,
-    StageName: stageName,
+    Fecha_de_la_Solicitud__c: requestDate,
+    StageName: 'Elaboración',
+    RecordTypeId: '012f4000000OfXyAAK',
+    Division__c: 'DGL',
+    Seccion__c: 'SLG',
+    Unidad__c: unitCode,
+    Tipo_de_servicio_por_CC__c: 'Ensayos',
+    Subsector_del_Proyecto__c: 'No Aplica',
+    Sector_del_Proyecto__c: 'Otros',
+    Zona_Proyecto__c: 'Nacional',
+    LeadSource: 'Directo División',
     Amount: amount,
-    Description: `Cotización IDIEM: ${cotizacion.code}\nCliente: ${cotizacion.clientName}\nProyecto: ${cotizacion.projectName || 'Sin especificar'}\nCentro de Costo: ${cotizacion.centroCosto || '2339'}\nTotal: ${amount} (${cotizacion.currency || 'UF'})`,
+    Description: `Cotización IDIEM: ${cotizacion.code}\nCliente: ${cotizacion.clientName}\nProyecto: ${cotizacion.projectName || 'Sin especificar'}\nCentro de Costo: ${cotizacion.centroCosto || unitCode}\nTotal: ${amount} (${cotizacion.currency || 'UF'})`,
   };
 
   if (accountId) {
@@ -274,20 +292,28 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
     }
   }
 
-  // 10. PASO 6: Sincronizar Cotización con la Oportunidad (PATCH a SyncedQuoteId)
+  // 10. PASO 6: Actualizar etapa de Oportunidad a 'Propuesta/Cotización Enviada' y sincronizar Cotización
   let syncedQuoteApplied = false;
-  if (quoteId) {
+  try {
+    const patchPayload: Record<string, any> = {
+      StageName: 'Propuesta/Cotización Enviada',
+    };
+    if (quoteId) {
+      patchPayload.SyncedQuoteId = quoteId;
+    }
+    await sfRequest(instanceUrl, accessToken, `sobjects/Opportunity/${opportunityId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patchPayload),
+    });
+    syncedQuoteApplied = true;
+  } catch (syncErr: any) {
+    console.warn('Aviso: Error aplicando SyncedQuoteId o StageName en Opportunity:', syncErr?.message);
     try {
       await sfRequest(instanceUrl, accessToken, `sobjects/Opportunity/${opportunityId}`, {
         method: 'PATCH',
-        body: JSON.stringify({
-          SyncedQuoteId: quoteId,
-        }),
+        body: JSON.stringify({ StageName: 'Propuesta/Cotización Enviada' }),
       });
-      syncedQuoteApplied = true;
-    } catch (syncErr: any) {
-      console.warn('Aviso: SyncedQuoteId no pudo ser actualizado en Opportunity (puede requerir QuoteLineItems):', syncErr?.message);
-    }
+    } catch {}
   }
 
   // 11. PASO 7: Guardar los IDs de Salesforce en la base de datos de Cotizaciones

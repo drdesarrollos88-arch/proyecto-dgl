@@ -181,6 +181,21 @@ async function getServiciosEspecialesPricebookEntry(
  * Orquestador principal de sincronización hacia Salesforce
  */
 export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promise<SalesforceSyncResult> {
+  // 0. Validaciones de negocio IDIEM
+  // Regla A: No permitir Borradores
+  if (cotizacion.status === 'Borrador') {
+    throw new Error(
+      `La cotización ${cotizacion.code} se encuentra en estado "Borrador". Debe cambiar el estado a "Finalizada" antes de enviarla a Salesforce.`
+    );
+  }
+
+  // Regla B: Límite estricto de 1 sola carga (Anti-duplicación)
+  if (cotizacion.salesforceOpportunityId || cotizacion.salesforceQuoteId) {
+    throw new Error(
+      `Esta cotización ya fue cargada en Salesforce previamente (Oportunidad ID: ${cotizacion.salesforceOpportunityId || cotizacion.salesforceQuoteId}). Para evitar duplicados en Salesforce, solo se permite cargarla una única vez.`
+    );
+  }
+
   // 1. Obtener cliente activo y autenticado
   const { accessToken, instanceUrl } = await getValidSalesforceClient();
 
@@ -321,7 +336,7 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
     }
 
     const doc = generateCotizacionPdf(cotizacion, logoBase64, formato, {
-      isDraft: cotizacion.status === 'Borrador',
+      isDraft: false,
       showEconomicIndicators: cotizacion.showEconomicIndicators !== false,
     });
 
@@ -407,8 +422,10 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
 
   // 11. PASO 7: Guardar los IDs de Salesforce en la base de datos de Cotizaciones
   try {
+    const updatedStatus = cotizacion.status === 'Finalizada' ? 'Enviada' : cotizacion.status;
     await saveCotizacionAsync({
       ...cotizacion,
+      status: updatedStatus,
       salesforceOpportunityId: opportunityId,
       salesforceOpportunityUrl: opportunityUrl,
       salesforceQuoteId: quoteId,

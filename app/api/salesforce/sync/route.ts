@@ -22,6 +22,33 @@ export async function POST(req: Request) {
       );
     }
 
+    // Validación 1: No permitir Borradores
+    if (cotizacion.status === 'Borrador') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `La cotización ${cotizacion.code} se encuentra en estado "Borrador". Debe cambiar el estado a "Finalizada" antes de enviarla a Salesforce.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validación 2: Límite estricto de 1 sola carga (Anti-duplicación)
+    if (cotizacion.salesforceOpportunityId || cotizacion.salesforceQuoteId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Esta cotización ya fue cargada en Salesforce (Oportunidad ID: ${cotizacion.salesforceOpportunityId || cotizacion.salesforceQuoteId}). Para evitar registros duplicados en Salesforce, solo se permite cargarla una única vez.`,
+          alreadySynced: true,
+          opportunityId: cotizacion.salesforceOpportunityId,
+          opportunityUrl: cotizacion.salesforceOpportunityUrl,
+          quoteId: cotizacion.salesforceQuoteId,
+          quoteUrl: cotizacion.salesforceQuoteUrl,
+        },
+        { status: 400 }
+      );
+    }
+
     const result = await syncCotizacionToSalesforce(cotizacion);
 
     return NextResponse.json({

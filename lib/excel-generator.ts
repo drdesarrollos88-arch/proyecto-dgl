@@ -98,6 +98,12 @@ export async function generateCotizacionExcel(cotizacion: Cotizacion): Promise<E
   ws.getCell('C57').font = { bold: true, size: 12, color: { argb: 'FF004C87' } };
 
   // Table Headers (Row 59)
+  const isUsd = cotizacion.currency === 'USD';
+  const isClp = cotizacion.currency === 'CLP';
+  const currencyLabel = cotizacion.currency || 'UF';
+  const ufVal = cotizacion.ufValue || 40879.04;
+  const usdVal = cotizacion.dollarValue || 933.47;
+
   const headers = [
     { col: 'A', val: 'CODIGO ENSAYO' },
     { col: 'C', val: 'Item' },
@@ -105,9 +111,9 @@ export async function generateCotizacionExcel(cotizacion: Cotizacion): Promise<E
     { col: 'G', val: 'Norma o Proced.' },
     { col: 'H', val: 'Cantidad Mín.\nMaterial (kg)' },
     { col: 'I', val: 'Unidad' },
-    { col: 'J', val: 'Precio\nUnitario (UF)' },
+    { col: 'J', val: `Precio\nUnitario (${currencyLabel})` },
     { col: 'K', val: 'Cantidad Ensayos\nEstimada' },
-    { col: 'L', val: 'Sub Total\n(UF)' },
+    { col: 'L', val: `Sub Total\n(${currencyLabel})` },
   ];
 
   headers.forEach((h) => {
@@ -139,13 +145,28 @@ export async function generateCotizacionExcel(cotizacion: Cotizacion): Promise<E
     r.getCell('H').value = item.minWeightKg ? Number(item.minWeightKg) || item.minWeightKg : '';
     r.getCell('I').value = sanitizeForExcel(item.unit);
 
-    const unitPrice = Number(item.ufPrice) * Number(item.factor || 1);
-    r.getCell('J').value = Math.round(unitPrice * 100) / 100;
-    r.getCell('J').numFmt = '#,##0.00';
+    const unitPriceUf = Number(item.ufPrice) * Number(item.factor || 1);
+    const qty = Number(item.quantity);
+    const subtotalUf = unitPriceUf * qty;
 
-    r.getCell('K').value = Number(item.quantity);
-    r.getCell('L').value = Math.round(unitPrice * Number(item.quantity) * 100) / 100;
-    r.getCell('L').numFmt = '#,##0.00';
+    const unitPrice = isUsd
+      ? (unitPriceUf * ufVal) / usdVal
+      : isClp
+      ? Math.round(unitPriceUf * ufVal)
+      : unitPriceUf;
+
+    const subtotal = isUsd
+      ? (subtotalUf * ufVal) / usdVal
+      : isClp
+      ? Math.round(subtotalUf * ufVal)
+      : subtotalUf;
+
+    r.getCell('J').value = isClp ? unitPrice : Math.round(unitPrice * 100) / 100;
+    r.getCell('J').numFmt = isClp ? '$#,##0' : '#,##0.00';
+
+    r.getCell('K').value = qty;
+    r.getCell('L').value = isClp ? subtotal : Math.round(subtotal * 100) / 100;
+    r.getCell('L').numFmt = isClp ? '$#,##0' : '#,##0.00';
 
     // Thin borders
     ['A', 'C', 'D', 'G', 'H', 'I', 'J', 'K', 'L'].forEach((c) => {
@@ -164,8 +185,16 @@ export async function generateCotizacionExcel(cotizacion: Cotizacion): Promise<E
   const totalRow = ws.getRow(rowIdx);
   totalRow.getCell('C').value = 'Total Ensayos';
   totalRow.getCell('C').font = { bold: true };
-  totalRow.getCell('L').value = cotizacion.totalUf || 0;
-  totalRow.getCell('L').numFmt = '#,##0.00 "UF"';
+  if (isClp) {
+    totalRow.getCell('L').value = cotizacion.totalClp || Math.round((cotizacion.totalUf || 0) * ufVal);
+    totalRow.getCell('L').numFmt = '$#,##0 "CLP"';
+  } else if (isUsd) {
+    totalRow.getCell('L').value = cotizacion.totalUsd ?? Math.round((((cotizacion.totalUf || 0) * ufVal) / usdVal) * 100) / 100;
+    totalRow.getCell('L').numFmt = '#,##0.00 "USD"';
+  } else {
+    totalRow.getCell('L').value = cotizacion.totalUf || 0;
+    totalRow.getCell('L').numFmt = '#,##0.00 "UF"';
+  }
   totalRow.getCell('L').font = { bold: true, color: { argb: 'FF004C87' } };
   rowIdx += 2;
 

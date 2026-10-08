@@ -132,7 +132,7 @@ export interface Cotizacion {
   city: string; // ej. "Santiago" o "Concepción"
   paymentCondition?: string;
   centroCosto?: string;
-  currency?: 'UF' | 'USD';
+  currency?: 'UF' | 'USD' | 'CLP';
   commercialName: string;
   commercialTitle: string;
   commercialInitials: string;

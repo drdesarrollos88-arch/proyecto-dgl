@@ -192,8 +192,9 @@ export function generateCotizacionPdf(
   doc.text(displayBudgetTitle, marginX, currentY);
   currentY += 4.5;
 
-  // 5. Tabla de Ensayos según formato oficial (8 columnas en UF o USD)
+  // 5. Tabla de Ensayos según formato oficial (8 columnas en UF, USD o CLP)
   const isUsd = cotizacion.currency === 'USD';
+  const isClp = cotizacion.currency === 'CLP';
   const ufVal = cotizacion.ufValue || 40879.04;
   const usdVal = cotizacion.dollarValue || 933.47;
 
@@ -205,8 +206,25 @@ export function generateCotizacionPdf(
     const qty = Number(item.quantity || 0);
     const subtotalUf = finalPriceUf * qty;
 
-    const unitPrice = isUsd ? (finalPriceUf * ufVal) / usdVal : finalPriceUf;
-    const subtotal = isUsd ? (subtotalUf * ufVal) / usdVal : subtotalUf;
+    const unitPrice = isUsd
+      ? (finalPriceUf * ufVal) / usdVal
+      : isClp
+      ? Math.round(finalPriceUf * ufVal)
+      : finalPriceUf;
+
+    const subtotal = isUsd
+      ? (subtotalUf * ufVal) / usdVal
+      : isClp
+      ? Math.round(subtotalUf * ufVal)
+      : subtotalUf;
+
+    const formattedUnitPrice = isClp
+      ? `$${Math.round(unitPrice).toLocaleString('es-CL')}`
+      : unitPrice.toFixed(2);
+
+    const formattedSubtotal = isClp
+      ? `$${Math.round(subtotal).toLocaleString('es-CL')}`
+      : subtotal.toFixed(2);
 
     return [
       itemNum,
@@ -214,9 +232,9 @@ export function generateCotizacionPdf(
       item.norm || '---',
       item.minWeightKg ? `${item.minWeightKg} kg` : '-',
       item.unit || 'c/u',
-      unitPrice.toFixed(2),
+      formattedUnitPrice,
       qty.toString(),
-      subtotal.toFixed(2),
+      formattedSubtotal,
     ];
   });
 
@@ -230,9 +248,9 @@ export function generateCotizacionPdf(
         'Norma o Proced.',
         'Masa Mín.\n(kg)',
         'Unidad',
-        isUsd ? 'Precio\n(USD)' : 'Precio\n(UF)',
+        isUsd ? 'Precio\n(USD)' : isClp ? 'Precio\n(CLP)' : 'Precio\n(UF)',
         'Cant.',
-        isUsd ? 'Subtotal\n(USD)' : 'Subtotal\n(UF)',
+        isUsd ? 'Subtotal\n(USD)' : isClp ? 'Subtotal\n(CLP)' : 'Subtotal\n(UF)',
       ],
     ],
     body: tableRows,
@@ -257,13 +275,13 @@ export function generateCotizacionPdf(
     },
     columnStyles: {
       0: { cellWidth: 11, halign: 'center' }, // Item
-      1: { cellWidth: 63.9 }, // Designación Ensayo
+      1: { cellWidth: isClp ? 57.9 : 63.9 }, // Designación Ensayo
       2: { cellWidth: 39, fontSize: 6.8 }, // Norma o Proced.
       3: { cellWidth: 16, halign: 'center' }, // Masa Mín. (kg)
       4: { cellWidth: 12, halign: 'center' }, // Unidad
-      5: { cellWidth: 17, halign: 'right' }, // Precio (UF/USD)
+      5: { cellWidth: isClp ? 20 : 17, halign: 'right' }, // Precio (UF/USD/CLP)
       6: { cellWidth: 11, halign: 'center' }, // Cant.
-      7: { cellWidth: 18, halign: 'right', fontStyle: 'bold' }, // Subtotal (UF/USD)
+      7: { cellWidth: isClp ? 21 : 18, halign: 'right', fontStyle: 'bold' }, // Subtotal (UF/USD/CLP)
     },
     foot: [
       [
@@ -276,6 +294,8 @@ export function generateCotizacionPdf(
         '',
         isUsd
           ? `${(cotizacion.totalUsd ?? (cotizacion.totalUf * ufVal) / usdVal).toFixed(2)} USD`
+          : isClp
+          ? `$${(cotizacion.totalClp || Math.round((cotizacion.totalUf || 0) * ufVal)).toLocaleString('es-CL')} CLP`
           : `${(cotizacion.totalUf || 0).toFixed(2)} UF`,
       ],
     ],

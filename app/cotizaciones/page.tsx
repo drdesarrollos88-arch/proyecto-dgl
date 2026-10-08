@@ -657,8 +657,8 @@ function CotizacionesContent() {
                   <th className="py-3.5 px-4 min-w-[200px]">Proyecto / Obra</th>
                   <th className="py-3.5 px-3 min-w-[130px]">Centro de Costo</th>
                   <th className="py-3.5 px-3 w-28 text-center">Fecha</th>
-                  <th className="py-3.5 px-4 w-32 text-right">Neto (UF)</th>
-                  <th className="py-3.5 px-4 w-36 text-right">Total (CLP)</th>
+                  <th className="py-3.5 px-4 w-32 text-right">Monto Oferta</th>
+                  <th className="py-3.5 px-4 w-36 text-right">Total Ref.</th>
                   <th className="py-3.5 px-4 w-36 text-center">Estado Comercial</th>
                   <th className="py-3.5 px-4 w-36">Asesor DGL</th>
                   <th className="py-3.5 px-4 w-36 text-center">Acciones</th>
@@ -794,16 +794,20 @@ function CotizacionesContent() {
                           {dateFormatted}
                         </td>
 
-                        {/* Total UF */}
+                        {/* Total Presentado en Oferta */}
                         <td className="py-3.5 px-4 text-right font-black font-mono text-slate-900 text-xs">
                           {c.currency === 'USD'
                             ? `${(c.totalUsd || 0).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
+                            : c.currency === 'CLP'
+                            ? `$${(c.totalClp || 0).toLocaleString('es-CL')} CLP`
                             : `${c.totalUf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF`}
                         </td>
 
-                        {/* Total CLP */}
+                        {/* Total Referencial */}
                         <td className="py-3.5 px-4 text-right font-mono text-slate-600 text-xs font-semibold">
-                          ${c.totalClp.toLocaleString('es-CL')}
+                          {c.currency === 'CLP'
+                            ? `${c.totalUf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF`
+                            : `$${c.totalClp.toLocaleString('es-CL')}`}
                         </td>
 
                         {/* Estado Comercial Interactivo */}

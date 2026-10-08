@@ -243,7 +243,7 @@ function CotizadorContent() {
   // Client and Project Information Form
   const defaultCc = '2339 - Ensayos Rocas';
   const [centroCosto, setCentroCosto] = useState<string>(defaultCc);
-  const [currency, setCurrency] = useState<'UF' | 'USD'>('UF');
+  const [currency, setCurrency] = useState<'UF' | 'USD' | 'CLP'>('UF');
   const [code, setCode] = useState(() => {
     const year = new Date().getFullYear();
     return `PR.DGL.2339.${year}.0598-V1`;
@@ -1066,7 +1066,7 @@ function CotizadorContent() {
         const newFactor = field === 'factor' ? Math.max(0, numVal) : it.factor;
         const newPrice = field === 'ufPrice' ? Math.max(0, numVal) : it.ufPrice;
         const newSubtotalUf = Math.round(newPrice * newFactor * newQty * 100) / 100;
-        const newSubtotalClp = Math.round(newSubtotalUf * ufValue);
+        const newSubtotalClp = Math.round(newPrice * newFactor * newQty * ufValue);
 
         return {
           ...it,
@@ -2475,11 +2475,12 @@ function CotizadorContent() {
                     </label>
                     <select
                       value={currency}
-                      onChange={(e) => setCurrency(e.target.value as 'UF' | 'USD')}
+                      onChange={(e) => setCurrency(e.target.value as 'UF' | 'USD' | 'CLP')}
                       className="w-full py-1.5 px-2 rounded-lg border border-emerald-300 bg-emerald-50/40 text-xs font-bold text-emerald-950 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
                     >
                       <option value="UF">UF (Unidad de Fomento)</option>
                       <option value="USD">USD (Dólares Americanos)</option>
+                      <option value="CLP">CLP (Pesos Chilenos)</option>
                     </select>
                   </div>
                 </div>
@@ -2886,10 +2887,10 @@ function CotizadorContent() {
                       </th>
                       <th className="py-3 px-1 w-14 min-w-[50px] text-center">Masa</th>
                       <th className="py-3 px-1 w-14 min-w-[50px] text-center">Unidad</th>
-                      <th className="py-3 px-2 w-26 min-w-[90px] text-right">
+                      <th className="py-3 px-2 w-28 min-w-[95px] text-right">
                         <div className="flex flex-col items-end leading-tight">
                           <span className="text-[11px] font-bold text-slate-700">
-                            {currency === 'USD' ? 'Precio USD' : 'Precio UF'}
+                            {currency === 'USD' ? 'Precio USD' : currency === 'CLP' ? 'Precio CLP' : 'Precio UF'}
                           </span>
                           <span className="text-[9px] font-normal text-blue-600 lowercase">(editable)</span>
                         </div>
@@ -2904,10 +2905,12 @@ function CotizadorContent() {
                         </div>
                       </th>
                       <th className="py-3 px-1.5 w-14 min-w-[55px] text-center">Cant.</th>
-                      <th className="py-3 px-2 w-24 min-w-[85px] text-right">
-                        {currency === 'USD' ? 'Subtotal USD' : 'Subtotal UF'}
+                      <th className="py-3 px-2 w-28 min-w-[95px] text-right">
+                        {currency === 'USD' ? 'Subtotal USD' : currency === 'CLP' ? 'Subtotal CLP' : 'Subtotal UF'}
                       </th>
-                      <th className="py-3 px-2 w-28 min-w-[95px] text-right">Subtotal CLP</th>
+                      <th className="py-3 px-2 w-28 min-w-[95px] text-right">
+                        {currency === 'CLP' ? 'Equiv. UF' : 'Subtotal CLP'}
+                      </th>
                       <th className="py-3 px-1 w-9 min-w-[36px] text-center"></th>
                     </tr>
                   </thead>
@@ -2932,10 +2935,14 @@ function CotizadorContent() {
                         const finalUnitDisplay =
                           currency === 'USD'
                             ? ((finalUnitUf * ufValue) / dollarValue).toFixed(2)
+                            : currency === 'CLP'
+                            ? `$${Math.round(finalUnitUf * ufValue).toLocaleString('es-CL')}`
                             : finalUnitUf.toFixed(2);
                         const finalSubtotalDisplay =
                           currency === 'USD'
                             ? `${((item.subtotalUf * ufValue) / dollarValue).toFixed(2)} USD`
+                            : currency === 'CLP'
+                            ? `$${item.subtotalClp.toLocaleString('es-CL')}`
                             : `${item.subtotalUf.toFixed(2)} UF`;
 
                         const { title, detail } = parseDesignation(item.designation);
@@ -3142,11 +3149,13 @@ function CotizadorContent() {
                               <div className="flex items-center justify-end gap-1">
                                 <input
                                   type="number"
-                                  step="0.01"
+                                  step={currency === 'CLP' ? '1' : '0.01'}
                                   min="0"
                                   value={
                                     currency === 'USD'
                                       ? Math.round(((item.ufPrice * ufValue) / dollarValue) * 100) / 100
+                                      : currency === 'CLP'
+                                      ? Math.round(item.ufPrice * ufValue)
                                       : item.ufPrice
                                   }
                                   onChange={(e) => {
@@ -3155,18 +3164,26 @@ function CotizadorContent() {
                                     if (currency === 'USD') {
                                       const convertedUf = (safeVal * dollarValue) / ufValue;
                                       handleItemChange(item.id, 'ufPrice', Math.round(convertedUf * 100) / 100);
+                                    } else if (currency === 'CLP') {
+                                      const convertedUf = ufValue > 0 ? safeVal / ufValue : 0;
+                                      handleItemChange(item.id, 'ufPrice', convertedUf);
                                     } else {
                                       handleItemChange(item.id, 'ufPrice', safeVal);
                                     }
                                   }}
-                                  className="w-20 p-1 text-right font-mono text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded focus:ring-2 focus:ring-blue-600 focus:border-blue-600 focus:outline-none hover:border-slate-400 transition-colors shadow-2xs"
+                                  className="w-24 p-1 text-right font-mono text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded focus:ring-2 focus:ring-blue-600 focus:border-blue-600 focus:outline-none hover:border-slate-400 transition-colors shadow-2xs"
                                   title={`Editar precio unitario base (${currency}) para este ensayo en la cotización`}
                                 />
                                 <span className="text-[10px] text-slate-400 font-bold">{currency}</span>
                               </div>
                               {item.factor !== 1.0 && (
                                 <div className="text-[9px] text-slate-400 font-medium text-right mt-0.5">
-                                  c/desc: UF {(item.ufPrice * item.factor).toFixed(2)}
+                                  c/desc:{' '}
+                                  {currency === 'USD'
+                                    ? `USD ${(((item.ufPrice * item.factor) * ufValue) / dollarValue).toFixed(2)}`
+                                    : currency === 'CLP'
+                                    ? `$${Math.round(item.ufPrice * item.factor * ufValue).toLocaleString('es-CL')}`
+                                    : `UF ${(item.ufPrice * item.factor).toFixed(2)}`}
                                 </div>
                               )}
                             </td>
@@ -3192,14 +3209,16 @@ function CotizadorContent() {
                               />
                             </td>
 
-                            {/* Subtotal UF / USD */}
+                            {/* Subtotal en Moneda de la Propuesta */}
                             <td className="py-2.5 px-2 text-right font-bold font-mono text-slate-900 align-top pt-3 text-xs">
                               {finalSubtotalDisplay}
                             </td>
 
-                            {/* Subtotal CLP */}
+                            {/* Subtotal Referencial */}
                             <td className="py-2.5 px-2 text-right font-mono text-slate-700 align-top pt-3 text-xs">
-                              ${item.subtotalClp.toLocaleString('es-CL')}
+                              {currency === 'CLP'
+                                ? `${item.subtotalUf.toFixed(2)} UF`
+                                : `$${item.subtotalClp.toLocaleString('es-CL')}`}
                             </td>
 
                             {/* Eliminar */}
@@ -3224,18 +3243,24 @@ function CotizadorContent() {
 
           {/* Summary Cards - Compact Executive Stat Strip */}
           <div className="mt-3.5 grid grid-cols-1 md:grid-cols-3 gap-3">
-            {/* Total Principal (UF or USD) */}
+            {/* Total Principal (UF, USD o CLP) */}
             <div className="bg-gradient-to-br from-blue-900 to-blue-800 rounded-xl px-4 py-2.5 text-white shadow-xs flex items-center justify-between">
               <div>
                 <span className="text-[10px] uppercase font-bold text-blue-200 tracking-wider block">
                   Total Presupuesto ({currency})
                 </span>
                 <div className="text-xl font-bold font-mono mt-0.5">
-                  {currency === 'USD' ? totalUsd.toFixed(2) : totals.totalUf.toFixed(2)}{' '}
+                  {currency === 'USD'
+                    ? totalUsd.toFixed(2)
+                    : currency === 'CLP'
+                    ? `$${totals.totalClp.toLocaleString('es-CL')}`
+                    : totals.totalUf.toFixed(2)}{' '}
                   <span className="text-xs font-normal text-blue-200">{currency}</span>
                 </div>
                 <span className="text-[10px] text-blue-300">
                   {currency === 'USD'
+                    ? `Equivalente: ${totals.totalUf.toFixed(2)} UF`
+                    : currency === 'CLP'
                     ? `Equivalente: ${totals.totalUf.toFixed(2)} UF`
                     : 'Valor Neto de Ensayos'}
                 </span>
@@ -3245,21 +3270,25 @@ function CotizadorContent() {
               </div>
             </div>
 
-            {/* Total CLP */}
+            {/* Total Secundario (CLP o UF) */}
             <div className="bg-slate-900 rounded-xl px-4 py-2.5 text-white shadow-xs flex items-center justify-between">
               <div>
                 <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
-                  Total Estimado en Pesos (CLP)
+                  {currency === 'CLP' ? 'Total Equivalente en UF' : 'Total Estimado en Pesos (CLP)'}
                 </span>
                 <div className="text-xl font-bold font-mono mt-0.5">
-                  ${totals.totalClp.toLocaleString('es-CL')}
+                  {currency === 'CLP'
+                    ? `${totals.totalUf.toFixed(2)} UF`
+                    : `$${totals.totalClp.toLocaleString('es-CL')}`}
                 </div>
                 <span className="text-[10px] text-slate-400">
-                  UF ref: ${ufValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | USD: ${dollarValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {currency === 'CLP'
+                    ? `Calculado a $${ufValue.toLocaleString('es-CL')} por UF`
+                    : `UF ref: $${ufValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | USD: $${dollarValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 </span>
               </div>
               <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700/50 flex items-center justify-center text-slate-300 font-bold text-xs">
-                $
+                {currency === 'CLP' ? 'UF' : '$'}
               </div>
             </div>
 
@@ -3445,6 +3474,8 @@ function CotizadorContent() {
                 <span className="font-bold font-mono text-sm text-emerald-700">
                   {currency === 'USD'
                     ? `${totalUsd.toFixed(2)} USD`
+                    : currency === 'CLP'
+                    ? `$${totals.totalClp.toLocaleString('es-CL')} CLP`
                     : `${totals.totalUf.toFixed(2)} UF`}
                 </span>
               </div>

@@ -70,7 +70,7 @@ export function mapSupabaseToCotizacion(row: any): Cotizacion {
     city: row.project_address || 'Santiago',
     paymentCondition: row.payment_terms || '50% AL CONTADO Y 50% CONTRA ENTREGA',
     centroCosto: row.centro_costo || '1817',
-    currency: (row.currency as 'UF' | 'USD') || 'UF',
+    currency: (row.currency as 'UF' | 'USD' | 'CLP') || 'UF',
     commercialName: row.user_name || 'Diego Román',
     commercialTitle: 'Asesor Comercial DGL',
     commercialInitials: row.user_initials || 'DRA',

@@ -4,6 +4,8 @@ import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import Navbar from '@/components/Navbar';
 import { Cotizacion, SessionUser, CENTROS_DE_COSTO } from '@/lib/types';
 import { hasPermission } from '@/lib/permissions';
+import SalesforceStatusBadge from '@/components/salesforce/SalesforceStatusBadge';
+import SalesforceSyncButton from '@/components/salesforce/SalesforceSyncButton';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -372,6 +374,8 @@ function CotizacionesContent() {
             </div>
 
             <div className="flex items-center gap-2.5 flex-wrap">
+              <SalesforceStatusBadge />
+
               <Link
                 href="/clientes"
                 className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-white text-slate-700 hover:text-slate-900 hover:bg-slate-50 border border-slate-200 transition-all shadow-xs"
@@ -890,6 +894,16 @@ function CotizacionesContent() {
                               <FileSpreadsheet className="w-4 h-4" />
                             </a>
 
+                            {/* Cargar o Abrir en Salesforce */}
+                            <SalesforceSyncButton
+                              cotizacion={c}
+                              onSynced={(updated) => {
+                                setCotizaciones((prev) =>
+                                  prev.map((item) => (item.id === updated.id ? updated : item))
+                                );
+                              }}
+                            />
+
                             {/* Eliminar (Protegido por permisos) */}
                             {hasPermission(user, 'cotizaciones.eliminar') && (
                               <button
@@ -1044,6 +1058,18 @@ function CotizacionesContent() {
                     <FileSpreadsheet className="w-3.5 h-3.5" />
                     <span>Excel</span>
                   </a>
+
+                  {/* Sincronización con Salesforce */}
+                  <SalesforceSyncButton
+                    cotizacion={previewCotizacion}
+                    variant="button"
+                    onSynced={(updated) => {
+                      setPreviewCotizacion(updated);
+                      setCotizaciones((prev) =>
+                        prev.map((item) => (item.id === updated.id ? updated : item))
+                      );
+                    }}
+                  />
 
                   <Link
                     href={`/cotizador?edit=${previewCotizacion.id}`}

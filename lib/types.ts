@@ -164,6 +164,11 @@ export interface Cotizacion {
   deletedAt?: string;
   deletedBy?: string;
   deletedById?: string;
+  salesforceOpportunityId?: string;
+  salesforceOpportunityUrl?: string;
+  salesforceQuoteId?: string;
+  salesforceQuoteUrl?: string;
+  salesforceSyncedAt?: string;
 }
 
 export interface CotizacionCondicionesComerciales {

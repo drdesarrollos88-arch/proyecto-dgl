@@ -22,6 +22,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/public') ||
     pathname === '/favicon.ico' ||
     pathname === '/api/auth/login' ||
+    pathname.startsWith('/api/auth/salesforce') ||
     pathname === '/api/ai/inbound-email' ||
     /\.(png|jpg|jpeg|svg|webp|ico|css|js|woff|woff2|ttf)$/i.test(pathname)
   ) {

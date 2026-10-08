@@ -633,11 +633,11 @@ function CotizacionesContent() {
           )}
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-700 border-collapse">
+            <table className="w-full text-left text-xs text-slate-700 border-collapse">
               <thead className="bg-slate-50/90 text-slate-600 font-semibold border-b border-slate-200 text-[11px] uppercase tracking-wider select-none">
                 <tr>
                   {/* Casilla Checkbox Maestro */}
-                  <th className="py-3.5 px-3 w-12 text-center">
+                  <th className="py-2.5 px-1 w-9 text-center">
                     <input
                       type="checkbox"
                       aria-label="Seleccionar todas las cotizaciones"
@@ -656,16 +656,16 @@ function CotizacionesContent() {
                       }
                     />
                   </th>
-                  <th className="py-3.5 px-4 w-48 font-semibold">Código / Versión</th>
-                  <th className="py-3.5 px-4 min-w-[220px]">Cliente / Razón Social</th>
-                  <th className="py-3.5 px-4 min-w-[200px]">Proyecto / Obra</th>
-                  <th className="py-3.5 px-3 min-w-[130px]">Centro de Costo</th>
-                  <th className="py-3.5 px-3 w-28 text-center">Fecha</th>
-                  <th className="py-3.5 px-4 w-32 text-right">Monto Oferta</th>
-                  <th className="py-3.5 px-4 w-36 text-right">Total Ref.</th>
-                  <th className="py-3.5 px-4 w-36 text-center">Estado Comercial</th>
-                  <th className="py-3.5 px-4 w-36">Asesor DGL</th>
-                  <th className="py-3.5 px-4 w-36 text-center">Acciones</th>
+                  <th className="py-2.5 px-2 w-28 font-semibold">Código / Versión</th>
+                  <th className="py-2.5 px-2.5 min-w-[140px] max-w-[200px]">Cliente / Razón Social</th>
+                  <th className="py-2.5 px-2 min-w-[130px] max-w-[180px]">Proyecto / Obra</th>
+                  <th className="py-2.5 px-1 w-14 text-center" title="Centro de Costo">CC</th>
+                  <th className="py-2.5 px-1.5 w-20 text-center whitespace-nowrap">Fecha</th>
+                  <th className="py-2.5 px-1.5 w-24 text-right whitespace-nowrap">Monto Oferta</th>
+                  <th className="py-2.5 px-1.5 w-20 text-right whitespace-nowrap">Total Ref.</th>
+                  <th className="py-2.5 px-1 w-24 text-center whitespace-nowrap">Estado</th>
+                  <th className="py-2.5 px-1.5 w-20 text-left">Asesor</th>
+                  <th className="py-2.5 px-1 w-28 text-center whitespace-nowrap">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100/90">
@@ -718,7 +718,7 @@ function CotizacionesContent() {
                         }`}
                       >
                         {/* Checkbox de fila */}
-                        <td className="py-3.5 px-3 text-center">
+                        <td className="py-2.5 px-1 text-center">
                           <input
                             type="checkbox"
                             aria-label={`Seleccionar cotización ${c.code}`}
@@ -729,17 +729,17 @@ function CotizacionesContent() {
                         </td>
 
                         {/* Código con Pill de Versión */}
-                        <td className="py-3.5 px-4 font-mono text-xs">
-                          <div className="flex items-center gap-1.5 flex-wrap">
+                        <td className="py-2.5 px-2 font-mono text-[11px]">
+                          <div className="flex flex-col items-start gap-0.5">
                             <Link
                               href={`/cotizador?edit=${c.id}`}
-                              className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors hover:underline cursor-pointer"
+                              className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors hover:underline cursor-pointer break-all leading-tight"
                               title="Editar cotización / Generar nueva versión"
                             >
                               {c.code}
                             </Link>
                             {vNum && (
-                              <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 font-bold text-[10px] tracking-tight">
+                              <span className="px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 font-bold text-[9px] tracking-tight">
                                 V{vNum}
                               </span>
                             )}
@@ -747,38 +747,44 @@ function CotizacionesContent() {
                         </td>
 
                         {/* Cliente / Razón Social */}
-                        <td className="py-3.5 px-4">
-                          <div className="font-semibold text-slate-900 truncate max-w-xs xl:max-w-sm" title={c.clientName}>
+                        <td className="py-2.5 px-2.5">
+                          <div
+                            className="font-semibold text-slate-900 text-xs leading-snug break-words line-clamp-3"
+                            title={c.clientName}
+                          >
                             {c.clientName}
                           </div>
                           {c.clientRut && (
-                            <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                            <div className="text-[10px] text-slate-400 font-mono mt-0.5 whitespace-nowrap">
                               RUT: {c.clientRut}
                             </div>
                           )}
                         </td>
 
                         {/* Proyecto / Obra */}
-                        <td className="py-3.5 px-4 text-xs">
-                          <div className="font-medium text-slate-800 truncate max-w-xs xl:max-w-sm" title={c.projectName || ''}>
+                        <td className="py-2.5 px-2 text-xs">
+                          <div
+                            className="font-medium text-slate-800 text-[11px] leading-snug break-words line-clamp-3"
+                            title={c.projectName || ''}
+                          >
                             {c.projectName || <span className="text-slate-400 italic">No especificado</span>}
                           </div>
                           {c.projectId && (
-                            <div className="flex items-center gap-1.5 mt-1">
+                            <div className="flex items-center gap-1 mt-1">
                               <button
                                 type="button"
                                 onClick={() => setSelectedProject(c.projectId === selectedProject ? '' : c.projectId!)}
                                 title="Filtrar todas las cotizaciones asociadas a este proyecto"
-                                className="inline-flex items-center gap-1 font-mono text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200/80 hover:bg-blue-100 transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200/80 hover:bg-blue-100 transition-colors cursor-pointer"
                               >
-                                <Lock className="w-2.5 h-2.5 text-blue-600" />
-                                <span>{c.projectId}</span>
+                                <Lock className="w-2.5 h-2.5 text-blue-600 shrink-0" />
+                                <span className="truncate max-w-[80px]">{c.projectId}</span>
                               </button>
 
                               <Link
                                 href={`/clientes?tab=proyectos`}
                                 title="Ver ficha en el Directorio de Proyectos"
-                                className="text-slate-400 hover:text-blue-600 transition-colors"
+                                className="text-slate-400 hover:text-blue-600 transition-colors shrink-0"
                               >
                                 <ExternalLink className="w-3 h-3" />
                               </Link>
@@ -787,19 +793,22 @@ function CotizacionesContent() {
                         </td>
 
                         {/* Centro de Costo */}
-                        <td className="py-3.5 px-3 text-xs">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md font-medium text-[11px] bg-slate-100 text-slate-700 border border-slate-200">
+                        <td className="py-2.5 px-1 text-center">
+                          <span
+                            className="inline-block px-1.5 py-0.5 rounded font-mono font-bold text-[10px] bg-slate-100 text-slate-700 border border-slate-200"
+                            title={c.centroCosto || ''}
+                          >
                             {c.centroCosto ? c.centroCosto.split(' - ')[0] : '1817'}
                           </span>
                         </td>
 
                         {/* Fecha */}
-                        <td className="py-3.5 px-3 text-center text-xs text-slate-600 font-mono">
+                        <td className="py-2.5 px-1.5 text-center whitespace-nowrap text-[11px] text-slate-600 font-mono">
                           {dateFormatted}
                         </td>
 
                         {/* Total Presentado en Oferta */}
-                        <td className="py-3.5 px-4 text-right font-black font-mono text-slate-900 text-xs">
+                        <td className="py-2.5 px-1.5 text-right font-black font-mono text-slate-900 text-[11px] whitespace-nowrap">
                           {c.currency === 'USD'
                             ? `${(c.totalUsd || 0).toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`
                             : c.currency === 'CLP'
@@ -808,20 +817,20 @@ function CotizacionesContent() {
                         </td>
 
                         {/* Total Referencial */}
-                        <td className="py-3.5 px-4 text-right font-mono text-slate-600 text-xs font-semibold">
+                        <td className="py-2.5 px-1.5 text-right font-mono text-slate-500 text-[10px] font-semibold whitespace-nowrap">
                           {c.currency === 'CLP'
                             ? `${c.totalUf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF`
                             : `$${c.totalClp.toLocaleString('es-CL')}`}
                         </td>
 
                         {/* Estado Comercial Interactivo */}
-                        <td className="py-3.5 px-4 text-center">
+                        <td className="py-2.5 px-1 text-center whitespace-nowrap">
                           <div className="relative inline-block">
                             <select
                               value={c.status || 'Borrador'}
                               disabled={updatingStatusId === c.id}
                               onChange={(e) => handleStatusChange(c.id, e.target.value as Cotizacion['status'])}
-                              className={`appearance-none pl-2.5 pr-6 py-1 rounded-lg text-[10px] font-bold border cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-600/20 transition-all ${
+                              className={`appearance-none pl-1.5 pr-5 py-0.5 rounded-md text-[9px] font-bold border cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-600/30 transition-all ${
                                 c.status === 'Aprobada'
                                   ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
                                   : c.status === 'Finalizada'
@@ -840,28 +849,28 @@ function CotizacionesContent() {
                               <option value="Rechazada">🔴 Rechazada</option>
                             </select>
                             {updatingStatusId === c.id ? (
-                              <Loader2 className="w-2.5 h-2.5 text-slate-500 animate-spin absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                              <Loader2 className="w-2 h-2 text-slate-500 animate-spin absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none" />
                             ) : (
-                              <ChevronDown className="w-2.5 h-2.5 text-slate-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                              <ChevronDown className="w-2 h-2 text-slate-500 absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none" />
                             )}
                           </div>
                         </td>
 
                         {/* Comercial / Asesor DGL */}
-                        <td className="py-3.5 px-4 text-xs text-slate-700">
-                          <div className="flex items-center gap-1.5">
-                            <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold text-[9px] flex items-center justify-center border border-slate-200">
+                        <td className="py-2.5 px-1.5 text-xs text-slate-700">
+                          <div className="flex items-center gap-1.5" title={c.commercialName || c.createdBy || 'DGL'}>
+                            <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-bold text-[8px] flex items-center justify-center border border-slate-200 shrink-0">
                               {c.commercialInitials || 'DGL'}
                             </span>
-                            <span className="font-medium truncate max-w-[100px]" title={c.commercialName || c.createdBy}>
-                              {c.commercialName || c.createdBy}
+                            <span className="font-medium text-[10px] leading-tight line-clamp-2 max-w-[70px]">
+                              {c.commercialName || c.createdBy || 'DGL'}
                             </span>
                           </div>
                         </td>
 
                         {/* Acciones Rápidas */}
-                        <td className="py-3.5 px-4 text-center">
-                          <div className="flex items-center justify-center gap-1">
+                        <td className="py-2.5 px-1 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-0.5">
                             {/* Visualizar PDF */}
                             <button
                               type="button"
@@ -870,18 +879,18 @@ function CotizacionesContent() {
                                 setPreviewCotizacion(c);
                               }}
                               title="Visualizar documento PDF (Vista previa)"
-                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer inline-flex items-center"
+                              className="p-1 text-blue-600 hover:bg-blue-50 rounded-md transition-colors cursor-pointer inline-flex items-center"
                             >
-                              <Eye className="w-4 h-4" />
+                              <Eye className="w-3.5 h-3.5" />
                             </button>
 
                             {/* Editar */}
                             <Link
                               href={`/cotizador?edit=${c.id}`}
                               title="Editar o generar nueva versión"
-                              className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer inline-flex items-center"
+                              className="p-1 text-amber-600 hover:bg-amber-50 rounded-md transition-colors cursor-pointer inline-flex items-center"
                             >
-                              <Edit3 className="w-4 h-4" />
+                              <Edit3 className="w-3.5 h-3.5" />
                             </Link>
 
                             {/* Descargar Excel Oficial */}
@@ -889,9 +898,9 @@ function CotizacionesContent() {
                               href={`/api/cotizaciones/${c.id}/excel`}
                               download={`Cotizacion_${c.code}.xlsx`}
                               title="Exportar hoja de cálculo Excel"
-                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer inline-flex items-center"
+                              className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors cursor-pointer inline-flex items-center"
                             >
-                              <FileSpreadsheet className="w-4 h-4" />
+                              <FileSpreadsheet className="w-3.5 h-3.5" />
                             </a>
 
                             {/* Cargar o Abrir en Salesforce */}
@@ -910,9 +919,9 @@ function CotizacionesContent() {
                                 type="button"
                                 onClick={() => handleDelete(c.id, c.code)}
                                 title="Eliminar cotización"
-                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer inline-flex items-center"
+                                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer inline-flex items-center"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             )}
                           </div>

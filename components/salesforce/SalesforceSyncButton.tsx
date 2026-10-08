@@ -113,10 +113,10 @@ export default function SalesforceSyncButton({
           target="_blank"
           rel="noopener noreferrer"
           title={`Sincronizada con Salesforce (${cotizacion.salesforceOpportunityId || 'ID'}). Clic para abrir en Salesforce.`}
-          className="p-1.5 text-sky-600 hover:bg-sky-50 rounded-lg transition-colors cursor-pointer inline-flex items-center relative group"
+          className="p-1 text-sky-600 hover:bg-sky-50 rounded-md transition-colors cursor-pointer inline-flex items-center relative group"
         >
-          <Cloud className="w-4 h-4 fill-sky-100 stroke-sky-600" />
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 absolute top-1 right-1"></span>
+          <Cloud className="w-3.5 h-3.5 fill-sky-100 stroke-sky-600" />
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 absolute top-0.5 right-0.5"></span>
         </a>
       </div>
     );
@@ -149,16 +149,16 @@ export default function SalesforceSyncButton({
       onClick={handleSync}
       disabled={loading}
       title="Cargar cotización en Salesforce (crea Oportunidad, Presupuesto y adjunta PDF)"
-      className={`p-1.5 rounded-lg transition-colors cursor-pointer inline-flex items-center relative ${
+      className={`p-1 rounded-md transition-colors cursor-pointer inline-flex items-center relative ${
         loading
           ? 'text-sky-600 bg-sky-50'
           : 'text-slate-400 hover:text-sky-600 hover:bg-sky-50'
       }`}
     >
       {loading ? (
-        <Loader2 className="w-4 h-4 animate-spin text-sky-600" />
+        <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-600" />
       ) : (
-        <CloudUpload className="w-4 h-4" />
+        <CloudUpload className="w-3.5 h-3.5" />
       )}
     </button>
   );

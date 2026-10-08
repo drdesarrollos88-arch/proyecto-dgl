@@ -51,6 +51,11 @@ export async function generatePkce(): Promise<{ verifier: string; challenge: str
   return { verifier, challenge };
 }
 
+function cleanStr(val?: string): string {
+  if (!val) return '';
+  return val.replace(/^\uFEFF/, '').replace(/[\r\n]/g, '').trim();
+}
+
 /**
  * Obtiene la URL de redirección configurada según el origen (localhost o Cloudflare Workers)
  */
@@ -65,8 +70,8 @@ export function getRedirectUri(origin?: string): string {
  * Construye la URL de autorización OAuth 2.0 hacia Salesforce
  */
 export async function buildSalesforceAuthUrl(origin: string, challenge: string): Promise<string> {
-  const clientId = process.env.SALESFORCE_CLIENT_ID || '';
-  const loginUrl = (process.env.SALESFORCE_LOGIN_URL || 'https://login.salesforce.com').replace(/\/$/, '');
+  const clientId = cleanStr(process.env.SALESFORCE_CLIENT_ID);
+  const loginUrl = (cleanStr(process.env.SALESFORCE_LOGIN_URL) || 'https://login.salesforce.com').replace(/\/$/, '');
   const redirectUri = getRedirectUri(origin);
 
   const params = new URLSearchParams({
@@ -133,9 +138,9 @@ export async function exchangeCodeForTokens(
   verifier: string,
   origin: string
 ): Promise<SalesforceAuthData> {
-  const clientId = process.env.SALESFORCE_CLIENT_ID || '';
-  const clientSecret = process.env.SALESFORCE_CLIENT_SECRET || '';
-  const loginUrl = (process.env.SALESFORCE_LOGIN_URL || 'https://login.salesforce.com').replace(/\/$/, '');
+  const clientId = cleanStr(process.env.SALESFORCE_CLIENT_ID);
+  const clientSecret = cleanStr(process.env.SALESFORCE_CLIENT_SECRET);
+  const loginUrl = (cleanStr(process.env.SALESFORCE_LOGIN_URL) || 'https://login.salesforce.com').replace(/\/$/, '');
   const redirectUri = getRedirectUri(origin);
 
   const bodyParams = new URLSearchParams({
@@ -161,7 +166,7 @@ export async function exchangeCodeForTokens(
   const tokenJson = await tokenRes.json();
   const accessToken = tokenJson.access_token;
   const refreshToken = tokenJson.refresh_token;
-  const instanceUrl = tokenJson.instance_url || process.env.SALESFORCE_INSTANCE_URL || 'https://idiem.my.salesforce.com';
+  const instanceUrl = tokenJson.instance_url || cleanStr(process.env.SALESFORCE_INSTANCE_URL) || 'https://idiem.my.salesforce.com';
   const identityUrl = tokenJson.id;
 
   let userName = 'Usuario IDIEM';
@@ -206,9 +211,9 @@ export async function exchangeCodeForTokens(
  * Renueva el token de acceso de Salesforce usando el refresh_token
  */
 export async function refreshSalesforceToken(refreshToken: string): Promise<string> {
-  const clientId = process.env.SALESFORCE_CLIENT_ID || '';
-  const clientSecret = process.env.SALESFORCE_CLIENT_SECRET || '';
-  const loginUrl = (process.env.SALESFORCE_LOGIN_URL || 'https://login.salesforce.com').replace(/\/$/, '');
+  const clientId = cleanStr(process.env.SALESFORCE_CLIENT_ID);
+  const clientSecret = cleanStr(process.env.SALESFORCE_CLIENT_SECRET);
+  const loginUrl = (cleanStr(process.env.SALESFORCE_LOGIN_URL) || 'https://login.salesforce.com').replace(/\/$/, '');
 
   const bodyParams = new URLSearchParams({
     grant_type: 'refresh_token',

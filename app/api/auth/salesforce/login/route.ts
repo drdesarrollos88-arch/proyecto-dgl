@@ -10,8 +10,10 @@ export async function GET(req: NextRequest) {
 
     const isPopup = req.nextUrl.searchParams.get('popup') === 'true';
 
+    const cleanAuthUrl = authUrl.replace(/^\uFEFF/, '').trim();
+
     if (isPopup) {
-      const response = NextResponse.json({ authUrl });
+      const response = NextResponse.json({ authUrl: cleanAuthUrl });
       response.cookies.set('sf_pkce_verifier', verifier, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
@@ -22,7 +24,8 @@ export async function GET(req: NextRequest) {
       return response;
     }
 
-    const response = NextResponse.redirect(authUrl);
+    const redirectUrl = new URL(cleanAuthUrl);
+    const response = NextResponse.redirect(redirectUrl);
     response.cookies.set('sf_pkce_verifier', verifier, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',

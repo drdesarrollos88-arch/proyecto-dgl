@@ -1,8 +1,8 @@
-import { Cotizacion, getDGLInfoByCC } from '@/lib/types';
+import { Cotizacion, getDGLInfoByCC, CuotaFacturacionDetalle, CierreNegocioData } from '@/lib/types';
 import { getValidSalesforceClient } from './salesforce-client';
 import { generateCotizacionPdf } from '@/lib/pdf-generator';
 import { getFormatoSettingsAsync } from '@/lib/configuracion-db';
-import { saveCotizacionAsync } from '@/lib/cotizaciones-db';
+import { saveCotizacionAsync, getCotizacionByIdAsync } from '@/lib/cotizaciones-db';
 import fs from 'fs';
 import path from 'path';
 
@@ -640,4 +640,234 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
     syncedQuoteApplied,
   };
 }
+
+export interface CloseWonParams {
+  cotizacionId: string;
+  closingUf: number;
+  closingClp: number;
+  fechaCierre: string; // YYYY-MM-DD
+  cantidadCuotas: number;
+  fechaPrimeraFacturacion: string; // YYYY-MM-DD
+  cuotas: Array<{
+    numero: number;
+    fecha: string;
+    montoClp: number;
+    montoUf: number;
+    porcentaje: number;
+  }>;
+  userName?: string;
+}
+
+export interface CloseLostParams {
+  cotizacionId: string;
+  fechaCierre: string; // YYYY-MM-DD
+  motivoRechazo: string;
+  observaciones?: string;
+  userName?: string;
+}
+
+export interface CloseResult {
+  success: boolean;
+  message: string;
+  opportunityId: string;
+  opportunityUrl: string;
+  cotizacion: Cotizacion;
+}
+
+/**
+ * Cierra una Oportunidad como 'Cerrada ganada' en Salesforce IDIEM,
+ * actualizando monto de cierre (CLP y UF), fecha de cierre, cantidad de cuotas,
+ * fecha primera facturación, e insertando las Cuota_de_facturacion__c en Salesforce.
+ */
+export async function closeOpportunityWon(params: CloseWonParams): Promise<CloseResult> {
+  let cotizacion = await getCotizacionByIdAsync(params.cotizacionId);
+  if (!cotizacion) {
+    throw new Error(`No se encontró la cotización con ID ${params.cotizacionId}.`);
+  }
+
+  // Si no está subida aún a Salesforce, subirla primero
+  if (!cotizacion.salesforceOpportunityId) {
+    const syncRes = await syncCotizacionToSalesforce(cotizacion);
+    if (!syncRes.opportunityId) {
+      throw new Error('No se pudo generar la Oportunidad en Salesforce para ejecutar el cierre.');
+    }
+    const refreshed = await getCotizacionByIdAsync(params.cotizacionId);
+    if (refreshed) cotizacion = refreshed;
+  }
+
+  const opportunityId = cotizacion.salesforceOpportunityId!;
+  const { accessToken, instanceUrl } = await getValidSalesforceClient();
+
+  // 1. Actualizar la Oportunidad en Salesforce
+  const oppPayload: Record<string, any> = {
+    StageName: 'Cerrada ganada',
+    Amount: Math.round(params.closingClp),
+    Monto_a_Facturar_UF__c: Number(params.closingUf.toFixed(2)),
+    Fecha_de_cierre_del_Negocio__c: params.fechaCierre,
+    CloseDate: params.fechaPrimeraFacturacion || params.fechaCierre,
+    Cuotas_de_facturacion__c: params.cantidadCuotas,
+    Fecha_primera_facturaci_on__c: params.fechaPrimeraFacturacion,
+  };
+
+  await sfRequest(instanceUrl, accessToken, `sobjects/Opportunity/${opportunityId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(oppPayload),
+  });
+
+  // 2. Gestionar Cuotas de Facturación (Cuota_de_facturacion__c)
+  // Limpiar cuotas previas si existían para evitar duplicados
+  try {
+    const q = encodeURIComponent(`SELECT Id FROM Cuota_de_facturacion__c WHERE Oportunidad__c = '${opportunityId}'`);
+    const existingCuotasRes = await sfRequest(instanceUrl, accessToken, `query?q=${q}`);
+    if (existingCuotasRes?.records && existingCuotasRes.records.length > 0) {
+      for (const rec of existingCuotasRes.records) {
+        try {
+          await sfRequest(instanceUrl, accessToken, `sobjects/Cuota_de_facturacion__c/${rec.Id}`, {
+            method: 'DELETE',
+          });
+        } catch (delErr) {
+          console.warn(`Aviso: Error eliminando cuota previa ${rec.Id}:`, delErr);
+        }
+      }
+    }
+  } catch (errQuery) {
+    console.warn('Aviso: Error consultando cuotas existentes en Salesforce:', errQuery);
+  }
+
+  // Crear cada una de las nuevas cuotas de facturación
+  const createdCuotas: CuotaFacturacionDetalle[] = [];
+  for (const c of params.cuotas) {
+    const cuotaPayload = {
+      Oportunidad__c: opportunityId,
+      Numero_de_cuota__c: c.numero,
+      Fecha_de_Pago__c: c.fecha,
+      Monto__c: Math.round(c.montoClp),
+    };
+
+    let sfCuotaId: string | undefined = undefined;
+    try {
+      const cuotaRes = await sfRequest(instanceUrl, accessToken, 'sobjects/Cuota_de_facturacion__c', {
+        method: 'POST',
+        body: JSON.stringify(cuotaPayload),
+      });
+      sfCuotaId = cuotaRes?.id;
+    } catch (insertErr) {
+      console.error(`Error creando cuota ${c.numero} en Salesforce:`, insertErr);
+    }
+
+    createdCuotas.push({
+      numero: c.numero,
+      fecha: c.fecha,
+      montoClp: c.montoClp,
+      montoUf: c.montoUf,
+      porcentaje: c.porcentaje,
+      salesforceCuotaId: sfCuotaId,
+    });
+  }
+
+  // 3. Actualizar registro local en Supabase
+  const difUf = Number((params.closingUf - cotizacion.totalUf).toFixed(2));
+  const cierreData: CierreNegocioData = {
+    estado: 'Ganada',
+    fechaCierre: params.fechaCierre,
+    montoCierreUf: params.closingUf,
+    montoCierreClp: params.closingClp,
+    diferenciaConCotizacionUf: difUf,
+    cuotasFacturacion: params.cantidadCuotas,
+    fechaPrimeraFacturacion: params.fechaPrimeraFacturacion,
+    cuotasDetalle: createdCuotas,
+    cerradoPor: params.userName || cotizacion.commercialName || 'Diego Román',
+    cerradoAt: new Date().toISOString(),
+  };
+
+  const updatedCotizacion: Cotizacion = {
+    ...cotizacion,
+    status: 'Ganada',
+    cierreNegocio: cierreData,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await saveCotizacionAsync(updatedCotizacion);
+
+  const oppUrl = cotizacion.salesforceOpportunityUrl || `${instanceUrl.replace(/\/$/, '')}/lightning/r/Opportunity/${opportunityId}/view`;
+
+  return {
+    success: true,
+    message: `Oportunidad cerrada como GANADA exitosamente en Salesforce por ${params.closingUf} UF ($${params.closingClp.toLocaleString('es-CL')} CLP) distribuidos en ${params.cantidadCuotas} cuota(s) de facturación.`,
+    opportunityId,
+    opportunityUrl: oppUrl,
+    cotizacion: updatedCotizacion,
+  };
+}
+
+/**
+ * Cierra una Oportunidad como 'Cerrada perdida' en Salesforce IDIEM,
+ * registrando motivo de rechazo y observaciones comerciales.
+ */
+export async function closeOpportunityLost(params: CloseLostParams): Promise<CloseResult> {
+  let cotizacion = await getCotizacionByIdAsync(params.cotizacionId);
+  if (!cotizacion) {
+    throw new Error(`No se encontró la cotización con ID ${params.cotizacionId}.`);
+  }
+
+  // Si no está subida aún a Salesforce, subirla primero
+  if (!cotizacion.salesforceOpportunityId) {
+    const syncRes = await syncCotizacionToSalesforce(cotizacion);
+    if (!syncRes.opportunityId) {
+      throw new Error('No se pudo generar la Oportunidad en Salesforce para ejecutar el cierre.');
+    }
+    const refreshed = await getCotizacionByIdAsync(params.cotizacionId);
+    if (refreshed) cotizacion = refreshed;
+  }
+
+  const opportunityId = cotizacion.salesforceOpportunityId!;
+  const { accessToken, instanceUrl } = await getValidSalesforceClient();
+
+  // Actualizar la Oportunidad en Salesforce
+  const oppPayload: Record<string, any> = {
+    StageName: 'Cerrada perdida',
+    Fecha_de_cierre_del_Negocio__c: params.fechaCierre,
+    CloseDate: params.fechaCierre,
+    Motivo_del_rechazo__c: params.motivoRechazo,
+  };
+
+  if (params.observaciones) {
+    oppPayload.Description = params.observaciones;
+  }
+
+  await sfRequest(instanceUrl, accessToken, `sobjects/Opportunity/${opportunityId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(oppPayload),
+  });
+
+  // Actualizar registro local en Supabase
+  const cierreData: CierreNegocioData = {
+    estado: 'Perdida',
+    fechaCierre: params.fechaCierre,
+    motivoRechazo: params.motivoRechazo,
+    observaciones: params.observaciones,
+    cerradoPor: params.userName || cotizacion.commercialName || 'Diego Román',
+    cerradoAt: new Date().toISOString(),
+  };
+
+  const updatedCotizacion: Cotizacion = {
+    ...cotizacion,
+    status: 'Perdida',
+    cierreNegocio: cierreData,
+    updatedAt: new Date().toISOString(),
+  };
+
+  await saveCotizacionAsync(updatedCotizacion);
+
+  const oppUrl = cotizacion.salesforceOpportunityUrl || `${instanceUrl.replace(/\/$/, '')}/lightning/r/Opportunity/${opportunityId}/view`;
+
+  return {
+    success: true,
+    message: `Oportunidad marcada como PERDIDA en Salesforce. Motivo: "${params.motivoRechazo}".`,
+    opportunityId,
+    opportunityUrl: oppUrl,
+    cotizacion: updatedCotizacion,
+  };
+}
+
 

@@ -94,6 +94,7 @@ export function mapSupabaseToCotizacion(row: any): Cotizacion {
       : Array.isArray(row.version_history)
       ? row.version_history
       : [],
+    cierreNegocio: row.ai_chat_state?.cierreNegocio || row.cierre_negocio || undefined,
     aiChatState: row.ai_chat_state || row.aiChatState || undefined,
     salesforceOpportunityId: row.salesforce_opportunity_id || row.salesforceOpportunityId || undefined,
     salesforceOpportunityUrl: row.salesforce_opportunity_url || row.salesforceOpportunityUrl || undefined,
@@ -182,6 +183,7 @@ export function mapCotizacionToSupabase(c: Partial<Cotizacion>): any {
     zona_proyecto: c.zonaProyecto || 'Región Metropolitana',
     ai_chat_state: {
       ...(c.aiChatState || {}),
+      cierreNegocio: c.cierreNegocio || c.aiChatState?.cierreNegocio || undefined,
       versionHistory: c.versionHistory || [],
       projectMeta: {
         seccion: c.seccion || getDGLInfoByCC(c.centroCosto || c.code || '2340').seccion,

@@ -30,7 +30,9 @@ import {
   FileSpreadsheet,
   Database,
   CheckSquare,
+  Trophy,
 } from 'lucide-react';
+import CierreOportunidadModal from '@/components/salesforce/CierreOportunidadModal';
 
 function CotizacionesContent() {
   const searchParams = useSearchParams();
@@ -42,6 +44,9 @@ function CotizacionesContent() {
   const [statusFilter, setStatusFilter] = useState<string>('todos');
   const [selectedProject, setSelectedProject] = useState<string>('');
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+
+  // Modal de Cierre de Negocio (Ganada con cuotas o Perdida en Salesforce)
+  const [cierreCotizacion, setCierreCotizacion] = useState<Cotizacion | null>(null);
 
   // Selección múltiple para eliminación en bloque
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -120,7 +125,14 @@ function CotizacionesContent() {
 
       // Filtro por Estado Comercial
       if (statusFilter !== 'todos') {
-        if ((c.status || 'Borrador') !== statusFilter) return false;
+        const currentSt = c.status || 'Borrador';
+        if (statusFilter === 'Aprobada') {
+          if (currentSt !== 'Aprobada' && currentSt !== 'Ganada') return false;
+        } else if (statusFilter === 'Rechazada') {
+          if (currentSt !== 'Rechazada' && currentSt !== 'Perdida') return false;
+        } else if (currentSt !== statusFilter) {
+          return false;
+        }
       }
 
       // Filtro por Proyecto (vía clic en etiqueta o ID)
@@ -186,9 +198,9 @@ function CotizacionesContent() {
       totalClp += c.totalClp || 0;
 
       const st = c.status || 'Borrador';
-      if (st === 'Aprobada') {
+      if (st === 'Aprobada' || st === 'Ganada') {
         aprobadasCount++;
-        aprobadasUf += c.totalUf || 0;
+        aprobadasUf += c.cierreNegocio?.montoCierreUf || c.totalUf || 0;
       } else if (st === 'Enviada') {
         enviadasCount++;
         enviadasUf += c.totalUf || 0;
@@ -197,7 +209,7 @@ function CotizacionesContent() {
         enviadasUf += c.totalUf || 0;
       } else if (st === 'Borrador') {
         borradoresCount++;
-      } else if (st === 'Rechazada') {
+      } else if (st === 'Rechazada' || st === 'Perdida') {
         rechazadasCount++;
       }
     });
@@ -255,6 +267,15 @@ function CotizacionesContent() {
 
   // Manejador de cambio de estado comercial
   const handleStatusChange = async (id: string, newStatus: Cotizacion['status']) => {
+    // Si se selecciona Ganada o Perdida, abrir modal de Cierre Comercial interactivo para Salesforce
+    if (newStatus === 'Ganada' || newStatus === 'Perdida') {
+      const targetCot = cotizaciones.find((c) => c.id === id);
+      if (targetCot) {
+        setCierreCotizacion(targetCot);
+        return;
+      }
+    }
+
     setUpdatingStatusId(id);
     try {
       const res = await fetch(`/api/cotizaciones/${id}`, {
@@ -554,7 +575,9 @@ function CotizacionesContent() {
                 <option value="Borrador">🟡 Borrador</option>
                 <option value="Finalizada">🔵 Finalizada</option>
                 <option value="Enviada">📨 Enviada</option>
-                <option value="Aprobada">🟢 Aprobada</option>
+                <option value="Aprobada">🟢 Aprobada / Ganada</option>
+                <option value="Ganada">🏆 Ganada (Salesforce)</option>
+                <option value="Perdida">❌ Perdida (Salesforce)</option>
                 <option value="Rechazada">🔴 Rechazada</option>
               </select>
             </div>
@@ -842,7 +865,11 @@ function CotizacionesContent() {
                               disabled={updatingStatusId === c.id}
                               onChange={(e) => handleStatusChange(c.id, e.target.value as Cotizacion['status'])}
                               className={`appearance-none pl-1.5 pr-5 py-0.5 rounded-md text-[9px] font-bold border cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-600/30 transition-all ${
-                                c.status === 'Aprobada'
+                                c.status === 'Ganada'
+                                  ? 'bg-emerald-100 text-emerald-900 border-emerald-400 hover:bg-emerald-200 font-extrabold'
+                                  : c.status === 'Perdida'
+                                  ? 'bg-rose-100 text-rose-900 border-rose-400 hover:bg-rose-200 font-extrabold'
+                                  : c.status === 'Aprobada'
                                   ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
                                   : c.status === 'Finalizada'
                                   ? 'bg-blue-50 text-blue-800 border-blue-300 hover:bg-blue-100'
@@ -857,6 +884,8 @@ function CotizacionesContent() {
                               <option value="Finalizada">🔵 Finalizada</option>
                               <option value="Enviada">📨 Enviada</option>
                               <option value="Aprobada">🟢 Aprobada</option>
+                              <option value="Ganada">🏆 Ganada (SF)</option>
+                              <option value="Perdida">❌ Perdida (SF)</option>
                               <option value="Rechazada">🔴 Rechazada</option>
                             </select>
                             {updatingStatusId === c.id ? (
@@ -865,6 +894,26 @@ function CotizacionesContent() {
                               <ChevronDown className="w-2 h-2 text-slate-500 absolute right-1 top-1/2 -translate-y-1/2 pointer-events-none" />
                             )}
                           </div>
+                          {c.status === 'Ganada' && (
+                            <button
+                              type="button"
+                              onClick={() => setCierreCotizacion(c)}
+                              className="block mx-auto mt-0.5 px-1 py-0.2 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[8px] border border-emerald-200/80 cursor-pointer text-center"
+                              title={`Cerrada por ${c.cierreNegocio?.montoCierreUf || c.totalUf} UF en ${c.cierreNegocio?.cuotasFacturacion || 1} cuotas. Clic para ver/editar.`}
+                            >
+                              🏆 {c.cierreNegocio?.cuotasFacturacion || 1} cuota(s)
+                            </button>
+                          )}
+                          {c.status === 'Perdida' && (
+                            <button
+                              type="button"
+                              onClick={() => setCierreCotizacion(c)}
+                              className="block mx-auto mt-0.5 px-1 py-0.2 rounded bg-rose-50 hover:bg-rose-100 text-rose-800 font-bold text-[8px] border border-rose-200/80 cursor-pointer max-w-[70px] truncate"
+                              title={`Motivo: ${c.cierreNegocio?.motivoRechazo || 'Rechazada'}. Clic para ver/editar.`}
+                            >
+                              ❌ {c.cierreNegocio?.motivoRechazo?.split(':')[0] || 'Perdida'}
+                            </button>
+                          )}
                         </td>
 
                         {/* Comercial / Asesor DGL */}
@@ -924,6 +973,28 @@ function CotizacionesContent() {
                                 );
                               }}
                             />
+
+                            {/* Cierre Comercial de Negocio (Ganada con Cuotas o Perdida en Salesforce) */}
+                            <button
+                              type="button"
+                              onClick={() => setCierreCotizacion(c)}
+                              title={
+                                c.status === 'Ganada'
+                                  ? `Cierre Comercial GANADA: ${c.cierreNegocio?.montoCierreUf || c.totalUf} UF en ${c.cierreNegocio?.cuotasFacturacion || 1} cuota(s). Clic para ver o modificar.`
+                                  : c.status === 'Perdida'
+                                  ? `Cierre Comercial PERDIDA: ${c.cierreNegocio?.motivoRechazo || 'Rechazada'}. Clic para ver o modificar.`
+                                  : 'Cierre Comercial de Negocio (Ganada con Cuotas o Perdida en Salesforce)'
+                              }
+                              className={`p-1 rounded-md transition-colors cursor-pointer inline-flex items-center ${
+                                c.status === 'Ganada'
+                                  ? 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200'
+                                  : c.status === 'Perdida'
+                                  ? 'text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200'
+                                  : 'text-amber-600 hover:bg-amber-50'
+                              }`}
+                            >
+                              <Trophy className="w-3.5 h-3.5" />
+                            </button>
 
                             {/* Eliminar (Protegido por permisos) */}
                             {hasPermission(user, 'cotizaciones.eliminar') && (
@@ -1219,6 +1290,21 @@ function CotizacionesContent() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Modal de Cierre de Negocio y Oportunidad en Salesforce */}
+        {cierreCotizacion && (
+          <CierreOportunidadModal
+            isOpen={Boolean(cierreCotizacion)}
+            onClose={() => setCierreCotizacion(null)}
+            cotizacion={cierreCotizacion}
+            onSuccess={(updated) => {
+              setCotizaciones((prev) =>
+                prev.map((item) => (item.id === updated.id ? updated : item))
+              );
+              setCierreCotizacion(null);
+            }}
+          />
         )}
       </main>
     </div>

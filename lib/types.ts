@@ -258,10 +258,12 @@ export interface Cotizacion {
   observations: string[];
   condicionesComerciales?: CotizacionCondicionesComerciales;
   showEconomicIndicators?: boolean; // Determina si se imprimen los valores UF/Dólar en el documento PDF
-  status: 'Borrador' | 'Finalizada' | 'Enviada' | 'Aprobada' | 'Rechazada';
+  status: 'Borrador' | 'Finalizada' | 'Enviada' | 'Aprobada' | 'Rechazada' | 'Ganada' | 'Perdida';
+  cierreNegocio?: CierreNegocioData;
   aiChatState?: {
     messages: any[];
     activeAnalisis?: any;
+    cierreNegocio?: CierreNegocioData;
     updatedAt?: string;
   };
   createdAt: string;
@@ -282,12 +284,64 @@ export interface Cotizacion {
   salesforceSyncedAt?: string;
 }
 
+export interface CuotaFacturacionDetalle {
+  numero: number;
+  fecha: string; // YYYY-MM-DD
+  montoClp: number;
+  montoUf: number;
+  porcentaje: number;
+  salesforceCuotaId?: string;
+}
+
+export const MOTIVOS_RECHAZO_SALESFORCE = [
+  'Competencia: Precio',
+  'Competencia: Plazo del servicio',
+  'Competencia: Capacidad Operativa',
+  'Competencia: Condiciones de pago',
+  'Competencia: Tiempo de Respuesta Propuesta',
+  'Competencia',
+  'Falta presupuesto',
+  'El cliente nunca respondió',
+  'Decidieron No realizar el servicio',
+  'Proyecto suspendido/ standby',
+  'Pérdida de Factibilidad Técnica',
+  'Cambio de alcance',
+  'No cotizado',
+  'El cliente/Mandante Pierde Proyecto - No realiza',
+  'Descalificación técnica',
+  'Descalificación administrativa',
+  'Descalificación por presupuesto',
+  'Descalificación por casa matriz',
+  'Descalificación técnica y administrativa',
+  'Sin respuesta de división',
+  'Calidad de atención a cliente',
+  'Inhabilitado',
+  'Conflicto de interés',
+  'Sin Motivo',
+] as const;
+export type MotivoRechazoSalesforce = typeof MOTIVOS_RECHAZO_SALESFORCE[number];
+
+export interface CierreNegocioData {
+  estado: 'Ganada' | 'Perdida';
+  fechaCierre: string; // YYYY-MM-DD
+  montoCierreUf?: number;
+  montoCierreClp?: number;
+  diferenciaConCotizacionUf?: number;
+  cuotasFacturacion?: number;
+  fechaPrimeraFacturacion?: string;
+  cuotasDetalle?: CuotaFacturacionDetalle[];
+  motivoRechazo?: string;
+  observaciones?: string;
+  cerradoPor?: string;
+  cerradoAt?: string;
+}
+
 export interface CotizacionVersionSnapshot {
   versionNumber: number; // e.g. 1, 2...
   versionCode: string; // e.g. 'PR.DGL.3340.2026.0656'
   savedAt: string;
   savedBy?: string;
-  status: 'Borrador' | 'Finalizada' | 'Enviada' | 'Aprobada' | 'Rechazada';
+  status: 'Borrador' | 'Finalizada' | 'Enviada' | 'Aprobada' | 'Rechazada' | 'Ganada' | 'Perdida';
   totalUf: number;
   totalClp: number;
   totalUsd?: number;
@@ -300,6 +354,7 @@ export interface CotizacionVersionSnapshot {
   showEconomicIndicators?: boolean;
   salesforceOpportunityId?: string;
   salesforceQuoteId?: string;
+  cierreNegocio?: CierreNegocioData;
 }
 
 export interface CotizacionCondicionesComerciales {

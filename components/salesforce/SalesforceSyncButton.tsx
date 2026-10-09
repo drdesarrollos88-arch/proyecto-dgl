@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Cotizacion,
   SECCIONES_DGL,
@@ -43,11 +44,16 @@ export default function SalesforceSyncButton({
   onSynced,
   variant = 'table-action',
 }: SalesforceSyncButtonProps) {
+  const [mounted, setMounted] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalStep, setModalStep] = useState<'confirm' | 'draft-warning' | 'success' | 'error'>('confirm');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successInfo, setSuccessInfo] = useState<any>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const isSynced = Boolean(cotizacion.salesforceOpportunityId || cotizacion.salesforceQuoteId);
   const isDraft = cotizacion.status === 'Borrador';
@@ -250,26 +256,26 @@ export default function SalesforceSyncButton({
         </button>
       )}
 
-      {/* Modal Personalizado en Formato de la Plataforma */}
-      {isModalOpen && (
+      {/* Modal Personalizado en Formato de la Plataforma renderizado vía Portal */}
+      {mounted && isModalOpen && createPortal(
         <div
-          className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-150"
+          className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 whitespace-normal text-left font-sans select-auto animate-in fade-in duration-150"
           onClick={(e) => {
             if (e.target === e.currentTarget && !loading) handleCloseModal();
           }}
         >
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg sm:max-w-xl overflow-hidden animate-in zoom-in-95 duration-150 text-slate-800 flex flex-col my-auto">
             {/* ESTADO 1: ADVERTENCIA DE BORRADOR */}
             {modalStep === 'draft-warning' && (
-              <div className="p-6 text-center">
-                <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 mx-auto flex items-center justify-center mb-4">
+              <div className="p-6 sm:p-8 text-center whitespace-normal">
+                <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 mx-auto flex items-center justify-center mb-4 shrink-0">
                   <AlertCircle className="w-6 h-6" />
                 </div>
-                <h3 className="text-lg font-bold text-slate-900 mb-1.5">
+                <h3 className="text-lg font-bold text-slate-900 mb-2 leading-snug">
                   Cotización en Estado Borrador
                 </h3>
-                <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed mb-6">
-                  La propuesta <strong className="font-mono text-slate-800">{cotizacion.code}</strong> aún se encuentra en borrador. En Salesforce IDIEM solo es posible registrar cotizaciones oficiales emitidas en estado <strong>Finalizada</strong>.
+                <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed mb-6 break-words whitespace-normal">
+                  La propuesta <strong className="font-mono text-slate-800 break-all">{cotizacion.code}</strong> aún se encuentra en borrador. En Salesforce IDIEM solo es posible registrar cotizaciones oficiales emitidas en estado <strong>Finalizada</strong>.
                 </p>
                 <div className="flex items-center justify-center gap-3">
                   <button
@@ -285,18 +291,18 @@ export default function SalesforceSyncButton({
 
             {/* ESTADO 2: CONFIRMACIÓN Y EDICIÓN DE CLASIFICACIÓN EN DESPLEGABLES */}
             {modalStep === 'confirm' && (
-              <div>
+              <div className="flex flex-col">
                 {/* Cabecera del Modal */}
-                <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 bg-sky-500/20 text-sky-400 rounded-lg">
+                <div className="px-5 sm:px-6 py-4 bg-slate-900 text-white flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-2 bg-sky-500/20 text-sky-400 rounded-lg shrink-0">
                       <Cloud className="w-5 h-5" />
                     </div>
-                    <div>
-                      <h3 className="text-sm font-bold tracking-tight">
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-bold tracking-tight text-white truncate">
                         {isSynced ? 'Actualizar Cotización en Salesforce' : 'Cargar Cotización a Salesforce'}
                       </h3>
-                      <p className="text-[11px] text-slate-400">
+                      <p className="text-[11px] text-slate-400 leading-snug whitespace-normal line-clamp-2">
                         {isSynced
                           ? 'Modifica o valida los datos de la propuesta antes de actualizar la oportunidad oficial.'
                           : 'Revisa y ajusta la clasificación DGL y del Proyecto antes de crear la oportunidad.'}
@@ -307,31 +313,31 @@ export default function SalesforceSyncButton({
                     type="button"
                     disabled={loading}
                     onClick={handleCloseModal}
-                    className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-40"
+                    className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer shrink-0 disabled:opacity-40"
                   >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
 
-                <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+                <div className="p-5 sm:p-6 space-y-4 max-h-[75vh] overflow-y-auto overflow-x-hidden whitespace-normal">
                   {/* Resumen de la Cotización */}
                   <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 text-xs">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                      <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 break-all">
                         {cotizacion.code}
                       </span>
-                      <span className="font-mono font-bold text-slate-800 text-sm">
+                      <span className="font-mono font-bold text-slate-800 text-sm whitespace-nowrap">
                         {cotizacion.totalUf.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} UF
                       </span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600">
-                      <div>
+                      <div className="min-w-0">
                         <span className="text-slate-400">Cliente:</span>{' '}
-                        <strong className="text-slate-800">{cotizacion.clientName}</strong>
+                        <strong className="text-slate-800 break-words">{cotizacion.clientName}</strong>
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <span className="text-slate-400">Proyecto:</span>{' '}
-                        <strong className="text-slate-800">{cotizacion.projectName || 'Sin especificar'}</strong>
+                        <strong className="text-slate-800 break-words">{cotizacion.projectName || 'Sin especificar'}</strong>
                       </div>
                     </div>
                   </div>
@@ -339,19 +345,19 @@ export default function SalesforceSyncButton({
                   {/* Formulario Editable de Clasificación */}
                   <div className="space-y-3 pt-1">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-                      <SlidersHorizontal className="w-3.5 h-3.5 text-blue-600" />
+                      <SlidersHorizontal className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                       <span>Clasificación Oficial DGL y Salesforce</span>
                     </div>
 
                     {/* Fila 1: Sección DGL */}
-                    <div>
+                    <div className="min-w-0">
                       <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                         Sección DGL:
                       </label>
                       <select
                         value={seccion}
                         onChange={(e) => handleSeccionChange(e.target.value)}
-                        className="w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full max-w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 truncate"
                       >
                         {SECCIONES_DGL.map((sec) => (
                           <option key={sec} value={sec}>
@@ -362,14 +368,14 @@ export default function SalesforceSyncButton({
                     </div>
 
                     {/* Fila 2: Centro de Costo / Unidad */}
-                    <div>
+                    <div className="min-w-0">
                       <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                         Centro de Costo (CC) / Unidad DGL:
                       </label>
                       <select
                         value={centroCosto}
                         onChange={(e) => handleUnitChange(e.target.value)}
-                        className="w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
+                        className="w-full max-w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono truncate"
                       >
                         {DGL_UNIDADES.map((u) => (
                           <option key={u.code} value={u.code}>
@@ -381,14 +387,14 @@ export default function SalesforceSyncButton({
 
                     {/* Fila 3: Sector y Subsector Proyecto */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
+                      <div className="min-w-0">
                         <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                           Sector del Proyecto:
                         </label>
                         <select
                           value={sectorProyecto}
                           onChange={(e) => setSectorProyecto(e.target.value)}
-                          className="w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className="w-full max-w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 truncate"
                         >
                           {SECTORES_PROYECTO.map((sec) => (
                             <option key={sec} value={sec}>
@@ -398,14 +404,14 @@ export default function SalesforceSyncButton({
                         </select>
                       </div>
 
-                      <div>
+                      <div className="min-w-0">
                         <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                           Subsector del Proyecto:
                         </label>
                         <select
                           value={subsectorProyecto}
                           onChange={(e) => setSubsectorProyecto(e.target.value)}
-                          className="w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          className="w-full max-w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 truncate"
                         >
                           {SUBSECTORES_PROYECTO.map((subsec) => (
                             <option key={subsec} value={subsec}>
@@ -417,14 +423,14 @@ export default function SalesforceSyncButton({
                     </div>
 
                     {/* Fila 4: Zona del Proyecto */}
-                    <div>
+                    <div className="min-w-0">
                       <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                         Zona del Proyecto:
                       </label>
                       <select
                         value={zonaProyecto}
                         onChange={(e) => setZonaProyecto(e.target.value)}
-                        className="w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full max-w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 truncate"
                       >
                         {ZONAS_PROYECTO.map((zona) => (
                           <option key={zona} value={zona}>
@@ -436,16 +442,16 @@ export default function SalesforceSyncButton({
                   </div>
 
                   {/* Nota informativa amigable */}
-                  <div className="bg-blue-50/70 border border-blue-200/80 rounded-xl p-3 text-[11px] text-blue-900 flex items-start gap-2">
-                    <span className="text-blue-500 font-bold mt-0.5">ℹ</span>
-                    <span>
+                  <div className="bg-blue-50/70 border border-blue-200/80 rounded-xl p-3 text-[11px] text-blue-900 flex items-start gap-2.5 whitespace-normal">
+                    <span className="text-blue-500 font-bold shrink-0 mt-0.5">ℹ</span>
+                    <span className="leading-relaxed break-words flex-1">
                       Si modificas cualquiera de estos valores en los desplegables, se guardarán automáticamente en la plataforma y se enviarán sincronizados a Salesforce.
                     </span>
                   </div>
                 </div>
 
                 {/* Pie del Modal */}
-                <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5">
+                <div className="px-5 sm:px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2.5 flex-wrap whitespace-normal">
                   <button
                     type="button"
                     disabled={loading}
@@ -459,7 +465,7 @@ export default function SalesforceSyncButton({
                     type="button"
                     disabled={loading}
                     onClick={handleConfirmSync}
-                    className="flex items-center gap-2 bg-[#E20000] hover:bg-[#C20000] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-60"
+                    className="flex items-center gap-2 bg-[#E20000] hover:bg-[#C20000] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-60 shrink-0"
                   >
                     {loading ? (
                       <>
@@ -484,34 +490,34 @@ export default function SalesforceSyncButton({
 
             {/* ESTADO 3: MENSAJE AMIGABLE DE ÉXITO */}
             {modalStep === 'success' && (
-              <div className="p-7 text-center">
-                <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center mb-4 ring-8 ring-emerald-50">
+              <div className="p-6 sm:p-8 text-center whitespace-normal">
+                <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 mx-auto flex items-center justify-center mb-4 ring-8 ring-emerald-50 shrink-0">
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
 
-                <h3 className="text-lg font-bold text-slate-900 mb-1.5">
+                <h3 className="text-lg font-bold text-slate-900 mb-2 leading-snug">
                   {isSynced ? '¡Cotización Actualizada en Salesforce!' : '¡Cotización Cargada con Éxito!'}
                 </h3>
 
-                <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed mb-5">
-                  La propuesta comercial <strong className="font-mono text-slate-900">{cotizacion.code}</strong> para{' '}
-                  <strong className="text-slate-900">{cotizacion.clientName}</strong> ha sido{' '}
+                <p className="text-xs text-slate-600 max-w-md mx-auto leading-relaxed mb-6 break-words whitespace-normal">
+                  La propuesta comercial <strong className="font-mono text-slate-900 break-all">{cotizacion.code}</strong> para{' '}
+                  <strong className="text-slate-900 break-words">{cotizacion.clientName}</strong> ha sido{' '}
                   {isSynced ? 'actualizada' : 'registrada'} exitosamente en Salesforce IDIEM con su Oportunidad, Presupuesto oficial (Quote) y el PDF correspondiente.
                 </p>
 
                 {/* Resumen amigable */}
-                <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3 max-w-sm mx-auto text-left text-xs mb-6 space-y-1.5">
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-500">Monto del Servicio:</span>
-                    <strong className="text-slate-800 font-mono">{cotizacion.totalUf} UF</strong>
+                <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3.5 max-w-sm mx-auto text-left text-xs mb-6 space-y-2 whitespace-normal">
+                  <div className="flex items-center justify-between text-[11px] gap-2">
+                    <span className="text-slate-500 shrink-0">Monto del Servicio:</span>
+                    <strong className="text-slate-800 font-mono text-right whitespace-nowrap">{cotizacion.totalUf} UF</strong>
                   </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-500">Unidad DGL:</span>
-                    <strong className="text-slate-800 font-mono">{centroCosto}</strong>
+                  <div className="flex items-center justify-between text-[11px] gap-2">
+                    <span className="text-slate-500 shrink-0">Unidad DGL:</span>
+                    <strong className="text-slate-800 font-mono text-right truncate">{centroCosto}</strong>
                   </div>
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-500">Clasificación:</span>
-                    <strong className="text-slate-800">{sectorProyecto} • {zonaProyecto}</strong>
+                  <div className="flex items-center justify-between text-[11px] gap-2">
+                    <span className="text-slate-500 shrink-0">Clasificación:</span>
+                    <strong className="text-slate-800 text-right truncate">{sectorProyecto} • {zonaProyecto}</strong>
                   </div>
                 </div>
 
@@ -521,7 +527,7 @@ export default function SalesforceSyncButton({
                       href={successInfo?.quoteUrl || successInfo?.opportunityUrl || targetUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer shrink-0"
                     >
                       <Cloud className="w-4 h-4 fill-sky-200" />
                       <span>Abrir en Salesforce</span>
@@ -532,7 +538,7 @@ export default function SalesforceSyncButton({
                   <button
                     type="button"
                     onClick={handleCloseModal}
-                    className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+                    className="px-5 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer shrink-0"
                   >
                     Listo, Cerrar
                   </button>
@@ -542,31 +548,31 @@ export default function SalesforceSyncButton({
 
             {/* ESTADO 4: ERROR CON REINTENTO */}
             {modalStep === 'error' && (
-              <div className="p-7 text-center">
-                <div className="w-14 h-14 rounded-full bg-red-100 text-red-600 mx-auto flex items-center justify-center mb-4 ring-8 ring-red-50">
+              <div className="p-6 sm:p-8 text-center whitespace-normal">
+                <div className="w-14 h-14 rounded-full bg-red-100 text-red-600 mx-auto flex items-center justify-center mb-4 ring-8 ring-red-50 shrink-0">
                   <AlertTriangle className="w-8 h-8" />
                 </div>
 
-                <h3 className="text-lg font-bold text-slate-900 mb-1.5">
+                <h3 className="text-lg font-bold text-slate-900 mb-2 leading-snug">
                   No se pudo sincronizar con Salesforce
                 </h3>
 
-                <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3.5 max-w-md mx-auto leading-relaxed mb-6 font-medium">
+                <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3.5 max-w-md mx-auto leading-relaxed mb-6 font-medium break-words whitespace-normal">
                   {errorMsg || 'Ocurrió un error inesperado al procesar la solicitud con Salesforce.'}
                 </p>
 
-                <div className="flex items-center justify-center gap-3">
+                <div className="flex items-center justify-center gap-3 flex-wrap">
                   <button
                     type="button"
                     onClick={() => setModalStep('confirm')}
-                    className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#E20000] hover:bg-[#C20000] text-white transition-colors cursor-pointer"
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold bg-[#E20000] hover:bg-[#C20000] text-white transition-colors cursor-pointer shrink-0"
                   >
                     Reintentar
                   </button>
                   <button
                     type="button"
                     onClick={handleCloseModal}
-                    className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+                    className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer shrink-0"
                   >
                     Cerrar
                   </button>
@@ -574,7 +580,8 @@ export default function SalesforceSyncButton({
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

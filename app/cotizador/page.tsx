@@ -55,6 +55,7 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
   GripVertical,
   PlusCircle,
   Edit3,
@@ -352,6 +353,31 @@ function CotizadorContent() {
       next[it.id] = expand;
     });
     setExpandedDetails(next);
+  };
+
+  // Estado para colapsar / desplegar grupos de ensayos por partida/divisor
+  const [collapsedDividers, setCollapsedDividers] = useState<Record<string, boolean>>({});
+
+  const toggleCollapseDivider = (dividerId: string) => {
+    setCollapsedDividers((prev) => ({
+      ...prev,
+      [dividerId]: !prev[dividerId],
+    }));
+  };
+
+  const areAllDividersCollapsed = useMemo(() => {
+    const dividerIds = items.filter((it) => it.isDivider).map((it) => it.id);
+    return dividerIds.length > 0 && dividerIds.every((id) => collapsedDividers[id]);
+  }, [items, collapsedDividers]);
+
+  const handleToggleAllDividers = () => {
+    const dividerIds = items.filter((it) => it.isDivider).map((it) => it.id);
+    const allCollapsed = dividerIds.length > 0 && dividerIds.every((id) => collapsedDividers[id]);
+    const next: Record<string, boolean> = {};
+    dividerIds.forEach((id) => {
+      next[id] = !allCollapsed;
+    });
+    setCollapsedDividers(next);
   };
 
   // Commercial conditions & observations for this proposal
@@ -3105,6 +3131,27 @@ function CotizadorContent() {
                 <span>+ Divisor / Partida</span>
               </button>
 
+              {items.some((it) => it.isDivider) && (
+                <button
+                  type="button"
+                  onClick={handleToggleAllDividers}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition cursor-pointer shadow-2xs whitespace-nowrap active:scale-95"
+                  title={areAllDividersCollapsed ? 'Desplegar todas las partidas' : 'Ocultar todas las partidas'}
+                >
+                  {areAllDividersCollapsed ? (
+                    <>
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-600" />
+                      <span>Desplegar todas</span>
+                    </>
+                  ) : (
+                    <>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+                      <span>Colapsar todas</span>
+                    </>
+                  )}
+                </button>
+              )}
+
               <div ref={searchRef} className="relative w-full md:w-[460px]">
                 <div className="relative flex items-center">
                   <Search className="w-3.5 h-3.5 text-blue-600 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -3387,6 +3434,10 @@ function CotizadorContent() {
                     ) : (
                       items.map((item, idx) => {
                         if (item.isDivider) {
+                          const pTotal = partidaTotals[item.id];
+                          const isCollapsed = !!collapsedDividers[item.id];
+                          const partidaCount = pTotal?.count || 0;
+
                           return (
                             <tr
                               key={item.id}
@@ -3400,12 +3451,14 @@ function CotizadorContent() {
                                   ? 'opacity-30 bg-blue-100/50 border-2 border-dashed border-blue-400'
                                   : dragOverItemIndex === idx
                                   ? 'bg-blue-50 border-t-2 border-blue-600'
+                                  : isCollapsed
+                                  ? 'bg-gradient-to-r from-blue-100/90 via-indigo-50/70 to-slate-100 border-y-2 border-blue-400 shadow-2xs'
                                   : 'bg-gradient-to-r from-blue-50/90 via-indigo-50/40 to-slate-50 border-y-2 border-blue-300'
                               }`}
                             >
                               <td colSpan={11} className="py-2.5 px-3">
                                 <div className="flex items-center justify-between gap-3">
-                                  <div className="flex items-center gap-2.5 flex-1">
+                                  <div className="flex items-center gap-2.5 flex-1 flex-wrap">
                                     <div
                                       className="cursor-grab active:cursor-grabbing p-1 text-blue-400 hover:text-blue-700 rounded transition"
                                       title="Arrastra para reordenar esta partida"
@@ -3413,11 +3466,21 @@ function CotizadorContent() {
                                       <GripVertical className="w-4 h-4" />
                                     </div>
 
-                                    <span className="font-mono text-xs font-bold text-blue-900 bg-blue-200/80 border border-blue-300 px-2.5 py-0.5 rounded-md shadow-2xs">
-                                      {item.itemNumber}
-                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleCollapseDivider(item.id)}
+                                      className="font-mono text-xs font-bold text-blue-900 bg-blue-200/80 hover:bg-blue-300 border border-blue-300 px-2 py-0.5 rounded-md shadow-2xs flex items-center gap-1 cursor-pointer transition select-none"
+                                      title={isCollapsed ? 'Desplegar partida' : 'Ocultar partida'}
+                                    >
+                                      {isCollapsed ? (
+                                        <ChevronRight className="w-3.5 h-3.5 text-blue-700" />
+                                      ) : (
+                                        <ChevronDown className="w-3.5 h-3.5 text-blue-700" />
+                                      )}
+                                      <span>{item.itemNumber}</span>
+                                    </button>
 
-                                    <div className="flex items-center gap-2 flex-1 max-w-lg">
+                                    <div className="flex items-center gap-2 flex-1 min-w-[200px] max-w-lg">
                                       <input
                                         type="text"
                                         value={item.dividerTitle || item.designation}
@@ -3434,12 +3497,46 @@ function CotizadorContent() {
                                       />
                                     </div>
 
-                                    <span className="text-[11px] text-blue-700 font-medium hidden sm:inline">
-                                      • Partida
-                                    </span>
+                                    {/* Botón interactivo para Desplegar / Ocultar la lista de ensayos */}
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleCollapseDivider(item.id)}
+                                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer border select-none ${
+                                        isCollapsed
+                                          ? 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700 shadow-xs'
+                                          : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50 shadow-2xs'
+                                      }`}
+                                      title={isCollapsed ? 'Desplegar lista de ensayos de esta partida' : 'Ocultar lista de ensayos de esta partida'}
+                                    >
+                                      {isCollapsed ? (
+                                        <>
+                                          <ChevronRight className="w-3.5 h-3.5" />
+                                          <span>Desplegar ({partidaCount} {partidaCount === 1 ? 'ensayo' : 'ensayos'})</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <ChevronDown className="w-3.5 h-3.5 text-blue-500" />
+                                          <span>Ocultar ({partidaCount})</span>
+                                        </>
+                                      )}
+                                    </button>
+
+                                    {/* Badge con el Subtotal cuando la partida está colapsada para visualización inmediata */}
+                                    {isCollapsed && pTotal && pTotal.count > 0 && (
+                                      <span className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-slate-800 bg-white/95 border border-blue-300 px-2.5 py-0.5 rounded-md shadow-2xs animate-in fade-in">
+                                        <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Subtotal:</span>
+                                        <span className="text-blue-900 font-extrabold">
+                                          {currency === 'USD'
+                                            ? `${(((pTotal.subtotalUf * ufValue) / dollarValue)).toFixed(2)} USD`
+                                            : currency === 'CLP'
+                                            ? `$${pTotal.subtotalClp.toLocaleString('es-CL')}`
+                                            : `${pTotal.subtotalUf.toFixed(2)} UF`}
+                                        </span>
+                                      </span>
+                                    )}
                                   </div>
 
-                                  <div className="flex items-center gap-1.5">
+                                  <div className="flex items-center gap-1.5 flex-shrink-0">
                                     <button
                                       type="button"
                                       disabled={idx === 0}
@@ -3507,6 +3604,11 @@ function CotizadorContent() {
                               break;
                             }
                           }
+                        }
+
+                        const isParentCollapsed = activeDividerForThisItem ? !!collapsedDividers[activeDividerForThisItem.id] : false;
+                        if (isParentCollapsed) {
+                          return null;
                         }
 
                         const pTotal = activeDividerForThisItem ? partidaTotals[activeDividerForThisItem.id] : null;

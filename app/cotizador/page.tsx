@@ -2274,8 +2274,8 @@ function CotizadorContent() {
         )}
 
 
-        {/* 3 Blocks: 1. Empresa | 2. Contacto | 3. Proyecto y Presupuesto */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5 mb-3.5">
+        {/* Zona Superior: 1. Empresa Cliente y 2. Contacto Comercial lado a lado */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 mb-3.5">
           {/* ================= BLOQUE 1: EMPRESA ================= */}
           <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs flex flex-col justify-between space-y-3">
             <div>
@@ -2629,448 +2629,446 @@ function CotizadorContent() {
               </div>
             )}
           </div>
+        </div>
 
-          {/* ================= BLOQUE 3: PROYECTO Y PRESUPUESTO ================= */}
-          <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs flex flex-col justify-between space-y-3">
-            <div>
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-2">
-                <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <Briefcase className="w-3.5 h-3.5 text-blue-700" />
-                  <span>3. Proyecto y Presupuesto</span>
-                </h2>
-                {code.match(/V\d+$/i) && (
-                  <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded font-mono">
-                    {code.match(/V\d+$/i)?.[0].toUpperCase()}
+        {/* Zona Inferior: 3. Proyecto y Presupuesto de ancho completo horizontal */}
+        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs mb-3.5">
+          {/* Cabecera del Bloque 3 con Emisor & Firma integrado */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100 mb-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                <Briefcase className="w-3.5 h-3.5 text-blue-700" />
+                <span>3. Proyecto y Presupuesto</span>
+              </h2>
+              {code.match(/V\d+$/i) && (
+                <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded font-mono">
+                  {code.match(/V\d+$/i)?.[0].toUpperCase()}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 text-[11px] text-slate-500">
+              <span className="truncate">
+                Emisor: <strong className="text-slate-700">{commercialName}</strong> ({commercialTitle})
+              </span>
+              <span className="font-mono text-slate-600 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded text-[10px] hidden sm:inline-block">
+                Ref: {commercialInitials} {commercialSignature ? '• Firma ✓' : ''}
+              </span>
+            </div>
+          </div>
+
+          {/* Fila 1: Datos de la Obra y Presupuesto */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 mb-3">
+            {/* Nombre Obra / Proyecto */}
+            <div ref={projectSearchRef} className="relative sm:col-span-2 lg:col-span-4">
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                  Nombre Obra / Proyecto
+                </label>
+                {projectId ? (
+                  <div className="flex items-center gap-1.5">
+                    <span 
+                      title="ID único e irrepetible no modificable por usuarios"
+                      className="font-mono text-[10px] font-bold bg-blue-100 text-blue-900 border border-blue-300 px-2 py-0.5 rounded flex items-center gap-1 cursor-default select-none shadow-xs"
+                    >
+                      <Lock className="w-2.5 h-2.5 text-blue-700" />
+                      {projectId}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProjectId('');
+                        setStatusMessage({
+                          type: 'success',
+                          text: 'Proyecto desvinculado. Al guardar se generará un nuevo ID irrepetible.',
+                        });
+                      }}
+                      title="Desvincular para registrar como un nuevo proyecto con ID único"
+                      className="text-[9px] text-slate-400 hover:text-red-600 underline cursor-pointer"
+                    >
+                      Nuevo Proyecto
+                    </button>
+                  </div>
+                ) : projectName ? (
+                  <span className="text-[9px] font-medium text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded flex items-center gap-1">
+                    <Sparkles className="w-2.5 h-2.5 text-blue-500" />
+                    ID asignado al guardar
                   </span>
+                ) : null}
+              </div>
+
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="ej. Edificio Los Olivos - Etapa 2"
+                  value={projectName}
+                  onChange={(e) => {
+                    setProjectName(e.target.value);
+                    if (projectId) setProjectId('');
+                  }}
+                  onFocus={() => {
+                    if (projectSuggestions.length > 0 && !projectId) setProjectDropdownOpen(true);
+                  }}
+                  className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                />
+                {projectSearching && (
+                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                    <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+                  </div>
                 )}
               </div>
 
-              <div className="space-y-2">
-                {/* Project Name & Unique ID */}
-                <div ref={projectSearchRef} className="relative">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                      Nombre Obra / Proyecto
-                    </label>
-                    {projectId ? (
-                      <div className="flex items-center gap-1.5">
-                        <span 
-                          title="ID único e irrepetible no modificable por usuarios"
-                          className="font-mono text-[10px] font-bold bg-blue-100 text-blue-900 border border-blue-300 px-2 py-0.5 rounded flex items-center gap-1 cursor-default select-none shadow-xs"
-                        >
-                          <Lock className="w-2.5 h-2.5 text-blue-700" />
-                          {projectId}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setProjectId('');
-                            setStatusMessage({
-                              type: 'success',
-                              text: 'Proyecto desvinculado. Al guardar se generará un nuevo ID irrepetible.',
-                            });
-                          }}
-                          title="Desvincular para registrar como un nuevo proyecto con ID único"
-                          className="text-[9px] text-slate-400 hover:text-red-600 underline cursor-pointer"
-                        >
-                          Nuevo Proyecto
-                        </button>
-                      </div>
-                    ) : projectName ? (
-                      <span className="text-[9px] font-medium text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded flex items-center gap-1">
-                        <Sparkles className="w-2.5 h-2.5 text-blue-500" />
-                        ID asignado al guardar
-                      </span>
-                    ) : null}
+              {/* Suggestions Dropdown for Projects */}
+              {projectDropdownOpen && projectSuggestions.length > 0 && !projectId && (
+                <div className="absolute left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-30 max-h-52 overflow-y-auto divide-y divide-slate-100 animate-in fade-in slide-in-from-top-1 duration-100">
+                  <div className="px-3 py-1 bg-slate-50 text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                    <span>Proyectos Registrados ({projectSuggestions.length})</span>
+                    <span className="text-[9px] text-blue-600 font-normal">Clic para asignar</span>
                   </div>
-
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="ej. Edificio Los Olivos - Etapa 2"
-                      value={projectName}
-                      onChange={(e) => {
-                        setProjectName(e.target.value);
-                        if (projectId) setProjectId('');
-                      }}
-                      onFocus={() => {
-                        if (projectSuggestions.length > 0 && !projectId) setProjectDropdownOpen(true);
-                      }}
-                      className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                    />
-                    {projectSearching && (
-                      <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                        <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Suggestions Dropdown for Projects */}
-                  {projectDropdownOpen && projectSuggestions.length > 0 && !projectId && (
-                    <div className="absolute left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-30 max-h-52 overflow-y-auto divide-y divide-slate-100 animate-in fade-in slide-in-from-top-1 duration-100">
-                      <div className="px-3 py-1 bg-slate-50 text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                        <span>Proyectos Registrados ({projectSuggestions.length})</span>
-                        <span className="text-[9px] text-blue-600 font-normal">Clic para asignar</span>
-                      </div>
-                      {projectSuggestions.map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => handleSelectProject(p)}
-                          className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-start justify-between gap-2 transition-colors cursor-pointer"
-                        >
-                          <div className="min-w-0">
-                            <div className="font-bold text-xs text-slate-900 truncate">{p.name}</div>
-                            <div className="text-[10px] text-slate-500 truncate flex items-center gap-1.5 mt-0.5">
-                              {p.reference && <span>📋 {p.reference}</span>}
-                              {p.city && <span>📍 {p.city}</span>}
-                              {p.clientName && <span>🏢 {p.clientName}</span>}
-                            </div>
-                          </div>
-                          <span className="font-mono text-[10px] font-bold bg-blue-50 text-blue-800 px-1.5 py-0.5 rounded border border-blue-200 flex-shrink-0 flex items-center gap-1">
-                            <Lock className="w-2.5 h-2.5 text-blue-600" />
-                            {p.id}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                      Referencia
-                    </label>
-                    <input
-                      type="text"
-                      value={reference}
-                      onChange={(e) => setReference(e.target.value)}
-                      className="w-full py-1.5 px-2 rounded-lg border border-slate-300 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                      Sede
-                    </label>
-                    <select
-                      value={city}
-                      onChange={(e) => setCity(e.target.value)}
-                      className="w-full py-1.5 px-2 rounded-lg border border-slate-300 text-xs bg-white focus:ring-1 focus:ring-blue-600 focus:outline-none font-medium"
-                    >
-                      <option value="Santiago">Santiago</option>
-                      <option value="Concepción">Concepción</option>
-                      <option value="Terreno / Regiones">Terreno / Regiones</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Estructura Oficial DGL */}
-                <div className="pt-2 border-t border-slate-100 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                      Estructura División DGL
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                      <span>División: DGL</span>
-                      <span>•</span>
-                      <span>Servicio: Ensayos</span>
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                        Sección DGL *
-                      </label>
-                      <select
-                        value={seccion}
-                        onChange={(e) => handleSeccionChange(e.target.value as SeccionDGL)}
-                        className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                      >
-                        {SECCIONES_DGL.map((sec) => (
-                          <option key={sec} value={sec}>
-                            {sec}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                        Unidad / Centro de Costo (CC) *
-                      </label>
-                      <select
-                        value={centroCosto}
-                        onChange={(e) => handleCentroCostoChange(e.target.value)}
-                        className="w-full py-1.5 px-2 rounded-lg border border-blue-300 bg-blue-50/40 text-xs font-semibold text-blue-950 focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                      >
-                        {SECCIONES_DGL.map((secGroup) => {
-                          const unitsInSec = DGL_UNIDADES.filter((u) => u.seccion === secGroup);
-                          return (
-                            <optgroup key={secGroup} label={secGroup}>
-                              {unitsInSec.map((u) => {
-                                const ccMatch = CENTROS_DE_COSTO.find((cc) => cc.startsWith(u.code)) || u.name;
-                                return (
-                                  <option key={u.code} value={ccMatch}>
-                                    {u.name}
-                                  </option>
-                                );
-                              })}
-                            </optgroup>
-                          );
-                        })}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Clasificación Salesforce del Proyecto */}
-                <div className="pt-2 border-t border-slate-100 space-y-2">
-                  <div className="flex items-center justify-between flex-wrap gap-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                        Clasificación Proyecto (Salesforce)
-                      </span>
-                      {projectMetaSavedSuccess && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 animate-in fade-in">
-                          <Check className="w-3 h-3 text-emerald-600" />
-                          <span>¡Guardado!</span>
-                        </span>
-                      )}
-                    </div>
+                  {projectSuggestions.map((p) => (
                     <button
+                      key={p.id}
                       type="button"
-                      onClick={handleSaveProjectMeta}
-                      disabled={savingProjectMeta}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all cursor-pointer disabled:opacity-50"
-                      title="Guarda la estructura DGL y clasificación de Salesforce en la base de datos"
+                      onClick={() => handleSelectProject(p)}
+                      className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-start justify-between gap-2 transition-colors cursor-pointer"
                     >
-                      {savingProjectMeta ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Save className="w-3.5 h-3.5" />
-                      )}
-                      <span>{savingProjectMeta ? 'Guardando...' : 'Guardar Datos Proyecto'}</span>
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                        Sector *
-                      </label>
-                      <select
-                        value={sectorProyecto}
-                        onChange={(e) => setSectorProyecto(e.target.value as SectorProyecto)}
-                        className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                      >
-                        {SECTORES_PROYECTO.map((sec) => (
-                          <option key={sec} value={sec}>
-                            {sec}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                        Subsector *
-                      </label>
-                      <select
-                        value={subsectorProyecto}
-                        onChange={(e) => setSubsectorProyecto(e.target.value as SubsectorProyecto)}
-                        className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                      >
-                        {SUBSECTORES_PROYECTO.map((sub) => (
-                          <option key={sub} value={sub}>
-                            {sub}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                        Zona *
-                      </label>
-                      <select
-                        value={zonaProyecto}
-                        onChange={(e) => setZonaProyecto(e.target.value as ZonaProyecto)}
-                        className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                      >
-                        {ZONAS_PROYECTO.map((zona) => (
-                          <option key={zona} value={zona}>
-                            {zona}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Moneda & Código de Presupuesto */}
-                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                      Moneda Propuesta *
-                    </label>
-                    <select
-                      value={currency}
-                      onChange={(e) => setCurrency(e.target.value as 'UF' | 'USD' | 'CLP')}
-                      className="w-full py-1.5 px-2 rounded-lg border border-emerald-300 bg-emerald-50/40 text-xs font-bold text-emerald-950 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-                    >
-                      <option value="UF">UF (Unidad de Fomento)</option>
-                      <option value="USD">USD (Dólares Americanos)</option>
-                      <option value="CLP">CLP (Pesos Chilenos)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                      Código de Presupuesto
-                    </label>
-                    <input
-                      type="text"
-                      value={code}
-                      onChange={(e) => setCode(e.target.value)}
-                      className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 font-mono text-xs font-bold text-blue-900 bg-blue-50/40 focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* Validador Oficial UF / Dólar */}
-                <div className="p-2 rounded-lg border border-slate-200 bg-slate-50/70 text-xs space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                      <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider">
-                        Indicadores Oficiales
+                      <div className="min-w-0">
+                        <div className="font-bold text-xs text-slate-900 truncate">{p.name}</div>
+                        <div className="text-[10px] text-slate-500 truncate flex items-center gap-1.5 mt-0.5">
+                          {p.reference && <span>📋 {p.reference}</span>}
+                          {p.city && <span>📍 {p.city}</span>}
+                          {p.clientName && <span>🏢 {p.clientName}</span>}
+                        </div>
+                      </div>
+                      <span className="font-mono text-[10px] font-bold bg-blue-50 text-blue-800 px-1.5 py-0.5 rounded border border-blue-200 flex-shrink-0 flex items-center gap-1">
+                        <Lock className="w-2.5 h-2.5 text-blue-600" />
+                        {p.id}
                       </span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => fetchIndicators(true)}
-                        disabled={isRefreshingIndicators}
-                        title="Revalidar valor oficial en tiempo real con Banco Central"
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 hover:border-slate-400 transition-colors disabled:opacity-50 cursor-pointer"
-                      >
-                        <RefreshCw className={`w-3 h-3 text-slate-500 ${isRefreshingIndicators ? 'animate-spin' : ''}`} />
-                        <span>{isRefreshingIndicators ? 'Revalidando...' : 'Revalidar'}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowManualIndicatorEdit(!showManualIndicatorEdit)}
-                        className="px-1.5 py-0.5 rounded text-[10px] font-medium text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer"
-                      >
-                        {showManualIndicatorEdit ? 'Cerrar' : 'Ajustar'}
-                      </button>
-                    </div>
-                  </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <div className="bg-white px-2 py-1.5 rounded border border-slate-200">
-                      <div className="text-[9px] text-slate-500 font-medium">UF Oficial</div>
-                      <div className="text-xs font-mono font-bold text-emerald-900">
-                        ${ufValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
-                    </div>
-                    <div className="bg-white px-2 py-1.5 rounded border border-slate-200">
-                      <div className="text-[9px] text-slate-500 font-medium">Dólar Observado</div>
-                      <div className="text-xs font-mono font-bold text-slate-900">
-                        ${dollarValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
-                    </div>
-                  </div>
+            {/* Referencia */}
+            <div className="sm:col-span-1 lg:col-span-2">
+              <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1 tracking-wider">
+                Referencia
+              </label>
+              <input
+                type="text"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+              />
+            </div>
 
-                  {indicators?.source && (
-                    <div className="text-[9px] text-slate-400 flex items-center justify-between">
-                      <span className="truncate">Fuente: {indicators.source}</span>
-                      <span>{indicators.date || 'Hoy'}</span>
-                    </div>
-                  )}
+            {/* Sede */}
+            <div className="sm:col-span-1 lg:col-span-2">
+              <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1 tracking-wider">
+                Sede
+              </label>
+              <select
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 text-xs bg-white focus:ring-1 focus:ring-blue-600 focus:outline-none font-medium"
+              >
+                <option value="Santiago">Santiago</option>
+                <option value="Concepción">Concepción</option>
+                <option value="Terreno / Regiones">Terreno / Regiones</option>
+              </select>
+            </div>
 
-                  {/* Opción para incluir o no los indicadores oficiales en el documento PDF */}
-                  <div className="pt-1.5 border-t border-slate-200 flex items-center justify-between gap-2">
-                    <label className="flex items-center gap-1.5 text-[10px] text-slate-700 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={showIndicatorsInPdf}
-                        onChange={(e) => setShowIndicatorsInPdf(e.target.checked)}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
-                      />
-                      <span>Mostrar en documento PDF</span>
-                    </label>
-                    <span
-                      className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                        showIndicatorsInPdf
-                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                          : 'bg-slate-200 text-slate-600 border border-slate-300'
-                      }`}
-                    >
-                      {showIndicatorsInPdf ? 'Visible en PDF' : 'Oculto en PDF'}
+            {/* Moneda Propuesta */}
+            <div className="sm:col-span-1 lg:col-span-2">
+              <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1 tracking-wider">
+                Moneda Propuesta *
+              </label>
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value as 'UF' | 'USD' | 'CLP')}
+                className="w-full py-1.5 px-2.5 rounded-lg border border-emerald-300 bg-emerald-50/40 text-xs font-bold text-emerald-950 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+              >
+                <option value="UF">UF (Unidad de Fomento)</option>
+                <option value="USD">USD (Dólares Americanos)</option>
+                <option value="CLP">CLP (Pesos Chilenos)</option>
+              </select>
+            </div>
+
+            {/* Código de Presupuesto */}
+            <div className="sm:col-span-1 lg:col-span-2">
+              <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1 tracking-wider">
+                Código de Presupuesto
+              </label>
+              <input
+                type="text"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 font-mono text-xs font-bold text-blue-900 bg-blue-50/40 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Fila 2: Estructura DGL & Salesforce (7 cols) + Indicadores Oficiales (5 cols) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 pt-3 border-t border-slate-100 items-start">
+            {/* Bloque Izquierdo: Estructura DGL & Clasificación Salesforce (7 cols) */}
+            <div className="lg:col-span-7 bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 space-y-2.5">
+              {/* Cabecera del sub-bloque con botón de guardar */}
+              <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-200/60">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                    Estructura DGL & Clasificación Salesforce
+                  </span>
+                  <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    <span>DGL</span>
+                    <span>•</span>
+                    <span>Servicio: Ensayos</span>
+                  </span>
+                  {projectMetaSavedSuccess && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 animate-in fade-in">
+                      <Check className="w-3 h-3 text-emerald-600" />
+                      <span>¡Guardado!</span>
                     </span>
-                  </div>
-
-                  {showManualIndicatorEdit && (
-                    <div className="mt-1.5 pt-1.5 border-t border-slate-200 space-y-1.5">
-                      <div className="text-[10px] font-semibold text-amber-800 bg-amber-50 p-1 rounded border border-amber-200">
-                        Ajustar valores para este presupuesto:
-                      </div>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <div>
-                          <label className="block text-[9px] text-slate-600 mb-0.5">UF ($)</label>
-                          <input
-                            type="text"
-                            value={customUfInput}
-                            onChange={(e) => setCustomUfInput(e.target.value)}
-                            className="w-full px-1.5 py-0.5 text-xs border border-slate-300 rounded font-mono"
-                            placeholder="40879.04"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[9px] text-slate-600 mb-0.5">Dólar ($)</label>
-                          <input
-                            type="text"
-                            value={customDollarInput}
-                            onChange={(e) => setCustomDollarInput(e.target.value)}
-                            className="w-full px-1.5 py-0.5 text-xs border border-slate-300 rounded font-mono"
-                            placeholder="933.47"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex justify-end gap-1.5 pt-0.5">
-                        <button
-                          type="button"
-                          onClick={() => setShowManualIndicatorEdit(false)}
-                          className="px-2 py-0.5 text-[10px] text-slate-600 hover:bg-slate-200 rounded cursor-pointer"
-                        >
-                          Cancelar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleApplyCustomIndicators}
-                          className="px-2 py-0.5 text-[10px] font-semibold bg-blue-600 text-white hover:bg-blue-700 rounded shadow-xs cursor-pointer"
-                        >
-                          Aplicar
-                        </button>
-                      </div>
-                    </div>
                   )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSaveProjectMeta}
+                  disabled={savingProjectMeta}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                  title="Guarda la estructura DGL y clasificación de Salesforce en la base de datos"
+                >
+                  {savingProjectMeta ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Save className="w-3.5 h-3.5" />
+                  )}
+                  <span>{savingProjectMeta ? 'Guardando...' : 'Guardar Datos Proyecto'}</span>
+                </button>
+              </div>
+
+              {/* Fila Estructura DGL (Sección y Centro de Costo) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                    Sección DGL *
+                  </label>
+                  <select
+                    value={seccion}
+                    onChange={(e) => handleSeccionChange(e.target.value as SeccionDGL)}
+                    className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                  >
+                    {SECCIONES_DGL.map((sec) => (
+                      <option key={sec} value={sec}>
+                        {sec}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                    Unidad / Centro de Costo (CC) *
+                  </label>
+                  <select
+                    value={centroCosto}
+                    onChange={(e) => handleCentroCostoChange(e.target.value)}
+                    className="w-full py-1.5 px-2 rounded-lg border border-blue-300 bg-blue-50/40 text-xs font-semibold text-blue-950 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                  >
+                    {SECCIONES_DGL.map((secGroup) => {
+                      const unitsInSec = DGL_UNIDADES.filter((u) => u.seccion === secGroup);
+                      return (
+                        <optgroup key={secGroup} label={secGroup}>
+                          {unitsInSec.map((u) => {
+                            const ccMatch = CENTROS_DE_COSTO.find((cc) => cc.startsWith(u.code)) || u.name;
+                            return (
+                              <option key={u.code} value={ccMatch}>
+                                {u.name}
+                              </option>
+                            );
+                          })}
+                        </optgroup>
+                      );
+                    })}
+                  </select>
+                </div>
+              </div>
+
+              {/* Fila Clasificación Salesforce (Sector, Subsector, Zona) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-slate-200/60">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                    Sector *
+                  </label>
+                  <select
+                    value={sectorProyecto}
+                    onChange={(e) => setSectorProyecto(e.target.value as SectorProyecto)}
+                    className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                  >
+                    {SECTORES_PROYECTO.map((sec) => (
+                      <option key={sec} value={sec}>
+                        {sec}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                    Subsector *
+                  </label>
+                  <select
+                    value={subsectorProyecto}
+                    onChange={(e) => setSubsectorProyecto(e.target.value as SubsectorProyecto)}
+                    className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                  >
+                    {SUBSECTORES_PROYECTO.map((sub) => (
+                      <option key={sub} value={sub}>
+                        {sub}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                    Zona *
+                  </label>
+                  <select
+                    value={zonaProyecto}
+                    onChange={(e) => setZonaProyecto(e.target.value as ZonaProyecto)}
+                    className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                  >
+                    {ZONAS_PROYECTO.map((zona) => (
+                      <option key={zona} value={zona}>
+                        {zona}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
 
-            {/* Automated Session Info Badge */}
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-500">
-              <span className="truncate">
-                Emisor: <strong className="text-slate-700">{commercialName}</strong> ({commercialTitle})
-              </span>
-              <span className="font-mono text-slate-600 flex-shrink-0">
-                Ref: {commercialInitials} {commercialSignature ? '• Firma ✓' : ''}
-              </span>
+            {/* Bloque Derecho: Indicadores Oficiales (5 cols) */}
+            <div className="lg:col-span-5 bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/60">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider">
+                    Indicadores Oficiales
+                  </span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => fetchIndicators(true)}
+                    disabled={isRefreshingIndicators}
+                    title="Revalidar valor oficial en tiempo real con Banco Central"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 hover:border-slate-400 transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3 h-3 text-slate-500 ${isRefreshingIndicators ? 'animate-spin' : ''}`} />
+                    <span>{isRefreshingIndicators ? 'Revalidando...' : 'Revalidar'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowManualIndicatorEdit(!showManualIndicatorEdit)}
+                    className="px-1.5 py-0.5 rounded text-[10px] font-medium text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer"
+                  >
+                    {showManualIndicatorEdit ? 'Cerrar' : 'Ajustar'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                  <div className="text-[9px] text-slate-500 font-medium">UF Oficial</div>
+                  <div className="text-sm font-mono font-bold text-emerald-900">
+                    ${ufValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+                <div className="bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                  <div className="text-[9px] text-slate-500 font-medium">Dólar Observado</div>
+                  <div className="text-sm font-mono font-bold text-slate-900">
+                    ${dollarValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+              </div>
+
+              {indicators?.source && (
+                <div className="text-[9px] text-slate-400 flex items-center justify-between">
+                  <span className="truncate">Fuente: {indicators.source}</span>
+                  <span>{indicators.date || 'Hoy'}</span>
+                </div>
+              )}
+
+              {/* Opción para incluir o no los indicadores oficiales en el documento PDF */}
+              <div className="pt-1.5 border-t border-slate-200/80 flex items-center justify-between gap-2">
+                <label className="flex items-center gap-1.5 text-[10px] text-slate-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={showIndicatorsInPdf}
+                    onChange={(e) => setShowIndicatorsInPdf(e.target.checked)}
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                  />
+                  <span>Mostrar en documento PDF</span>
+                </label>
+                <span
+                  className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                    showIndicatorsInPdf
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      : 'bg-slate-200 text-slate-600 border border-slate-300'
+                  }`}
+                >
+                  {showIndicatorsInPdf ? 'Visible' : 'Oculto'}
+                </span>
+              </div>
+
+              {showManualIndicatorEdit && (
+                <div className="mt-1.5 pt-1.5 border-t border-slate-200 space-y-1.5 animate-in fade-in">
+                  <div className="text-[10px] font-semibold text-amber-800 bg-amber-50 p-1 rounded border border-amber-200">
+                    Ajustar valores para este presupuesto:
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div>
+                      <label className="block text-[9px] text-slate-600 mb-0.5">UF ($)</label>
+                      <input
+                        type="text"
+                        value={customUfInput}
+                        onChange={(e) => setCustomUfInput(e.target.value)}
+                        className="w-full px-1.5 py-0.5 text-xs border border-slate-300 rounded font-mono"
+                        placeholder="40879.04"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] text-slate-600 mb-0.5">Dólar ($)</label>
+                      <input
+                        type="text"
+                        value={customDollarInput}
+                        onChange={(e) => setCustomDollarInput(e.target.value)}
+                        className="w-full px-1.5 py-0.5 text-xs border border-slate-300 rounded font-mono"
+                        placeholder="933.47"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-1.5 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowManualIndicatorEdit(false)}
+                      className="px-2 py-0.5 text-[10px] text-slate-600 hover:bg-slate-200 rounded cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleApplyCustomIndicators}
+                      className="px-2 py-0.5 text-[10px] font-semibold bg-blue-600 text-white hover:bg-blue-700 rounded shadow-xs cursor-pointer"
+                    >
+                      Aplicar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

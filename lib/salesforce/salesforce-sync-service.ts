@@ -66,22 +66,33 @@ async function findOrCreateAccount(
     const cleanName = (clientName || '').replace(/'/g, "\\'").trim();
     if (!cleanName) return null;
 
-    // Buscar si existe por Nombre
-    const query = encodeURIComponent(`SELECT Id, Name FROM Account WHERE Name LIKE '%${cleanName.slice(0, 30)}%' LIMIT 1`);
+    const cleanRut = (clientRut || '').replace(/'/g, "\\'").trim();
+
+    // 1. Buscar si existe por RUT o por Nombre
+    let queryStr = `SELECT Id, Name FROM Account WHERE Name LIKE '%${cleanName.slice(0, 30)}%' LIMIT 1`;
+    if (cleanRut) {
+      queryStr = `SELECT Id, Name FROM Account WHERE RUT__c = '${cleanRut}' OR Name LIKE '%${cleanName.slice(0, 30)}%' LIMIT 1`;
+    }
+    const query = encodeURIComponent(queryStr);
     const searchRes = await sfRequest(instanceUrl, accessToken, `query?q=${query}`);
 
     if (searchRes?.records && searchRes.records.length > 0) {
       return searchRes.records[0].Id;
     }
 
-    // Si no existe, intentar crear una Cuenta básica
+    // 2. Si no existe, intentar crear una Cuenta básica
     try {
+      const accountBody: Record<string, any> = {
+        Name: clientName,
+        Description: cleanRut ? `RUT: ${cleanRut}` : 'Creado automáticamente desde Cotizador DGL',
+      };
+      if (cleanRut) {
+        accountBody.RUT__c = cleanRut;
+      }
+
       const createRes = await sfRequest(instanceUrl, accessToken, 'sobjects/Account', {
         method: 'POST',
-        body: JSON.stringify({
-          Name: clientName,
-          Description: clientRut ? `RUT: ${clientRut}` : 'Creado automáticamente desde Cotizador DGL',
-        }),
+        body: JSON.stringify(accountBody),
       });
       if (createRes?.id) return createRes.id;
     } catch (createErr) {
@@ -698,23 +709,8 @@ export async function closeOpportunityWon(params: CloseWonParams): Promise<Close
   const opportunityId = cotizacion.salesforceOpportunityId!;
   const { accessToken, instanceUrl } = await getValidSalesforceClient();
 
-  // 1. Actualizar la Oportunidad en Salesforce
-  const oppPayload: Record<string, any> = {
-    StageName: 'Cerrada ganada',
-    Amount: Math.round(params.closingClp),
-    Monto_a_Facturar_UF__c: Number(params.closingUf.toFixed(2)),
-    Fecha_de_cierre_del_Negocio__c: params.fechaCierre,
-    CloseDate: params.fechaPrimeraFacturacion || params.fechaCierre,
-    Cuotas_de_facturacion__c: params.cantidadCuotas,
-    Fecha_primera_facturaci_on__c: params.fechaPrimeraFacturacion,
-  };
-
-  await sfRequest(instanceUrl, accessToken, `sobjects/Opportunity/${opportunityId}`, {
-    method: 'PATCH',
-    body: JSON.stringify(oppPayload),
-  });
-
-  // 2. Gestionar Cuotas de Facturación (Cuota_de_facturacion__c)
+  // 1. PASO PREVIO OBLIGATORIO SALESFORCE: Crear Cuotas de Facturación (Cuota_de_facturacion__c)
+  // Las reglas de validación de Salesforce exigen que la Oportunidad tenga al menos una cuota antes de pasar a 'Cerrada ganada'.
   // Limpiar cuotas previas si existían para evitar duplicados
   try {
     const q = encodeURIComponent(`SELECT Id FROM Cuota_de_facturacion__c WHERE Oportunidad__c = '${opportunityId}'`);
@@ -764,6 +760,22 @@ export async function closeOpportunityWon(params: CloseWonParams): Promise<Close
       salesforceCuotaId: sfCuotaId,
     });
   }
+
+  // 2. Actualizar la Oportunidad en Salesforce a 'Cerrada ganada'
+  const oppPayload: Record<string, any> = {
+    StageName: 'Cerrada ganada',
+    Amount: Math.round(params.closingClp),
+    Monto_a_Facturar_UF__c: Number(params.closingUf.toFixed(2)),
+    Fecha_de_cierre_del_Negocio__c: params.fechaCierre,
+    CloseDate: params.fechaPrimeraFacturacion || params.fechaCierre,
+    Cuotas_de_facturacion__c: params.cantidadCuotas,
+    Fecha_primera_facturaci_on__c: params.fechaPrimeraFacturacion,
+  };
+
+  await sfRequest(instanceUrl, accessToken, `sobjects/Opportunity/${opportunityId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(oppPayload),
+  });
 
   // 3. Actualizar registro local en Supabase
   const difUf = Number((params.closingUf - cotizacion.totalUf).toFixed(2));

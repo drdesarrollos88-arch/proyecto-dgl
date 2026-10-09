@@ -10,6 +10,7 @@ import {
   BookOpen,
   FileText,
   Upload,
+  UploadCloud,
   Plus,
   Trash2,
   CheckCircle2,
@@ -27,7 +28,21 @@ import {
   Check,
   Tag,
   ArrowRight,
+  Loader2,
 } from 'lucide-react';
+
+interface BulkFileItem {
+  id: string;
+  file: File;
+  originalName: string;
+  sizeFormatted: string;
+  titulo: string;
+  descripcion: string;
+  tags: string;
+  isSummarizing: boolean;
+  status: 'pending' | 'uploading' | 'success' | 'error';
+  errorMessage?: string;
+}
 
 export default function BibliografiaPage() {
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -48,6 +63,16 @@ export default function BibliografiaPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Estados de Carga Masiva
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [bulkTipo, setBulkTipo] = useState<TipoBibliografia>('tecnica');
+  const [bulkQueue, setBulkQueue] = useState<BulkFileItem[]>([]);
+  const [isBulkUploading, setIsBulkUploading] = useState(false);
+  const [bulkUploadingCurrentIndex, setBulkUploadingCurrentIndex] = useState<number>(-1);
+  const [isSummarizingAll, setIsSummarizingAll] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const bulkFileInputRef = useRef<HTMLInputElement>(null);
 
   // Modal para ver contenido completo
   const [previewItem, setPreviewItem] = useState<BibliografiaItem | null>(null);
@@ -187,6 +212,154 @@ export default function BibliografiaPage() {
     }
   };
 
+  const handleAddBulkFiles = (filesList: FileList | File[]) => {
+    const files = Array.from(filesList).filter((f) => f.size > 0);
+    const newItems: BulkFileItem[] = files.map((f) => {
+      const cleanName = f.name
+        .replace(/\.[^/.]+$/, '')
+        .replace(/[-_]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return {
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        file: f,
+        originalName: f.name,
+        sizeFormatted:
+          f.size > 1024 * 1024
+            ? `${(f.size / (1024 * 1024)).toFixed(1)} MB`
+            : `${Math.round(f.size / 1024)} KB`,
+        titulo: cleanName,
+        descripcion: '',
+        tags: '',
+        isSummarizing: false,
+        status: 'pending',
+      };
+    });
+    setBulkQueue((prev) => [...prev, ...newItems]);
+  };
+
+  const updateBulkItem = (id: string, patch: Partial<BulkFileItem>) => {
+    setBulkQueue((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  };
+
+  const removeBulkItem = (id: string) => {
+    setBulkQueue((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const handleGenerateAiSummary = async (itemId: string) => {
+    const item = bulkQueue.find((i) => i.id === itemId);
+    if (!item) return;
+
+    setBulkQueue((prev) =>
+      prev.map((i) => (i.id === itemId ? { ...i, isSummarizing: true } : i))
+    );
+
+    try {
+      const formData = new FormData();
+      formData.append('file', item.file);
+      formData.append('titulo', item.titulo);
+
+      const res = await fetch('/api/bibliografia/resumir', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setBulkQueue((prev) =>
+            prev.map((i) =>
+              i.id === itemId
+                ? {
+                    ...i,
+                    titulo: data.titulo || i.titulo,
+                    descripcion: data.resumen || i.descripcion,
+                    tags: data.tags || i.tags,
+                    isSummarizing: false,
+                  }
+                : i
+            )
+          );
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Error al generar resumen IA:', err);
+    } finally {
+      setBulkQueue((prev) =>
+        prev.map((i) => (i.id === itemId ? { ...i, isSummarizing: false } : i))
+      );
+    }
+  };
+
+  const handleSummarizeAllWithAi = async () => {
+    if (isSummarizingAll || isBulkUploading) return;
+    setIsSummarizingAll(true);
+
+    for (const item of bulkQueue) {
+      if (item.status === 'success') continue;
+      await handleGenerateAiSummary(item.id);
+    }
+
+    setIsSummarizingAll(false);
+  };
+
+  const handleStartBulkUpload = async () => {
+    if (bulkQueue.length === 0 || isBulkUploading) return;
+
+    setIsBulkUploading(true);
+
+    for (let i = 0; i < bulkQueue.length; i++) {
+      const item = bulkQueue[i];
+      if (item.status === 'success') continue;
+
+      setBulkUploadingCurrentIndex(i);
+      setBulkQueue((prev) =>
+        prev.map((it, idx) => (idx === i ? { ...it, status: 'uploading' } : it))
+      );
+
+      try {
+        const formData = new FormData();
+        formData.append('tipo', bulkTipo);
+        formData.append('titulo', item.titulo.trim() || item.originalName);
+        formData.append('descripcion', item.descripcion.trim());
+        formData.append('tags', item.tags.trim());
+        formData.append('file', item.file);
+
+        const res = await fetch('/api/bibliografia', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'Error al procesar subida');
+        }
+
+        const data = await res.json();
+        if (data.item) {
+          setBulkQueue((prev) =>
+            prev.map((it, idx) => (idx === i ? { ...it, status: 'success' } : it))
+          );
+        }
+      } catch (err: any) {
+        setBulkQueue((prev) =>
+          prev.map((it, idx) =>
+            idx === i
+              ? { ...it, status: 'error', errorMessage: err?.message || 'Error al cargar' }
+              : it
+          )
+        );
+      }
+    }
+
+    setIsBulkUploading(false);
+    setBulkUploadingCurrentIndex(-1);
+
+    // Actualizar lista principal
+    await fetchItems();
+  };
+
   const filteredItems = items.filter((it) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase().trim();
@@ -228,13 +401,24 @@ export default function BibliografiaPage() {
           <div className="flex items-center gap-2.5">
             <button
               onClick={() => {
+                setBulkTipo(activeTab);
+                setShowBulkModal(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+            >
+              <UploadCloud className="w-4 h-4" />
+              <span>Carga Masiva (PDFs)</span>
+            </button>
+
+            <button
+              onClick={() => {
                 setUploadTipo(activeTab);
                 setShowUploadModal(true);
               }}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>Cargar Documento / Norma</span>
+              <span>Cargar Individual</span>
             </button>
           </div>
         </div>
@@ -318,16 +502,28 @@ export default function BibliografiaPage() {
                   ? 'Carga especificaciones técnicas, normas NCh o memorias de laboratorio para enriquecer el criterio de la IA.'
                   : 'Los chats guardados al reiniciar el asistente o al emitir cotizaciones aparecerán en esta sección.'}
               </p>
-              <button
-                onClick={() => {
-                  setUploadTipo(activeTab);
-                  setShowUploadModal(true);
-                }}
-                className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg text-xs font-semibold transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Agregar Documento</span>
-              </button>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  onClick={() => {
+                    setBulkTipo(activeTab);
+                    setShowBulkModal(true);
+                  }}
+                  className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                >
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  <span>Carga Masiva (PDFs)</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setUploadTipo(activeTab);
+                    setShowUploadModal(true);
+                  }}
+                  className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Cargar Individual</span>
+                </button>
+              </div>
             </div>
           ) : (
             filteredItems.map((item) => (
@@ -655,6 +851,379 @@ export default function BibliografiaPage() {
               >
                 Cerrar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Carga Masiva de Bibliografía */}
+      {showBulkModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 my-auto animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[92vh]">
+            {/* Header del Modal */}
+            <div className="flex items-start justify-between pb-3 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                  <UploadCloud className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Carga Masiva de Bibliografía y Normas Técnicas
+                    </h3>
+                    <span className="bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-purple-200">
+                      Asistente IA Integrado
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Selecciona múltiples documentos PDF o Word. Podrás personalizar el nombre, dejar la descripción como opcional o generar un resumen de ~20 palabras con IA antes de subirlos uno por uno.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isBulkUploading) setShowBulkModal(false);
+                }}
+                disabled={isBulkUploading}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Categoría y Acciones Globales */}
+            <div className="py-3 border-b border-slate-100 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-700">Categoría:</span>
+                <div className="flex items-center bg-slate-100 p-0.5 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setBulkTipo('tecnica')}
+                    disabled={isBulkUploading}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                      bulkTipo === 'tecnica'
+                        ? 'bg-white text-indigo-700 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Bibliografía Técnica (Normas)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBulkTipo('historica')}
+                    disabled={isBulkUploading}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                      bulkTipo === 'historica'
+                        ? 'bg-white text-indigo-700 shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Bibliografía Histórica (Casos)
+                  </button>
+                </div>
+              </div>
+
+              {bulkQueue.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleSummarizeAllWithAi}
+                    disabled={isSummarizingAll || isBulkUploading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-semibold shadow-2xs transition-all cursor-pointer disabled:opacity-50"
+                    title="Lee cada documento pendiente y genera título formal y un resumen técnico de ~20 palabras con IA"
+                  >
+                    {isSummarizingAll ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                        <span>Resumiendo con IA...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                        <span>✨ Resumir todos con IA (~20 palabras)</span>
+                      </>
+                    )}
+                  </button>
+
+                  {!isBulkUploading && (
+                    <button
+                      type="button"
+                      onClick={() => setBulkQueue([])}
+                      className="text-xs text-slate-500 hover:text-red-600 px-2 py-1 rounded cursor-pointer transition-colors"
+                    >
+                      Limpiar
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Dropzone para Arrastrar o Seleccionar Múltiples Archivos */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragOver(true);
+              }}
+              onDragLeave={() => setIsDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDragOver(false);
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                  handleAddBulkFiles(e.dataTransfer.files);
+                }
+              }}
+              className={`mt-3 p-4 border-2 border-dashed rounded-2xl text-center transition-all ${
+                isDragOver
+                  ? 'border-indigo-500 bg-indigo-50/60'
+                  : 'border-slate-200 hover:border-indigo-300 bg-slate-50/50'
+              } shrink-0 cursor-pointer`}
+              onClick={() => bulkFileInputRef.current?.click()}
+            >
+              <input
+                ref={bulkFileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.docx,.doc,.xlsx,.xls,.txt"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files.length > 0) {
+                    handleAddBulkFiles(e.target.files);
+                    e.target.value = '';
+                  }
+                }}
+              />
+
+              <div className="flex flex-col items-center justify-center gap-1">
+                <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                  <Upload className="w-4 h-4" />
+                </div>
+                <p className="text-xs font-bold text-slate-800">
+                  Haz clic para examinar o arrastra múltiples archivos PDF / Word aquí
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Selecciona todos los documentos que desees cargar de una sola vez
+                </p>
+              </div>
+            </div>
+
+            {/* Lista de Documentos en Cola (Staging Previo a Cargar) */}
+            <div className="flex-1 overflow-y-auto mt-3 space-y-3 pr-1 min-h-[160px]">
+              {bulkQueue.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center py-10 text-slate-400 text-xs">
+                  <FileText className="w-8 h-8 text-slate-300 mb-2" />
+                  <span>Aún no has agregado documentos. Selecciona archivos arriba para comenzar.</span>
+                </div>
+              ) : (
+                bulkQueue.map((item, idx) => (
+                  <div
+                    key={item.id}
+                    className={`p-3.5 rounded-xl border transition-all text-xs flex flex-col gap-2.5 ${
+                      item.status === 'uploading'
+                        ? 'border-amber-400 bg-amber-50/30 ring-2 ring-amber-400/20'
+                        : item.status === 'success'
+                        ? 'border-emerald-300 bg-emerald-50/30'
+                        : item.status === 'error'
+                        ? 'border-red-300 bg-red-50/30'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
+                    }`}
+                  >
+                    {/* Fila 1: Archivo Original y Estado */}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-5 h-5 rounded-md bg-indigo-50 text-indigo-700 font-bold text-[10px] flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        <div className="min-w-0">
+                          <span className="font-semibold text-slate-800 truncate block text-[11px]">
+                            {item.originalName}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            {item.sizeFormatted}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Estado */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {item.status === 'pending' && (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                            Pendiente
+                          </span>
+                        )}
+                        {item.status === 'uploading' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 flex items-center gap-1 animate-pulse">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>Subiendo...</span>
+                          </span>
+                        )}
+                        {item.status === 'success' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            <span>✓ Subido</span>
+                          </span>
+                        )}
+                        {item.status === 'error' && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-800 flex items-center gap-1" title={item.errorMessage}>
+                            <AlertTriangle className="w-3 h-3 text-red-600" />
+                            <span>Error al cargar</span>
+                          </span>
+                        )}
+
+                        {!isBulkUploading && item.status !== 'success' && (
+                          <button
+                            type="button"
+                            onClick={() => removeBulkItem(item.id)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 cursor-pointer transition-colors"
+                            title="Quitar de la lista"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Fila 2: Nombre Editable + Botón Resumen IA */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                      <div className="flex-1">
+                        <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-0.5">
+                          Nombre / Título en Plataforma *
+                        </label>
+                        <input
+                          type="text"
+                          value={item.titulo}
+                          disabled={isBulkUploading || item.status === 'success'}
+                          onChange={(e) => updateBulkItem(item.id, { titulo: e.target.value })}
+                          placeholder="Ej: NCh 1508:2014 Geotecnia..."
+                          className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500 font-medium"
+                        />
+                      </div>
+
+                      <div className="sm:self-end">
+                        <button
+                          type="button"
+                          disabled={item.isSummarizing || isBulkUploading || item.status === 'success'}
+                          onClick={() => handleGenerateAiSummary(item.id)}
+                          className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-50 to-indigo-50 hover:from-purple-100 hover:to-indigo-100 text-purple-700 border border-purple-200 rounded-lg text-xs font-semibold shadow-2xs transition-all cursor-pointer disabled:opacity-50 h-[32px]"
+                          title="Lee el documento con IA y redacta un resumen técnico de ~20 palabras y título formal"
+                        >
+                          {item.isSummarizing ? (
+                            <>
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                              <span>Leyendo documento...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                              <span>✨ Resumen IA (~20 palabras)</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Fila 3: Descripción (Opcional o generada por IA) */}
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-0.5">
+                        Descripción Técnica (Opcional / Resumen de ~20 palabras)
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={item.descripcion}
+                        disabled={isBulkUploading || item.status === 'success'}
+                        onChange={(e) => updateBulkItem(item.id, { descripcion: e.target.value })}
+                        placeholder="Descripción opcional del documento o generada automáticamente por el asistente de IA..."
+                        className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer con Progreso y Ejecución de Carga Secuencial */}
+            <div className="pt-3 border-t border-slate-100 mt-3 shrink-0 space-y-3">
+              {isBulkUploading && (
+                <div className="space-y-1.5 bg-indigo-50/50 p-2.5 rounded-xl border border-indigo-100">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-indigo-900 flex items-center gap-1.5">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                      <span>Subiendo documento {bulkUploadingCurrentIndex + 1} de {bulkQueue.length} uno por uno...</span>
+                    </span>
+                    <span className="text-indigo-700 font-mono text-[11px] font-bold">
+                      {Math.round(((bulkQueue.filter((i) => i.status === 'success').length) / bulkQueue.length) * 100)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-purple-600 to-indigo-600 h-2 rounded-full transition-all duration-300"
+                      style={{
+                        width: `${Math.round(((bulkQueue.filter((i) => i.status === 'success').length) / bulkQueue.length) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-slate-500">
+                  {bulkQueue.length > 0
+                    ? `${bulkQueue.filter((i) => i.status === 'success').length} de ${bulkQueue.length} documentos subidos exitosamente.`
+                    : 'Sin documentos seleccionados.'}
+                </span>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isBulkUploading) {
+                        setShowBulkModal(false);
+                        fetchItems();
+                      }
+                    }}
+                    disabled={isBulkUploading}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer disabled:opacity-40"
+                  >
+                    {bulkQueue.some((i) => i.status === 'success') ? 'Cerrar' : 'Cancelar'}
+                  </button>
+
+                  {bulkQueue.length > 0 && bulkQueue.every((i) => i.status === 'success') ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowBulkModal(false);
+                        setBulkQueue([]);
+                        fetchItems();
+                      }}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Finalizar y Ver Documentos</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={bulkQueue.length === 0 || isBulkUploading || bulkQueue.every((i) => i.status === 'success')}
+                      onClick={handleStartBulkUpload}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      {isBulkUploading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Subiendo ({bulkUploadingCurrentIndex + 1}/{bulkQueue.length})...</span>
+                        </>
+                      ) : (
+                        <>
+                          <UploadCloud className="w-4 h-4" />
+                          <span>
+                            Subir {bulkQueue.filter((i) => i.status !== 'success').length} Documento(s) Uno por Uno
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>

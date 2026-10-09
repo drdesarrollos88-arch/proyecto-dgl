@@ -1,4 +1,4 @@
-import { Cotizacion, CotizacionItem } from './types';
+import { Cotizacion, CotizacionItem, getDGLInfoByCC } from './types';
 import { isSupabaseConfigured, supabaseAdmin } from './supabase';
 import { advanceCorrelativo, saveCotizacion } from './db';
 import initialDbData from '../data/db.json';
@@ -70,10 +70,10 @@ export function mapSupabaseToCotizacion(row: any): Cotizacion {
     city: row.project_address || 'Santiago',
     paymentCondition: row.payment_terms || '50% AL CONTADO Y 50% CONTRA ENTREGA',
     centroCosto: row.centro_costo || '1817',
-    seccion: row.ai_chat_state?.projectMeta?.seccion || row.seccion || undefined,
-    sectorProyecto: row.ai_chat_state?.projectMeta?.sectorProyecto || row.sector_proyecto || 'Inmobiliario',
-    subsectorProyecto: row.ai_chat_state?.projectMeta?.subsectorProyecto || row.subsector_proyecto || 'No Aplica',
-    zonaProyecto: row.ai_chat_state?.projectMeta?.zonaProyecto || row.zona_proyecto || 'Región Metropolitana',
+    seccion: row.seccion || row.ai_chat_state?.projectMeta?.seccion || getDGLInfoByCC(row.centro_costo || row.code || '2340').seccion,
+    sectorProyecto: row.sector_proyecto || row.ai_chat_state?.projectMeta?.sectorProyecto || 'Inmobiliario',
+    subsectorProyecto: row.subsector_proyecto || row.ai_chat_state?.projectMeta?.subsectorProyecto || 'No Aplica',
+    zonaProyecto: row.zona_proyecto || row.ai_chat_state?.projectMeta?.zonaProyecto || 'Región Metropolitana',
     currency: (row.currency as 'UF' | 'USD' | 'CLP') || 'UF',
     commercialName: row.user_name || 'Diego Román',
     commercialTitle: 'Asesor Comercial DGL',
@@ -167,10 +167,14 @@ export function mapCotizacionToSupabase(c: Partial<Cotizacion>): any {
     delivery_time: null,
     payment_terms: c.paymentCondition || null,
     version: 1,
+    seccion: c.seccion || getDGLInfoByCC(c.centroCosto || c.code || '2340').seccion,
+    sector_proyecto: c.sectorProyecto || 'Inmobiliario',
+    subsector_proyecto: c.subsectorProyecto || 'No Aplica',
+    zona_proyecto: c.zonaProyecto || 'Región Metropolitana',
     ai_chat_state: {
       ...(c.aiChatState || {}),
       projectMeta: {
-        seccion: c.seccion || null,
+        seccion: c.seccion || getDGLInfoByCC(c.centroCosto || c.code || '2340').seccion,
         sectorProyecto: c.sectorProyecto || 'Inmobiliario',
         subsectorProyecto: c.subsectorProyecto || 'No Aplica',
         zonaProyecto: c.zonaProyecto || 'Región Metropolitana',

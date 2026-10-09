@@ -1099,6 +1099,38 @@ function CotizacionesContent() {
                 </div>
               </div>
 
+              {/* Barra Informativa de Clasificación Salesforce & DGL */}
+              <div className="px-5 py-2 bg-slate-800 border-t border-slate-700/80 flex flex-wrap items-center justify-between text-[11px] text-slate-300 gap-2">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <span className="inline-flex items-center gap-1 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700 font-mono text-[10px]">
+                    <span className="text-slate-400">CC:</span>
+                    <strong className="text-blue-300">{previewCotizacion.centroCosto || '2340'}</strong>
+                  </span>
+                  <span className="inline-flex items-center gap-1 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700 text-[10px]">
+                    <span className="text-slate-400">Sección:</span>
+                    <strong className="text-slate-200">{previewCotizacion.seccion || 'SGL - Sección Laboratorio de Geotecnia'}</strong>
+                  </span>
+                  <span className="inline-flex items-center gap-1 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700 text-[10px]">
+                    <span className="text-slate-400">Sector:</span>
+                    <strong className="text-amber-300">{previewCotizacion.sectorProyecto || 'Inmobiliario'}</strong>
+                  </span>
+                  <span className="inline-flex items-center gap-1 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700 text-[10px]">
+                    <span className="text-slate-400">Subsector:</span>
+                    <strong className="text-amber-300">{previewCotizacion.subsectorProyecto || 'No Aplica'}</strong>
+                  </span>
+                  <span className="inline-flex items-center gap-1 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700 text-[10px]">
+                    <span className="text-slate-400">Zona:</span>
+                    <strong className="text-amber-300">{previewCotizacion.zonaProyecto || 'Región Metropolitana'}</strong>
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
+                  <span>Salesforce:</span>
+                  <span className={previewCotizacion.salesforceOpportunityId ? 'text-emerald-400 font-semibold' : 'text-slate-400'}>
+                    {previewCotizacion.salesforceOpportunityId ? `Enlazada (${previewCotizacion.salesforceOpportunityId})` : 'Pendiente de sincronizar'}
+                  </span>
+                </div>
+              </div>
+
               {/* Iframe de Vista Previa de PDF */}
               <div className="flex-1 bg-slate-100 relative">
                 {previewLoading && (

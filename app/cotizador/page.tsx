@@ -257,6 +257,8 @@ function CotizadorContent() {
   const [sectorProyecto, setSectorProyecto] = useState<SectorProyecto>('Inmobiliario');
   const [subsectorProyecto, setSubsectorProyecto] = useState<SubsectorProyecto>('No Aplica');
   const [zonaProyecto, setZonaProyecto] = useState<ZonaProyecto>('Región Metropolitana');
+  const [savingProjectMeta, setSavingProjectMeta] = useState(false);
+  const [projectMetaSavedSuccess, setProjectMetaSavedSuccess] = useState(false);
   const [currency, setCurrency] = useState<'UF' | 'USD' | 'CLP'>('UF');
   const [code, setCode] = useState(() => {
     const year = new Date().getFullYear();
@@ -1289,10 +1291,6 @@ function CotizadorContent() {
       setStatusMessage({ type: 'error', text: 'Debe ingresar o vincular la Razón Social del cliente.' });
       return;
     }
-    if (items.length === 0) {
-      setStatusMessage({ type: 'error', text: 'Debe agregar al menos un ensayo a la cotización.' });
-      return;
-    }
 
     setSaving(true);
     setStatusMessage(null);
@@ -1360,7 +1358,81 @@ function CotizadorContent() {
     }
   };
 
-    // Finalizar cotización: guardar con estado 'Finalizada' y descargar PDF oficial limpio
+  // Guardar inmediatamente la clasificación del proyecto y estructura DGL
+  const handleSaveProjectMeta = async () => {
+    setSavingProjectMeta(true);
+    setStatusMessage(null);
+
+    try {
+      let activeSig = commercialSignature;
+      if (!activeSig || activeSig.length < 200) {
+        try {
+          const pRes = await fetch('/api/users/profile');
+          if (pRes.ok) {
+            const pData = await pRes.json();
+            if (pData?.user?.signature && pData.user.signature.length > 200) {
+              activeSig = pData.user.signature;
+              setCommercialSignature(activeSig);
+            }
+          }
+        } catch {}
+      }
+
+      const activeClient = clientName.trim() || 'Cliente Particular';
+      const currentMsgs = assistantChatMessagesRef.current || assistantChatMessages;
+      const currentAnalisis = assistantActiveAnalisisRef.current || assistantActiveAnalisis;
+
+      const cotizacionToSave: Cotizacion = {
+        ...currentCotizacion,
+        clientName: activeClient,
+        commercialSignature: activeSig || currentCotizacion.commercialSignature,
+        status: (originalQuote?.status || currentCotizacion.status || 'Borrador') as any,
+        aiChatState: currentMsgs && currentMsgs.length > 0 ? {
+          messages: currentMsgs,
+          activeAnalisis: currentAnalisis,
+          updatedAt: new Date().toISOString(),
+        } : undefined,
+      };
+
+      const res = await fetch('/api/cotizaciones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cotizacionToSave),
+      });
+
+      const d = await res.json();
+      if (res.ok && d.cotizacion) {
+        setSavedId(d.cotizacion.id);
+        if (d.cotizacion.projectId) {
+          setProjectId(d.cotizacion.projectId);
+        }
+        if (isVersionMode) {
+          setOriginalQuote(d.cotizacion);
+          setIsVersionMode(false);
+        }
+        setProjectMetaSavedSuccess(true);
+        setTimeout(() => setProjectMetaSavedSuccess(false), 4000);
+        setStatusMessage({
+          type: 'success',
+          text: `Estructura DGL y clasificación de Salesforce guardadas con éxito (${d.cotizacion.code}).`,
+        });
+      } else {
+        setStatusMessage({
+          type: 'error',
+          text: d.error || 'Error al guardar los datos del proyecto.',
+        });
+      }
+    } catch {
+      setStatusMessage({
+        type: 'error',
+        text: 'Error de red o servidor al guardar la clasificación.',
+      });
+    } finally {
+      setSavingProjectMeta(false);
+    }
+  };
+
+  // Finalizar cotización: guardar con estado 'Finalizada' y descargar PDF oficial limpio
   const handleFinalize = async () => {
     // Validar autorización del usuario para finalizar
     if (user && !isAdminRole(user.role) && !hasPermission(user, 'cotizador.descargar_definitivo')) {
@@ -2557,11 +2629,32 @@ function CotizadorContent() {
 
                 {/* Clasificación Salesforce del Proyecto */}
                 <div className="pt-2 border-t border-slate-100 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                      Clasificación Proyecto (Salesforce)
-                    </span>
-                    <span className="text-[10px] text-slate-400">Requerido para CRM</span>
+                  <div className="flex items-center justify-between flex-wrap gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                        Clasificación Proyecto (Salesforce)
+                      </span>
+                      {projectMetaSavedSuccess && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 animate-in fade-in">
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span>¡Guardado!</span>
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleSaveProjectMeta}
+                      disabled={savingProjectMeta}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                      title="Guarda la estructura DGL y clasificación de Salesforce en la base de datos"
+                    >
+                      {savingProjectMeta ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Save className="w-3.5 h-3.5" />
+                      )}
+                      <span>{savingProjectMeta ? 'Guardando...' : 'Guardar Datos Proyecto'}</span>
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">

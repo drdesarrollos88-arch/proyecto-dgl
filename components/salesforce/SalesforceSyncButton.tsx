@@ -49,9 +49,15 @@ export default function SalesforceSyncButton({
     // 3. Confirmación previa al usuario
     const confirmed = confirm(
       `¿Deseas cargar la cotización ${cotizacion.code} a Salesforce IDIEM?\n\n` +
-      `Cliente: ${cotizacion.clientName}\n` +
-      `Se creará la Oportunidad, la Cotización (Quote) oficial y se adjuntará el documento PDF definitivo.\n\n` +
-      `Nota: Esta acción solo se puede realizar 1 vez.`
+      `• Cliente: ${cotizacion.clientName}\n` +
+      `• Proyecto: ${cotizacion.projectName || 'Sin especificar'}\n` +
+      `• Sección DGL: ${cotizacion.seccion || 'Por defecto'}\n` +
+      `• Centro de Costo (CC): ${cotizacion.centroCosto || '2340'}\n` +
+      `• Sector Proyecto: ${cotizacion.sectorProyecto || 'Inmobiliario'}\n` +
+      `• Subsector Proyecto: ${cotizacion.subsectorProyecto || 'No Aplica'}\n` +
+      `• Zona Proyecto: ${cotizacion.zonaProyecto || 'Región Metropolitana'}\n\n` +
+      `Se creará la Oportunidad, la Cotización (Quote) oficial con su servicio y se adjuntará el documento PDF definitivo.\n\n` +
+      `Nota: Esta acción solo se puede realizar 1 única vez.`
     );
     if (!confirmed) return;
 

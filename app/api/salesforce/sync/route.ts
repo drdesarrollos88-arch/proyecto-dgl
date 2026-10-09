@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { getCotizacionByIdAsync } from '@/lib/cotizaciones-db';
+import { getCotizacionByIdAsync, saveCotizacionAsync } from '@/lib/cotizaciones-db';
 import { syncCotizacionToSalesforce } from '@/lib/salesforce/salesforce-sync-service';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { cotizacionId } = body;
+    const { cotizacionId, seccion, centroCosto, sectorProyecto, subsectorProyecto, zonaProyecto } = body;
 
     if (!cotizacionId) {
       return NextResponse.json(
@@ -33,7 +33,21 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await syncCotizacionToSalesforce(cotizacion);
+    // Si se enviaron datos de clasificación actualizados desde el modal, persistirlos en la plataforma
+    let cotizacionToSync = { ...cotizacion };
+    if (seccion || centroCosto || sectorProyecto || subsectorProyecto || zonaProyecto) {
+      cotizacionToSync = {
+        ...cotizacionToSync,
+        ...(seccion ? { seccion } : {}),
+        ...(centroCosto ? { centroCosto } : {}),
+        ...(sectorProyecto ? { sectorProyecto } : {}),
+        ...(subsectorProyecto ? { subsectorProyecto } : {}),
+        ...(zonaProyecto ? { zonaProyecto } : {}),
+      };
+      await saveCotizacionAsync(cotizacionToSync);
+    }
+
+    const result = await syncCotizacionToSalesforce(cotizacionToSync);
 
     return NextResponse.json({
       success: true,

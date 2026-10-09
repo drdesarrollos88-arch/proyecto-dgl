@@ -727,7 +727,7 @@ export default function CierreOportunidadModal({
                     </div>
 
                     <p className="text-[11px] text-slate-500 leading-relaxed">
-                      Si el cliente negoció o cerró por un monto distinto al de la propuesta original, ajuste el valor aquí. Se actualizará el <span className="font-semibold text-slate-700">Amount</span> y <span className="font-semibold text-slate-700">Monto_a_Facturar_UF__c</span> en Salesforce.
+                      Si el cliente negoció o cerró por un monto distinto al de la propuesta original, ajuste el valor aquí. Se actualizará automáticamente el monto total en pesos y UF en Salesforce.
                     </p>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
@@ -873,7 +873,7 @@ export default function CierreOportunidadModal({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
-                        3. Detalle de Cuotas a Ingresar en Salesforce (Cuota_de_facturacion__c)
+                        3. Proyección y Detalle de Cuotas de Facturación en Salesforce
                       </span>
                       <span className="text-[10px] text-slate-500">
                         {cuotas.length} cuota(s) en proyección mensual

@@ -242,7 +242,7 @@ function VentasContent() {
           {/* Card 3: Cuotas Programadas */}
           <div className="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider">Cuotas Facturación SF</span>
+              <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider">Cuotas de Facturación</span>
               <span className="p-2 bg-purple-50 text-purple-700 rounded-xl">
                 <Layers className="w-4 h-4" />
               </span>
@@ -252,7 +252,7 @@ function VentasContent() {
                 {metrics.totalCuotasCount} <span className="text-sm font-semibold text-purple-600">cuotas</span>
               </div>
               <div className="text-xs text-purple-700 mt-1">
-                Generadas en <span className="font-mono font-bold">Cuota_de_facturacion__c</span>
+                Programadas en <span className="font-semibold text-purple-900">Salesforce</span>
               </div>
             </div>
           </div>

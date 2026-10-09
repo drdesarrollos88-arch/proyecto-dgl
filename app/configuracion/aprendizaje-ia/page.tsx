@@ -1,7 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
+import AsistenteChatSection from '@/components/ia/AsistenteChatSection';
+import BibliografiaSection from '@/components/ia/BibliografiaSection';
 import { ReglaAprendida, CasoReferenciaRAG, TarifarioItem, EstadoReglaAprendida } from '@/lib/types';
 import {
   Brain,
@@ -21,10 +24,20 @@ import {
   FileCheck,
   ChevronRight,
   TrendingUp,
+  Bot,
+  MessageSquare,
 } from 'lucide-react';
 
-export default function AprendizajeIaPage() {
-  const [activeTab, setActiveTab] = useState<'reglas' | 'rag'>('reglas');
+function AprendizajeIaContent() {
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get('tab') as 'asistente' | 'reglas' | 'rag' | 'bibliografia' | null;
+
+  const [activeTab, setActiveTab] = useState<'asistente' | 'reglas' | 'rag' | 'bibliografia'>(
+    tabParam && ['asistente', 'reglas', 'rag', 'bibliografia'].includes(tabParam)
+      ? tabParam
+      : 'asistente'
+  );
+
   const [loading, setLoading] = useState(true);
   const [reglas, setReglas] = useState<ReglaAprendida[]>([]);
   const [casosRAG, setCasosRAG] = useState<CasoReferenciaRAG[]>([]);
@@ -90,6 +103,13 @@ export default function AprendizajeIaPage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Sincronizar tab si cambia el parámetro de URL
+  useEffect(() => {
+    if (tabParam && ['asistente', 'reglas', 'rag', 'bibliografia'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [tabParam]);
 
   // Filtrado de reglas
   const filteredReglas = useMemo(() => {
@@ -215,14 +235,14 @@ export default function AprendizajeIaPage() {
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 mb-1">
               <span>Configuración</span>
               <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-              <span className="text-indigo-600 font-bold">Memoria y Aprendizaje Continuo IA</span>
+              <span className="text-indigo-600 font-bold">Inteligencia Artificial Integral</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">
-              <Brain className="w-8 h-8 text-indigo-600 animate-pulse" />
-              <span>Memoria y Aprendizaje de los Asistentes IA</span>
+              <Sparkles className="w-8 h-8 text-indigo-600" />
+              <span>Centro de Inteligencia Artificial DGL</span>
             </h1>
             <p className="text-sm text-slate-500 mt-1 max-w-3xl">
-              Supervisión de la base de conocimiento histórico (Opción A: RAG) y del diccionario de equivalencias y sinónimos aprendidos en tiempo real por el uso de los ejecutivos (Opción B: Feedback Loop).
+              Plataforma unificada de IA geotécnica: Asistente interactivo Gemini, memoria de reglas comerciales aprendidas, motor RAG sobre cotizaciones históricas y catálogo bibliográfico de normativas oficiales (LE-304).
             </p>
           </div>
 
@@ -233,15 +253,17 @@ export default function AprendizajeIaPage() {
               className="px-3.5 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              <span>Actualizar</span>
+              <span>Actualizar Base</span>
             </button>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all cursor-pointer hover:scale-102"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Nueva Regla Manual</span>
-            </button>
+            {activeTab === 'reglas' && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all cursor-pointer hover:scale-102"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Nueva Regla Manual</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -249,14 +271,15 @@ export default function AprendizajeIaPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
-              <Tag className="w-6 h-6" />
+              <Bot className="w-6 h-6" />
             </div>
             <div>
-              <span className="text-xs font-semibold text-slate-500 block">Reglas Activas (Opción B)</span>
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-black text-slate-900">{stats.activas}</span>
-                <span className="text-xs text-slate-400">/ {stats.total} registradas</span>
+              <span className="text-xs font-semibold text-slate-500 block">Asistente Geotécnico</span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="text-xs font-bold text-slate-900">Gemini 2.5 Habilitado</span>
               </div>
+              <span className="text-[10px] text-slate-400">Consultas técnicas 24/7</span>
             </div>
           </div>
 
@@ -265,20 +288,20 @@ export default function AprendizajeIaPage() {
               <TrendingUp className="w-6 h-6" />
             </div>
             <div>
-              <span className="text-xs font-semibold text-slate-500 block">Confirmaciones por Uso</span>
+              <span className="text-xs font-semibold text-slate-500 block">Reglas Aprendidas (Feedback)</span>
               <div className="flex items-baseline gap-1.5">
-                <span className="text-2xl font-black text-emerald-700">{stats.totalConfirmaciones}</span>
-                <span className="text-xs text-emerald-600 font-semibold">veces aplicadas</span>
+                <span className="text-2xl font-black text-emerald-700">{stats.activas}</span>
+                <span className="text-xs text-emerald-600 font-semibold">/ {stats.total} registradas</span>
               </div>
             </div>
           </div>
 
           <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600 shrink-0">
-              <BookOpen className="w-6 h-6" />
+              <FolderArchive className="w-6 h-6" />
             </div>
             <div>
-              <span className="text-xs font-semibold text-slate-500 block">Casos RAG Históricos (Opción A)</span>
+              <span className="text-xs font-semibold text-slate-500 block">Casos RAG Históricos</span>
               <div className="flex items-baseline gap-1.5">
                 <span className="text-2xl font-black text-purple-700">{stats.totalCasosRAG}</span>
                 <span className="text-xs text-purple-600 font-semibold">obras indexadas</span>
@@ -288,50 +311,89 @@ export default function AprendizajeIaPage() {
 
           <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 shrink-0">
-              <ShieldCheck className="w-6 h-6" />
+              <BookOpen className="w-6 h-6" />
             </div>
             <div>
-              <span className="text-xs font-semibold text-slate-500 block">Privacidad IDIEM</span>
-              <span className="text-xs font-bold text-blue-900 block leading-tight">Zero Data Training</span>
-              <span className="text-[10px] text-slate-400">100% confidencial y local</span>
+              <span className="text-xs font-semibold text-slate-500 block">Bibliografía Oficial</span>
+              <span className="text-xs font-bold text-blue-900 block leading-tight">Normas NCh, ASTM & MOP</span>
+              <span className="text-[10px] text-slate-400">Prevalencia técnica LE-304</span>
             </div>
           </div>
         </div>
 
-        {/* Selector de Pestañas */}
-        <div className="flex items-center gap-2 border-b border-slate-200 mb-6">
+        {/* Selector de Pestañas Principal */}
+        <div className="flex items-center gap-2 border-b border-slate-200 mb-6 overflow-x-auto">
+          {/* Pestaña 1: Asistente Técnico */}
+          <button
+            onClick={() => setActiveTab('asistente')}
+            className={`flex items-center gap-2 px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'asistente'
+                ? 'border-indigo-600 text-indigo-700 bg-indigo-50/50 rounded-t-xl'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Bot className="w-4 h-4 text-indigo-600" />
+            <span>1. Asistente Técnico</span>
+            <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
+              Chat
+            </span>
+          </button>
+
+          {/* Pestaña 2: Diccionario de Reglas y Términos */}
           <button
             onClick={() => setActiveTab('reglas')}
-            className={`flex items-center gap-2 px-5 py-3 text-sm font-bold border-b-2 transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'reglas'
                 ? 'border-indigo-600 text-indigo-700 bg-indigo-50/50 rounded-t-xl'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            <Lightbulb className="w-4 h-4 text-indigo-600" />
-            <span>Pestaña 1: Diccionario de Reglas y Términos Aprendidos (Opción B)</span>
-            <span className="ml-1 text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-bold">
+            <Lightbulb className="w-4 h-4 text-amber-500" />
+            <span>2. Memoria & Reglas</span>
+            <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-bold">
               {stats.activas} activas
             </span>
           </button>
 
+          {/* Pestaña 3: Casos Históricos RAG */}
           <button
             onClick={() => setActiveTab('rag')}
-            className={`flex items-center gap-2 px-5 py-3 text-sm font-bold border-b-2 transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'rag'
                 ? 'border-purple-600 text-purple-700 bg-purple-50/50 rounded-t-xl'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            <BookOpen className="w-4 h-4 text-purple-600" />
-            <span>Pestaña 2: Base de Conocimiento RAG Geotécnico (Opción A)</span>
-            <span className="ml-1 text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-bold">
+            <FolderArchive className="w-4 h-4 text-purple-600" />
+            <span>3. Casos RAG</span>
+            <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-bold">
               {stats.totalCasosRAG} casos
+            </span>
+          </button>
+
+          {/* Pestaña 4: Bibliografía Oficial y Normas */}
+          <button
+            onClick={() => setActiveTab('bibliografia')}
+            className={`flex items-center gap-2 px-4 sm:px-5 py-3 text-xs sm:text-sm font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'bibliografia'
+                ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-xl'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <BookOpen className="w-4 h-4 text-blue-600" />
+            <span>4. Bibliografía & Normas</span>
+            <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold">
+              NCh / ASTM
             </span>
           </button>
         </div>
 
-        {/* CONTENIDO PESTAÑA 1: REGLAS Y TÉRMINOS APRENDIDOS (OPCIÓN B) */}
+        {/* PESTAÑA 1: ASISTENTE TÉCNICO INTERACTIVO */}
+        {activeTab === 'asistente' && (
+          <AsistenteChatSection />
+        )}
+
+        {/* PESTAÑA 2: REGLAS Y TÉRMINOS APRENDIDOS */}
         {activeTab === 'reglas' && (
           <div className="space-y-4">
             {/* Barra de Búsqueda y Filtros */}
@@ -449,17 +511,13 @@ export default function AprendizajeIaPage() {
                                   : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
                               }`}
                             >
-                              {r.estado === 'activo'
-                                ? '✓ Activa'
-                                : r.estado === 'pendiente_revision'
-                                ? '⏳ Revisión'
-                                : '✕ Descartada'}
+                              {r.estado === 'activo' ? '✓ Activa' : r.estado === 'pendiente_revision' ? '⏳ Pendiente' : '✕ Descartada'}
                             </button>
                           </td>
                           <td className="py-3.5 px-4 text-right">
                             <button
                               onClick={() => handleDeleteRegla(r.id)}
-                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                              className="p-1 rounded text-slate-400 hover:text-red-600 transition-colors cursor-pointer"
                               title="Eliminar regla"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -475,85 +533,68 @@ export default function AprendizajeIaPage() {
           </div>
         )}
 
-        {/* CONTENIDO PESTAÑA 2: RAG GEOTÉCNICO HISTÓRICO (OPCIÓN A) */}
+        {/* PESTAÑA 3: CASOS HISTÓRICOS RAG */}
         {activeTab === 'rag' && (
           <div className="space-y-6">
-            {/* Banner explicativo de RAG */}
-            <div className="bg-gradient-to-r from-purple-900 via-indigo-950 to-slate-900 p-5 rounded-2xl text-white shadow-md">
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-purple-300 shrink-0 border border-white/10">
-                  <BookOpen className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-base text-purple-100">
-                    ¿Cómo aprende el Asistente IA de las cotizaciones históricas aprobadas?
-                  </h3>
-                  <p className="text-xs text-purple-200/90 mt-1 max-w-3xl leading-relaxed">
-                    Cada vez que un asesor comercial finaliza y emite una propuesta definitiva (PDF oficial), el sistema indexa sus ensayos, cantidades y cláusulas como caso de estudio. <strong>Los borradores no finalizados quedan estrictamente excluidos</strong> para evitar sesgos o propuestas incompletas. Cuando entra una nueva solicitud, el RAG recupera los casos más parecidos y se los inyecta a Gemini como ejemplos demostrativos (Few-Shot Prompting). Así, la IA replica el criterio técnico real de IDIEM sin re-entrenar pesos.
-                  </p>
-                </div>
+            {/* Simulador de Búsqueda Semántica RAG */}
+            <div className="bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-900 text-white rounded-3xl p-6 shadow-xl border border-indigo-800/40">
+              <div className="flex items-center gap-2.5 mb-2">
+                <Sparkles className="w-5 h-5 text-indigo-400" />
+                <h3 className="font-bold text-base tracking-wide">
+                  Simulador de Similitud Semántica RAG Geotécnico
+                </h3>
               </div>
-            </div>
-
-            {/* Simulador Interactivo de Búsqueda RAG */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-              <h4 className="font-bold text-sm text-slate-900 mb-2 flex items-center gap-2">
-                <Cpu className="w-4 h-4 text-indigo-600" />
-                <span>Simulador de Inyección RAG en Tiempo Real</span>
-              </h4>
-              <p className="text-xs text-slate-500 mb-3">
-                Ingresa una solicitud técnica de prueba para ver qué cotizaciones históricas recupera el motor y cómo se presentan a Gemini:
+              <p className="text-xs text-indigo-200 max-w-2xl mb-4 leading-relaxed">
+                Prueba cómo el motor vectorial y semántico encuentra proyectos previos similares y prepara el bloque de ejemplos reales (Few-Shot Prompting) para el Asistente de Cotizaciones.
               </p>
 
-              <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex flex-col sm:flex-row gap-2.5 mb-4">
                 <input
                   type="text"
                   value={simuladorQuery}
                   onChange={(e) => setSimuladorQuery(e.target.value)}
-                  placeholder="Ej: Análisis de roca en Cantera Melipilla para colpas de escolleras..."
-                  className="flex-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  placeholder="Escribe una descripción de proyecto geotécnico..."
+                  className="flex-1 px-4 py-2.5 bg-white/10 border border-white/20 rounded-xl text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
                 <button
                   onClick={handleSimularRAG}
-                  disabled={simulando}
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0"
+                  disabled={simulando || !simuladorQuery.trim()}
+                  className="px-5 py-2.5 bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white font-bold rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shrink-0"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>{simulando ? 'Simulando...' : '🔍 Simular Búsqueda RAG'}</span>
+                  <RefreshCw className={`w-4 h-4 ${simulando ? 'animate-spin' : ''}`} />
+                  <span>{simulando ? 'Buscando...' : 'Simular Búsqueda RAG'}</span>
                 </button>
               </div>
 
               {simuladorResultados && (
-                <div className="mt-4 pt-4 border-t border-slate-100 animate-in fade-in duration-150">
-                  <div className="text-xs font-bold text-slate-700 mb-2">
-                    🎯 Casos históricos más afines recuperados ({simuladorResultados.casos.length}):
-                  </div>
+                <div className="mt-4 p-4 bg-white/5 border border-white/10 rounded-2xl">
+                  <h4 className="text-xs font-bold text-indigo-300 uppercase tracking-wider mb-2">
+                    Resultados Similares Encontrados ({simuladorResultados.casos.length}):
+                  </h4>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                    {simuladorResultados.casos.map((c, i) => (
-                      <div key={i} className="p-3 bg-purple-50/60 border border-purple-200 rounded-xl text-xs">
-                        <div className="flex items-center justify-between font-bold text-purple-950 mb-1">
+                    {simuladorResultados.casos.map((c) => (
+                      <div key={c.id} className="p-3 bg-white/10 rounded-xl text-xs border border-white/10">
+                        <div className="flex justify-between items-center text-indigo-200 font-bold mb-1">
                           <span>{c.codigoCotizacion}</span>
-                          <span className="text-[10px] bg-purple-200/80 px-1.5 py-0.5 rounded text-purple-900 font-mono">
-                            {c.totalUf} UF
-                          </span>
+                          <span>{c.totalUf.toFixed(2)} UF</span>
                         </div>
-                        <p className="font-semibold text-slate-800">{c.nombreObra}</p>
-                        <p className="text-[11px] text-slate-600 mt-1">
-                          Cliente: <strong>{c.empresaCliente}</strong> | CC: {c.centroCosto}
+                        <p className="font-semibold text-white">{c.nombreObra}</p>
+                        <p className="text-slate-300 text-[11px]">
+                          Cliente: {c.empresaCliente} · {c.ciudad}
                         </p>
-                        <div className="mt-2 text-[11px] text-slate-700">
-                          <span className="font-bold text-purple-900">Ensayos ({c.ensayosCotizados.length}): </span>
-                          {c.ensayosCotizados.map((e) => `[Cód ${e.codigo} x${e.cantidad}]`).join(', ')}
+                        <div className="mt-2 text-[10px] text-indigo-300">
+                          {c.ensayosCotizados.length} ensayos indexados
                         </div>
                       </div>
                     ))}
                   </div>
 
                   <details className="mt-2">
-                    <summary className="text-xs font-bold text-indigo-700 cursor-pointer hover:underline">
+                    <summary className="text-xs font-bold text-indigo-300 cursor-pointer hover:underline">
                       Ver fragmento de prompt exacto inyectado a Gemini (Few-Shot)
                     </summary>
-                    <pre className="mt-2 p-3 bg-slate-900 text-emerald-400 font-mono text-[11px] rounded-xl overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                    <pre className="mt-2 p-3 bg-slate-950 text-emerald-400 font-mono text-[11px] rounded-xl overflow-x-auto whitespace-pre-wrap leading-relaxed">
                       {simuladorResultados.snippet}
                     </pre>
                   </details>
@@ -619,6 +660,11 @@ export default function AprendizajeIaPage() {
             </div>
           </div>
         )}
+
+        {/* PESTAÑA 4: BIBLIOGRAFÍA OFICIAL Y NORMAS */}
+        {activeTab === 'bibliografia' && (
+          <BibliografiaSection hideHeaderBanner={true} />
+        )}
       </main>
 
       {/* Modal para Crear Regla Manual */}
@@ -660,7 +706,7 @@ export default function AprendizajeIaPage() {
                   <option value="">Selecciona un ensayo del tarifario...</option>
                   {tarifario.map((t) => (
                     <option key={t.id} value={t.code}>
-                      [Cód {t.code}] {t.designation.slice(0, 65)}... ({t.ufPrice} UF)
+                      [Cód {t.code}] {(t.designation || '').slice(0, 65)}... ({t.ufPrice} UF)
                     </option>
                   ))}
                 </select>
@@ -703,3 +749,16 @@ export default function AprendizajeIaPage() {
   );
 }
 
+export default function AprendizajeIaPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+          <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <AprendizajeIaContent />
+    </Suspense>
+  );
+}

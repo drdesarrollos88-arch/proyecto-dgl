@@ -113,9 +113,12 @@ export default function Navbar() {
 
   const isCotizacionActive = pathname.startsWith('/cotizador') || pathname.startsWith('/cotizaciones');
   const isVentasActive = pathname.startsWith('/ventas') || showCierreModal;
-  const isTarifarioActive = pathname.startsWith('/tarifario');
+  const isTarifarioActive = pathname.startsWith('/tarifario') || pathname === '/configuracion/tarifario';
   const isClientesActive = pathname.startsWith('/clientes');
-  const isConfigActive = pathname.startsWith('/usuarios') || pathname.startsWith('/configuracion') || showFormatoModal;
+  const isConfigActive =
+    pathname.startsWith('/usuarios') ||
+    (pathname.startsWith('/configuracion') && pathname !== '/configuracion/tarifario') ||
+    showFormatoModal;
 
   return (
     <header className="bg-white border-b border-slate-200 shadow-xs sticky top-0 z-40">
@@ -378,6 +381,22 @@ export default function Navbar() {
                         </span>
                         <span className="text-[11px] text-slate-500 font-normal">
                           Catálogo de ensayos acreditados LE-304
+                        </span>
+                      </div>
+                    </Link>
+
+                    <Link
+                      href="/configuracion/tarifario"
+                      onClick={() => setActiveDropdown(null)}
+                      className="flex items-start gap-2.5 px-3.5 py-2 hover:bg-red-50 text-slate-700 hover:text-red-700 transition-colors group"
+                    >
+                      <FolderTree className="w-4 h-4 text-red-600 mt-0.5 shrink-0 group-hover:scale-110 transition-transform" />
+                      <div className="flex flex-col">
+                        <span className="text-xs font-semibold leading-snug text-slate-800 group-hover:text-red-700">
+                          Configurar Estructura
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-normal">
+                          Estructura de categorías y subcategorías
                         </span>
                       </div>
                     </Link>
@@ -650,23 +669,6 @@ export default function Navbar() {
                       </div>
                     )}
 
-                    {/* Configurar Tarifario */}
-                    <Link
-                      href="/configuracion/tarifario"
-                      onClick={() => setActiveDropdown(null)}
-                      className="flex items-start gap-2.5 px-3.5 py-2 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 transition-colors group"
-                    >
-                      <FolderTree className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0 group-hover:scale-110 transition-transform" />
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold leading-snug text-slate-800 group-hover:text-emerald-800">
-                          Configurar Tarifario
-                        </span>
-                        <span className="text-[11px] text-slate-500 font-normal">
-                          Estructura de categorías y subcategorías
-                        </span>
-                      </div>
-                    </Link>
-
                     {/* Correlativos Oficiales */}
                     <Link
                       href="/configuracion/correlativos"
@@ -684,7 +686,7 @@ export default function Navbar() {
                       </div>
                     </Link>
 
-                    {/* Memoria y Aprendizaje IA (Opciones A y B) */}
+                    {/* Inteligencia Artificial Integral */}
                     <Link
                       href="/configuracion/aprendizaje-ia"
                       onClick={() => setActiveDropdown(null)}
@@ -693,33 +695,13 @@ export default function Navbar() {
                       <Sparkles className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0 group-hover:scale-110 transition-transform" />
                       <div className="flex flex-col">
                         <span className="text-xs font-semibold leading-snug text-slate-800 group-hover:text-indigo-800 flex items-center gap-1.5">
-                          <span>Memoria y Aprendizaje IA</span>
+                          <span>Inteligencia Artificial</span>
                           <span className="bg-indigo-100 text-indigo-800 text-[9px] font-bold px-1.5 py-0.2 rounded-full">
-                            Opciones A y B
+                            Asistente & RAG
                           </span>
                         </span>
                         <span className="text-[11px] text-slate-500 font-normal">
-                          Supervisión de reglas, sinónimos y RAG histórico
-                        </span>
-                      </div>
-                    </Link>
-
-                    {/* Bibliografía Técnica e Histórica IA */}
-                    <Link
-                      href="/configuracion/bibliografia"
-                      onClick={() => setActiveDropdown(null)}
-                      className="flex items-start gap-2.5 px-3.5 py-2 hover:bg-indigo-50 text-slate-700 hover:text-indigo-800 transition-colors group"
-                    >
-                      <BookOpen className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0 group-hover:scale-110 transition-transform" />
-                      <div className="flex flex-col">
-                        <span className="text-xs font-semibold leading-snug text-slate-800 group-hover:text-indigo-800 flex items-center gap-1.5">
-                          <span>Bibliografía y Normas IA</span>
-                          <span className="bg-indigo-100 text-indigo-800 text-[9px] font-bold px-1.5 py-0.2 rounded-full">
-                            RAG Oficial
-                          </span>
-                        </span>
-                        <span className="text-[11px] text-slate-500 font-normal">
-                          Normas NCh, ASTM, MOP y base técnica
+                          Asistente técnico, memoria, reglas y bibliografía
                         </span>
                       </div>
                     </Link>

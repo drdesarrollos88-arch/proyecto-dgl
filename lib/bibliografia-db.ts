@@ -175,7 +175,7 @@ export async function getBibliografia(filtro?: {
       if (filtro?.limit) q = q.limit(filtro.limit);
 
       const { data, error } = await q;
-      if (!error && Array.isArray(data) && data.length > 0) {
+      if (!error && Array.isArray(data)) {
         return data.map((row) => ({
           id: row.id,
           tipo: row.tipo as TipoBibliografia,
@@ -277,10 +277,10 @@ export async function saveBibliografiaItem(
   _cachedBibliografia = items;
   persistLocally(items);
 
-  // Guardar en Supabase de forma asíncrona
+  // Guardar en Supabase de forma persistente
   if (isSupabaseConfigured && supabaseAdmin) {
-    Promise.resolve(
-      supabaseAdmin
+    try {
+      await supabaseAdmin
         .from('bibliografia')
         .upsert({
           id: fullItem.id,
@@ -297,8 +297,10 @@ export async function saveBibliografiaItem(
           creado_por: fullItem.creadoPor,
           created_at: fullItem.creadoEn,
           updated_at: fullItem.actualizadoEn,
-        })
-    ).catch(() => {});
+        });
+    } catch (e) {
+      console.warn('Error guardando en Supabase bibliografia:', e);
+    }
   }
 
   return fullItem;
@@ -317,12 +319,14 @@ export async function toggleEstadoBibliografia(id: string): Promise<Bibliografia
   persistLocally(items);
 
   if (isSupabaseConfigured && supabaseAdmin) {
-    Promise.resolve(
-      supabaseAdmin
+    try {
+      await supabaseAdmin
         .from('bibliografia')
         .update({ estado: item.estado, updated_at: item.actualizadoEn })
-        .eq('id', id)
-    ).catch(() => {});
+        .eq('id', id);
+    } catch (e) {
+      console.warn('Error actualizando estado en Supabase:', e);
+    }
   }
 
   return item;
@@ -341,12 +345,14 @@ export async function deleteBibliografiaItem(id: string): Promise<boolean> {
   persistLocally(items);
 
   if (isSupabaseConfigured && supabaseAdmin) {
-    Promise.resolve(
-      supabaseAdmin
+    try {
+      await supabaseAdmin
         .from('bibliografia')
         .delete()
-        .eq('id', id)
-    ).catch(() => {});
+        .eq('id', id);
+    } catch (e) {
+      console.warn('Error eliminando en Supabase:', e);
+    }
   }
 
   return true;

@@ -14,12 +14,14 @@ function cleanFilenameToTitle(filename: string): string {
 }
 
 function extractPdfTextSnippet(buffer: Buffer, maxChars = 12000): string {
+  // Limitar la muestra a máx 128 KB para procesamiento ultra rápido (< 2ms) en Cloudflare Workers
+  const boundedBuf = buffer.subarray(0, Math.min(buffer.length, 128 * 1024));
   try {
-    const rawStr = buffer.toString('latin1');
+    const rawStr = boundedBuf.toString('latin1');
     const matches = rawStr.match(/\(([^)]+)\)\s*Tj/g);
-    if (matches && matches.length > 10) {
+    if (matches && matches.length > 5) {
       const chunks: string[] = [];
-      matches.slice(0, 500).forEach((m) => {
+      matches.slice(0, 300).forEach((m) => {
         const cleaned = m.replace(/^\(/, '').replace(/\)\s*Tj$/, '').trim();
         if (cleaned.length > 1) chunks.push(cleaned);
       });
@@ -28,7 +30,7 @@ function extractPdfTextSnippet(buffer: Buffer, maxChars = 12000): string {
     }
   } catch {}
 
-  const printable = buffer.toString('utf-8').replace(/[^\x20-\x7E\xA0-\xFF\n\r\t]/g, ' ');
+  const printable = boundedBuf.toString('utf-8').replace(/[^\x20-\x7E\xA0-\xFF\n\r\t]/g, ' ');
   return printable.replace(/\s+/g, ' ').trim().slice(0, maxChars);
 }
 

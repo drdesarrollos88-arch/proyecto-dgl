@@ -332,8 +332,15 @@ export default function BibliografiaPage() {
         });
 
         if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || 'Error al procesar subida');
+          let errorMsg = `Error HTTP ${res.status}`;
+          try {
+            const errData = await res.json();
+            if (errData && errData.error) errorMsg = errData.error;
+          } catch {
+            const errText = await res.text().catch(() => '');
+            if (errText && errText.length < 150) errorMsg = errText;
+          }
+          throw new Error(errorMsg);
         }
 
         const data = await res.json();
@@ -358,6 +365,58 @@ export default function BibliografiaPage() {
 
     // Actualizar lista principal
     await fetchItems();
+  };
+
+  const handleRetryBulkItem = async (index: number) => {
+    if (isBulkUploading) return;
+    const item = bulkQueue[index];
+    if (!item) return;
+
+    setBulkQueue((prev) =>
+      prev.map((it, idx) => (idx === index ? { ...it, status: 'uploading', errorMessage: undefined } : it))
+    );
+
+    try {
+      const formData = new FormData();
+      formData.append('tipo', bulkTipo);
+      formData.append('titulo', item.titulo.trim() || item.originalName);
+      formData.append('descripcion', item.descripcion.trim());
+      formData.append('tags', item.tags.trim());
+      formData.append('file', item.file);
+
+      const res = await fetch('/api/bibliografia', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        let errorMsg = `Error HTTP ${res.status}`;
+        try {
+          const errData = await res.json();
+          if (errData && errData.error) errorMsg = errData.error;
+        } catch {
+          const errText = await res.text().catch(() => '');
+          if (errText && errText.length < 150) errorMsg = errText;
+        }
+        throw new Error(errorMsg);
+      }
+
+      const data = await res.json();
+      if (data.item) {
+        setBulkQueue((prev) =>
+          prev.map((it, idx) => (idx === index ? { ...it, status: 'success' } : it))
+        );
+        await fetchItems();
+      }
+    } catch (err: any) {
+      setBulkQueue((prev) =>
+        prev.map((it, idx) =>
+          idx === index
+            ? { ...it, status: 'error', errorMessage: err?.message || 'Error al cargar' }
+            : it
+        )
+      );
+    }
   };
 
   const filteredItems = items.filter((it) => {
@@ -1064,10 +1123,21 @@ export default function BibliografiaPage() {
                           </span>
                         )}
                         {item.status === 'error' && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-800 flex items-center gap-1" title={item.errorMessage}>
-                            <AlertTriangle className="w-3 h-3 text-red-600" />
-                            <span>Error al cargar</span>
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-800 flex items-center gap-1 max-w-[220px]" title={item.errorMessage}>
+                              <AlertTriangle className="w-3 h-3 text-red-600 shrink-0" />
+                              <span className="truncate">{item.errorMessage || 'Error al cargar'}</span>
+                            </span>
+                            {!isBulkUploading && (
+                              <button
+                                type="button"
+                                onClick={() => handleRetryBulkItem(idx)}
+                                className="text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-md cursor-pointer transition-colors"
+                              >
+                                Reintentar
+                              </button>
+                            )}
+                          </div>
                         )}
 
                         {!isBulkUploading && item.status !== 'success' && (

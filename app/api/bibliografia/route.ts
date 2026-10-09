@@ -77,43 +77,54 @@ export async function POST(req: NextRequest) {
 
         if (lowerName.endsWith('.pdf')) {
           tipoArchivo = 'pdf';
-          // Para PDF, intentamos extraer texto legible de sus flujos
-          const rawStr = buffer.toString('latin1');
+          // Para PDF, tomar una muestra representativa acotada (máx 128 KB) para extraer texto
+          // de forma ultra rápida sin exceder el límite de CPU (50ms) en Cloudflare Workers
+          const sampleSize = Math.min(buffer.length, 128 * 1024);
+          const sampleBuffer = buffer.subarray(0, sampleSize);
+          const rawStr = sampleBuffer.toString('latin1');
           const textChunks: string[] = [];
+
           // Extraer secuencias entre paréntesis en operadores Tj / TJ
           const matches = rawStr.match(/\(([^)]+)\)\s*Tj/g);
-          if (matches && matches.length > 10) {
-            matches.forEach((m) => {
+          if (matches && matches.length > 5) {
+            matches.slice(0, 300).forEach((m) => {
               const cleaned = m.replace(/^\(/, '').replace(/\)\s*Tj$/, '').trim();
               if (cleaned.length > 1) textChunks.push(cleaned);
             });
             contenidoTexto = textChunks.join(' ');
           }
+
           if (!contenidoTexto || contenidoTexto.length < 50) {
-            // Extraer caracteres ASCII imprimibles
-            const printable = buffer.toString('utf-8').replace(/[^\x20-\x7E\xA0-\xFF\n\r\t]/g, ' ');
-            contenidoTexto = printable.replace(/\s+/g, ' ').trim().slice(0, 50000);
+            // Extraer caracteres ASCII imprimibles solo de la muestra acotada
+            const printable = sampleBuffer.toString('utf-8').replace(/[^\x20-\x7E\xA0-\xFF\n\r\t]/g, ' ');
+            contenidoTexto = printable.replace(/\s+/g, ' ').trim().slice(0, 10000);
           }
-          if (!contenidoTexto) {
-            contenidoTexto = `Documento técnico normativo IDIEM: "${file.name}". Referencia de laboratorio geotécnico DGL.`;
+
+          if (!contenidoTexto || contenidoTexto.length < 30) {
+            contenidoTexto = descripcion
+              ? `${descripcion}\n\nDocumento técnico normativo: "${file.name}".`
+              : `Documento técnico normativo IDIEM: "${file.name}". Referencia de laboratorio geotécnico DGL.`;
           }
         } else if (lowerName.endsWith('.docx') || lowerName.endsWith('.doc')) {
           tipoArchivo = 'docx';
           try {
             contenidoTexto = await parseWordToText(buffer);
           } catch {
-            contenidoTexto = buffer.toString('utf-8').slice(0, 50000);
+            const sample = buffer.subarray(0, 128 * 1024);
+            contenidoTexto = sample.toString('utf-8').slice(0, 10000);
           }
         } else if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls')) {
           tipoArchivo = 'excel';
           try {
             contenidoTexto = await parseExcelToText(buffer);
           } catch {
-            contenidoTexto = buffer.toString('utf-8').slice(0, 50000);
+            const sample = buffer.subarray(0, 128 * 1024);
+            contenidoTexto = sample.toString('utf-8').slice(0, 10000);
           }
         } else {
           tipoArchivo = 'txt';
-          contenidoTexto = buffer.toString('utf-8');
+          const sample = buffer.subarray(0, 128 * 1024);
+          contenidoTexto = sample.toString('utf-8').slice(0, 10000);
         }
       } else {
         contenidoTexto = (formData.get('contenidoTexto') as string) || '';
@@ -131,11 +142,11 @@ export async function POST(req: NextRequest) {
       tamanoBytes = contenidoTexto.length;
     }
 
-    if (!titulo || !contenidoTexto) {
-      return NextResponse.json(
-        { error: 'Título y contenido del documento son obligatorios.' },
-        { status: 400 }
-      );
+    if (!titulo) {
+      titulo = nombreArchivoOriginal?.replace(/\.[^/.]+$/, '') || 'Documento sin título';
+    }
+    if (!contenidoTexto) {
+      contenidoTexto = descripcion || `Documento: "${titulo}". Referencia de laboratorio geotécnico DGL.`;
     }
 
     const saved = await saveBibliografiaItem({

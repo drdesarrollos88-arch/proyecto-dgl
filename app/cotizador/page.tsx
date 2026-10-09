@@ -115,6 +115,39 @@ function getNextVersionCode(currentCode: string): string {
   return `${trimmed}-V2`;
 }
 
+// Recalcular numeración de partidas e ítems (1.1.{i} o 1.1.{partida}.{ensayo})
+function recalculateItemNumbers(itemList: CotizacionItem[]): CotizacionItem[] {
+  const hasDividers = itemList.some((it) => it.isDivider);
+
+  if (!hasDividers) {
+    return itemList.map((it, idx) => ({
+      ...it,
+      itemNumber: `1.1.${idx + 1}`,
+    }));
+  }
+
+  let dividerCount = 0;
+  let itemInDividerCount = 0;
+
+  return itemList.map((it) => {
+    if (it.isDivider) {
+      dividerCount++;
+      itemInDividerCount = 0;
+      return {
+        ...it,
+        itemNumber: `1.1.${dividerCount}`,
+      };
+    } else {
+      const currentSection = dividerCount === 0 ? 1 : dividerCount;
+      itemInDividerCount++;
+      return {
+        ...it,
+        itemNumber: `1.1.${currentSection}.${itemInDividerCount}`,
+      };
+    }
+  });
+}
+
 // Separar título principal y especificaciones/notas del detalle del ensayo
 function parseDesignation(raw: string): { title: string; detail: string } {
   if (!raw) return { title: '', detail: '' };
@@ -646,7 +679,7 @@ function CotizadorContent() {
           if (c.showEconomicIndicators !== undefined) {
             setShowIndicatorsInPdf(c.showEconomicIndicators !== false);
           }
-          if (Array.isArray(c.items)) setItems(c.items);
+          if (Array.isArray(c.items)) setItems(recalculateItemNumbers(c.items));
           if (c.aiChatState?.messages && Array.isArray(c.aiChatState.messages) && c.aiChatState.messages.length > 0) {
             assistantChatMessagesRef.current = c.aiChatState.messages;
             assistantActiveAnalisisRef.current = c.aiChatState.activeAnalisis || null;
@@ -1060,7 +1093,7 @@ function CotizadorContent() {
       sku: tarifarioItem.sku,
     };
 
-    setItems((prev) => [...prev, newItem]);
+    setItems((prev) => recalculateItemNumbers([...prev, newItem]));
 
     // Reforzar aprendizaje de equivalencia por selección directa en el buscador
     const currentQuery = searchQuery.trim();
@@ -1079,6 +1112,77 @@ function CotizadorContent() {
     setSearchQuery('');
     setAiSuggestions([]);
     setDropdownOpen(false);
+  };
+
+  // Agregar o subdividir partidas mediante divisores
+  const handleAddDivider = () => {
+    setItems((prev) => {
+      const existingDividers = prev.filter((it) => it.isDivider);
+
+      if (existingDividers.length === 0) {
+        const divider1: CotizacionItem = {
+          id: `div-${Date.now()}-1`,
+          itemNumber: '1.1.1',
+          code: 'DIVIDER',
+          designation: 'Partida 1: Ensayos para Calicatas',
+          dividerTitle: 'Partida 1: Ensayos para Calicatas',
+          norm: '',
+          minWeightKg: 0,
+          unit: '',
+          ufPrice: 0,
+          factor: 1,
+          quantity: 0,
+          subtotalUf: 0,
+          subtotalClp: 0,
+          isDivider: true,
+        };
+
+        const divider2: CotizacionItem = {
+          id: `div-${Date.now()}-2`,
+          itemNumber: '1.1.2',
+          code: 'DIVIDER',
+          designation: 'Partida 2: Ensayos para Sondajes',
+          dividerTitle: 'Partida 2: Ensayos para Sondajes',
+          norm: '',
+          minWeightKg: 0,
+          unit: '',
+          ufPrice: 0,
+          factor: 1,
+          quantity: 0,
+          subtotalUf: 0,
+          subtotalClp: 0,
+          isDivider: true,
+        };
+
+        if (prev.length > 0) {
+          const midPoint = Math.ceil(prev.length / 2);
+          const firstHalf = prev.slice(0, midPoint);
+          const secondHalf = prev.slice(midPoint);
+          return recalculateItemNumbers([divider1, ...firstHalf, divider2, ...secondHalf]);
+        } else {
+          return recalculateItemNumbers([divider1, divider2]);
+        }
+      } else {
+        const nextNum = existingDividers.length + 1;
+        const newDivider: CotizacionItem = {
+          id: `div-${Date.now()}`,
+          itemNumber: `1.1.${nextNum}`,
+          code: 'DIVIDER',
+          designation: `Partida ${nextNum}: Nueva Partida`,
+          dividerTitle: `Partida ${nextNum}: Nueva Partida`,
+          norm: '',
+          minWeightKg: 0,
+          unit: '',
+          ufPrice: 0,
+          factor: 1,
+          quantity: 0,
+          subtotalUf: 0,
+          subtotalClp: 0,
+          isDivider: true,
+        };
+        return recalculateItemNumbers([...prev, newDivider]);
+      }
+    });
   };
 
   // Update item field (quantity, factor, base ufPrice, designation text, or norm)
@@ -1122,11 +1226,7 @@ function CotizadorContent() {
 
   // Remove item
   const handleRemoveItem = (id: string) => {
-    setItems((prev) =>
-      prev
-        .filter((it) => it.id !== id)
-        .map((it, idx) => ({ ...it, itemNumber: `1.1.${idx + 1}` }))
-    );
+    setItems((prev) => recalculateItemNumbers(prev.filter((it) => it.id !== id)));
   };
 
   // Reorganizar orden de ensayos (Mover y Drag & Drop)
@@ -1139,7 +1239,7 @@ function CotizadorContent() {
       const updated = [...prev];
       const [moved] = updated.splice(fromIndex, 1);
       updated.splice(toIndex, 0, moved);
-      return updated.map((it, idx) => ({ ...it, itemNumber: `1.1.${idx + 1}` }));
+      return recalculateItemNumbers(updated);
     });
   };
 
@@ -1180,6 +1280,7 @@ function CotizadorContent() {
     let totalWeight = 0;
 
     items.forEach((it) => {
+      if (it.isDivider) return;
       totalUf += it.subtotalUf;
       totalClp += it.subtotalClp;
       const w = typeof it.minWeightKg === 'number' ? it.minWeightKg : parseFloat(String(it.minWeightKg));
@@ -1193,6 +1294,28 @@ function CotizadorContent() {
       totalClp: Math.round(totalClp),
       totalWeight: Math.round(totalWeight * 10) / 10,
     };
+  }, [items]);
+
+  // Subtotales acumulados por cada divisor / partida
+  const partidaTotals = useMemo(() => {
+    const totalsMap: Record<string, { count: number; subtotalUf: number; subtotalClp: number }> = {};
+    let currentDividerId = '';
+
+    items.forEach((it) => {
+      if (it.isDivider) {
+        currentDividerId = it.id;
+        totalsMap[currentDividerId] = { count: 0, subtotalUf: 0, subtotalClp: 0 };
+      } else if (currentDividerId) {
+        if (!totalsMap[currentDividerId]) {
+          totalsMap[currentDividerId] = { count: 0, subtotalUf: 0, subtotalClp: 0 };
+        }
+        totalsMap[currentDividerId].count += 1;
+        totalsMap[currentDividerId].subtotalUf += it.subtotalUf;
+        totalsMap[currentDividerId].subtotalClp += it.subtotalClp;
+      }
+    });
+
+    return totalsMap;
   }, [items]);
 
   const totalUsd = useMemo(() => {
@@ -1951,10 +2074,7 @@ function CotizadorContent() {
         }
       }
 
-      return updated.map((it, i) => ({
-        ...it,
-        itemNumber: `1.1.${i + 1}`,
-      }));
+      return recalculateItemNumbers(updated);
     });
 
     setStatusMessage({
@@ -2005,7 +2125,7 @@ function CotizadorContent() {
         };
       });
 
-      setItems((prev) => [...prev, ...newItems]);
+      setItems((prev) => recalculateItemNumbers([...prev, ...newItems]));
 
       // Retroalimentar el sistema de aprendizaje continuo (Opción B)
       for (const e of data.ensayos) {
@@ -2962,17 +3082,32 @@ function CotizadorContent() {
               <h2 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
                 <span>1.1 Ensayos y Servicios Solicitados</span>
                 <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                  {items.length} {items.length === 1 ? 'ítem' : 'ítems'}
+                  {items.filter((it) => !it.isDivider).length} {items.filter((it) => !it.isDivider).length === 1 ? 'ensayo' : 'ensayos'}
                 </span>
+                {items.some((it) => it.isDivider) && (
+                  <span className="text-[10px] font-semibold text-blue-700 bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full">
+                    {items.filter((it) => it.isDivider).length} {items.filter((it) => it.isDivider).length === 1 ? 'partida' : 'partidas'}
+                  </span>
+                )}
               </h2>
               <p className="text-[11px] text-slate-500 mt-0.5">
                 Busca cualquier ensayo por nombre o norma para agregarlo a la propuesta.
               </p>
             </div>
 
-            {/* Buscador inteligente de Ensayos */}
+            {/* Acciones y Buscador inteligente de Ensayos */}
             <div className="flex items-center gap-2 w-full md:w-auto">
-              <div ref={searchRef} className="relative w-full md:w-[480px]">
+              <button
+                type="button"
+                onClick={handleAddDivider}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50/90 hover:bg-blue-100 border border-blue-200 rounded-lg transition cursor-pointer shadow-2xs whitespace-nowrap active:scale-95"
+                title="Subdividir en partidas con divisores (ej. 1.1.1 Calicatas, 1.1.2 Sondajes)"
+              >
+                <FolderPlus className="w-3.5 h-3.5 text-blue-600" />
+                <span>+ Divisor / Partida</span>
+              </button>
+
+              <div ref={searchRef} className="relative w-full md:w-[460px]">
                 <div className="relative flex items-center">
                   <Search className="w-3.5 h-3.5 text-blue-600 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
@@ -3253,6 +3388,94 @@ function CotizadorContent() {
                       </tr>
                     ) : (
                       items.map((item, idx) => {
+                        if (item.isDivider) {
+                          return (
+                            <tr
+                              key={item.id}
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, idx)}
+                              onDragOver={(e) => handleDragOver(e, idx)}
+                              onDrop={(e) => handleDrop(e, idx)}
+                              onDragEnd={handleDragEnd}
+                              className={`transition-colors select-none ${
+                                draggedItemIndex === idx
+                                  ? 'opacity-30 bg-blue-100/50 border-2 border-dashed border-blue-400'
+                                  : dragOverItemIndex === idx
+                                  ? 'bg-blue-50 border-t-2 border-blue-600'
+                                  : 'bg-gradient-to-r from-blue-50/90 via-indigo-50/40 to-slate-50 border-y-2 border-blue-300'
+                              }`}
+                            >
+                              <td colSpan={11} className="py-2.5 px-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-2.5 flex-1">
+                                    <div
+                                      className="cursor-grab active:cursor-grabbing p-1 text-blue-400 hover:text-blue-700 rounded transition"
+                                      title="Arrastra para reordenar esta partida"
+                                    >
+                                      <GripVertical className="w-4 h-4" />
+                                    </div>
+
+                                    <span className="font-mono text-xs font-bold text-blue-900 bg-blue-200/80 border border-blue-300 px-2.5 py-0.5 rounded-md shadow-2xs">
+                                      {item.itemNumber}
+                                    </span>
+
+                                    <div className="flex items-center gap-2 flex-1 max-w-lg">
+                                      <input
+                                        type="text"
+                                        value={item.dividerTitle || item.designation}
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          setItems((prev) =>
+                                            prev.map((it) =>
+                                              it.id === item.id ? { ...it, designation: val, dividerTitle: val } : it
+                                            )
+                                          );
+                                        }}
+                                        placeholder="Nombre del divisor / partida (ej. Ensayos para Calicatas)..."
+                                        className="w-full text-xs font-bold text-slate-800 bg-white border border-blue-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                                      />
+                                    </div>
+
+                                    <span className="text-[11px] text-blue-700 font-medium hidden sm:inline">
+                                      • Partida
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      disabled={idx === 0}
+                                      onClick={() => handleMoveItem(idx, idx - 1)}
+                                      className="p-1 text-slate-400 hover:text-blue-600 disabled:opacity-20 cursor-pointer rounded transition hover:bg-white"
+                                      title="Mover partida arriba"
+                                    >
+                                      <ChevronUp className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={idx === items.length - 1}
+                                      onClick={() => handleMoveItem(idx, idx + 1)}
+                                      className="p-1 text-slate-400 hover:text-blue-600 disabled:opacity-20 cursor-pointer rounded transition hover:bg-white"
+                                      title="Mover partida abajo"
+                                    >
+                                      <ChevronDown className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveItem(item.id)}
+                                      className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer rounded transition hover:bg-rose-50 ml-1"
+                                      title="Eliminar este divisor"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        }
+
                         const finalUnitUf = item.ufPrice * item.factor;
                         const finalUnitDisplay =
                           currency === 'USD'
@@ -3275,7 +3498,23 @@ function CotizadorContent() {
                           item.designation.trim() !== originalTarifarioItem.designation.trim()
                         );
 
+                        // Encontrar la partida activa para este ensayo y verificar si es el último de la partida
+                        const hasDividers = items.some((it) => it.isDivider);
+                        const isLastItemOfSection = idx === items.length - 1 || !!items[idx + 1]?.isDivider;
+                        let activeDividerForThisItem: CotizacionItem | undefined;
+                        if (hasDividers) {
+                          for (let i = idx; i >= 0; i--) {
+                            if (items[i].isDivider) {
+                              activeDividerForThisItem = items[i];
+                              break;
+                            }
+                          }
+                        }
+
+                        const pTotal = activeDividerForThisItem ? partidaTotals[activeDividerForThisItem.id] : null;
+
                         return (
+                          <React.Fragment key={item.id}>
                           <tr
                             key={item.id}
                             draggable
@@ -3301,9 +3540,9 @@ function CotizadorContent() {
                                   <GripVertical className="w-3.5 h-3.5" />
                                 </div>
 
-                                {/* Item Number 1.1.X */}
+                                {/* Item Number 1.1.X o 1.1.X.Y */}
                                 <span className="font-mono text-xs font-semibold text-slate-600 min-w-[34px]">
-                                  1.1.{idx + 1}
+                                  {item.itemNumber || `1.1.${idx + 1}`}
                                 </span>
 
                                 {/* Up / Down Buttons */}
@@ -3554,7 +3793,34 @@ function CotizadorContent() {
                               </button>
                             </td>
                           </tr>
-                        );
+
+                          {/* Fila de subtotal por partida si es el último ensayo de la partida */}
+                          {isLastItemOfSection && activeDividerForThisItem && pTotal && pTotal.count > 0 && (
+                            <tr className="bg-slate-100/90 border-b-2 border-slate-300 font-semibold text-slate-800 text-xs">
+                              <td colSpan={8} className="py-2.5 px-3 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                                    Subtotal {activeDividerForThisItem.itemNumber} ({activeDividerForThisItem.dividerTitle || activeDividerForThisItem.designation}):
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-2 text-right font-bold font-mono text-slate-900 text-xs">
+                                {currency === 'USD'
+                                  ? `${(((pTotal.subtotalUf * ufValue) / dollarValue)).toFixed(2)} USD`
+                                  : currency === 'CLP'
+                                  ? `$${pTotal.subtotalClp.toLocaleString('es-CL')}`
+                                  : `${pTotal.subtotalUf.toFixed(2)} UF`}
+                              </td>
+                              <td className="py-2.5 px-2 text-right font-mono text-slate-600 text-xs">
+                                {currency === 'CLP'
+                                  ? `${pTotal.subtotalUf.toFixed(2)} UF`
+                                  : `$${pTotal.subtotalClp.toLocaleString('es-CL')}`}
+                              </td>
+                              <td className="py-2.5 px-1"></td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
                       })
                     )}
                   </tbody>

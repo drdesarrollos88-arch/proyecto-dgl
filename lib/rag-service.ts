@@ -126,13 +126,15 @@ function cotizacionToRagCase(cot: Cotizacion): CasoReferenciaRAG | null {
     centroCosto: cot.centroCosto || '1817 - Ensayos Básicos',
     ciudad: cot.city || 'Santiago',
     dominioGeotecnico: dominio,
-    ensayosCotizados: cot.items.map((i) => ({
-      codigo: i.code,
-      designacion: i.designation,
-      cantidad: i.quantity || 1,
-      ufPrice: i.ufPrice || 0,
-      norma: i.norm,
-    })),
+    ensayosCotizados: cot.items
+      .filter((i) => !i.isDivider)
+      .map((i) => ({
+        codigo: i.code,
+        designacion: i.designation,
+        cantidad: i.quantity || 1,
+        ufPrice: i.ufPrice || 0,
+        norma: i.norm,
+      })),
     observacionesClave: observaciones.length > 0 ? observaciones : undefined,
     totalUf: cot.totalUf || 0,
     fechaEmision: cot.updatedAt || cot.createdAt || new Date().toISOString(),

@@ -198,45 +198,177 @@ export function generateCotizacionPdf(
   const ufVal = cotizacion.ufValue || 40879.04;
   const usdVal = cotizacion.dollarValue || 933.47;
 
-  const tableRows: (string | number)[][] = cotizacion.items.map((item, idx) => {
-    const itemNum = `1.1.${idx + 1}`;
-    const unitPriceUf = Number(item.ufPrice || 0);
-    const factor = Number(item.factor || 1);
-    const finalPriceUf = unitPriceUf * factor;
-    const qty = Number(item.quantity || 0);
-    const subtotalUf = finalPriceUf * qty;
+  const hasDividers = cotizacion.items.some((it) => it.isDivider);
+  const tableRows: any[] = [];
 
-    const unitPrice = isUsd
-      ? (finalPriceUf * ufVal) / usdVal
-      : isClp
-      ? Math.round(finalPriceUf * ufVal)
-      : finalPriceUf;
+  if (!hasDividers) {
+    cotizacion.items.forEach((item, idx) => {
+      const itemNum = `1.1.${idx + 1}`;
+      const unitPriceUf = Number(item.ufPrice || 0);
+      const factor = Number(item.factor || 1);
+      const finalPriceUf = unitPriceUf * factor;
+      const qty = Number(item.quantity || 0);
+      const subtotalUf = finalPriceUf * qty;
 
-    const subtotal = isUsd
-      ? (subtotalUf * ufVal) / usdVal
-      : isClp
-      ? Math.round(subtotalUf * ufVal)
-      : subtotalUf;
+      const unitPrice = isUsd
+        ? (finalPriceUf * ufVal) / usdVal
+        : isClp
+        ? Math.round(finalPriceUf * ufVal)
+        : finalPriceUf;
 
-    const formattedUnitPrice = isClp
-      ? `$${Math.round(unitPrice).toLocaleString('es-CL')}`
-      : unitPrice.toFixed(2);
+      const subtotal = isUsd
+        ? (subtotalUf * ufVal) / usdVal
+        : isClp
+        ? Math.round(subtotalUf * ufVal)
+        : subtotalUf;
 
-    const formattedSubtotal = isClp
-      ? `$${Math.round(subtotal).toLocaleString('es-CL')}`
-      : subtotal.toFixed(2);
+      const formattedUnitPrice = isClp
+        ? `$${Math.round(unitPrice).toLocaleString('es-CL')}`
+        : unitPrice.toFixed(2);
 
-    return [
-      itemNum,
-      item.designation,
-      item.norm || '---',
-      item.minWeightKg ? `${item.minWeightKg} kg` : '-',
-      item.unit || 'c/u',
-      formattedUnitPrice,
-      qty.toString(),
-      formattedSubtotal,
-    ];
-  });
+      const formattedSubtotal = isClp
+        ? `$${Math.round(subtotal).toLocaleString('es-CL')}`
+        : subtotal.toFixed(2);
+
+      tableRows.push([
+        itemNum,
+        item.designation,
+        item.norm || '---',
+        item.minWeightKg ? `${item.minWeightKg} kg` : '-',
+        item.unit || 'c/u',
+        formattedUnitPrice,
+        qty.toString(),
+        formattedSubtotal,
+      ]);
+    });
+  } else {
+    let dividerIndex = 0;
+    let itemInDividerIndex = 0;
+    let currentPartidaSubtotal = 0;
+    let currentPartidaTitle = '';
+    let currentPartidaNum = '';
+
+    const pushPartidaSubtotal = () => {
+      if (currentPartidaNum && itemInDividerIndex > 0) {
+        const formattedSub = isClp
+          ? `$${Math.round(currentPartidaSubtotal).toLocaleString('es-CL')}`
+          : currentPartidaSubtotal.toFixed(2);
+
+        tableRows.push([
+          {
+            content: `Subtotal ${currentPartidaNum} (${currentPartidaTitle}):`,
+            colSpan: 7,
+            styles: {
+              fillColor: [248, 250, 252],
+              textColor: [51, 65, 85],
+              fontStyle: 'bold',
+              fontSize: 8,
+              halign: 'right',
+            },
+          },
+          {
+            content: formattedSub,
+            styles: {
+              fillColor: [248, 250, 252],
+              textColor: [0, 68, 124],
+              fontStyle: 'bold',
+              fontSize: 8,
+              halign: 'right',
+            },
+          },
+        ]);
+      }
+    };
+
+    cotizacion.items.forEach((item) => {
+      if (item.isDivider) {
+        pushPartidaSubtotal();
+
+        dividerIndex++;
+        itemInDividerIndex = 0;
+        currentPartidaSubtotal = 0;
+        currentPartidaNum = `1.1.${dividerIndex}`;
+        currentPartidaTitle = item.dividerTitle || item.designation || `Partida ${dividerIndex}`;
+
+        tableRows.push([
+          {
+            content: `${currentPartidaNum} ${currentPartidaTitle.toUpperCase()}`,
+            colSpan: 8,
+            styles: {
+              fillColor: [238, 244, 252],
+              textColor: [0, 68, 124],
+              fontStyle: 'bold',
+              fontSize: 8.5,
+              halign: 'left',
+            },
+          },
+        ]);
+      } else {
+        if (dividerIndex === 0) {
+          dividerIndex = 1;
+          currentPartidaNum = '1.1.1';
+          currentPartidaTitle = 'Partida 1';
+          tableRows.push([
+            {
+              content: `1.1.1 PARTIDA 1`,
+              colSpan: 8,
+              styles: {
+                fillColor: [238, 244, 252],
+                textColor: [0, 68, 124],
+                fontStyle: 'bold',
+                fontSize: 8.5,
+                halign: 'left',
+              },
+            },
+          ]);
+        }
+
+        itemInDividerIndex++;
+        const itemNum = `1.1.${dividerIndex}.${itemInDividerIndex}`;
+
+        const unitPriceUf = Number(item.ufPrice || 0);
+        const factor = Number(item.factor || 1);
+        const finalPriceUf = unitPriceUf * factor;
+        const qty = Number(item.quantity || 0);
+        const subtotalUf = finalPriceUf * qty;
+
+        const unitPrice = isUsd
+          ? (finalPriceUf * ufVal) / usdVal
+          : isClp
+          ? Math.round(finalPriceUf * ufVal)
+          : finalPriceUf;
+
+        const subtotal = isUsd
+          ? (subtotalUf * ufVal) / usdVal
+          : isClp
+          ? Math.round(subtotalUf * ufVal)
+          : subtotalUf;
+
+        currentPartidaSubtotal += subtotal;
+
+        const formattedUnitPrice = isClp
+          ? `$${Math.round(unitPrice).toLocaleString('es-CL')}`
+          : unitPrice.toFixed(2);
+
+        const formattedSubtotal = isClp
+          ? `$${Math.round(subtotal).toLocaleString('es-CL')}`
+          : subtotal.toFixed(2);
+
+        tableRows.push([
+          itemNum,
+          item.designation,
+          item.norm || '---',
+          item.minWeightKg ? `${item.minWeightKg} kg` : '-',
+          item.unit || 'c/u',
+          formattedUnitPrice,
+          qty.toString(),
+          formattedSubtotal,
+        ]);
+      }
+    });
+
+    pushPartidaSubtotal();
+  }
 
   autoTable(doc, {
     startY: currentY,

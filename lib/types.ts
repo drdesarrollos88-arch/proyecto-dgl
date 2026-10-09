@@ -206,7 +206,7 @@ export interface TarifarioCategoryStructure {
 
 export interface CotizacionItem {
   id: string;
-  itemNumber: string; // ej. "1.1.1"
+  itemNumber: string; // ej. "1.1.1" o "1.1.1.1"
   code: string;
   designation: string;
   norm: string;
@@ -218,6 +218,8 @@ export interface CotizacionItem {
   subtotalUf: number;
   subtotalClp: number;
   sku?: string;
+  isDivider?: boolean; // true si es una fila de separación/partida
+  dividerTitle?: string; // Título de la partida (ej. "Ensayos para Calicatas")
 }
 
 export interface Cotizacion {

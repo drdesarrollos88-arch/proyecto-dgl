@@ -30,6 +30,7 @@ export function mapSupabaseToCotizacion(row: any): Cotizacion {
 
   if (items.length > 0) {
     items.forEach((it: any) => {
+      if (it.isDivider) return;
       const subUf =
         typeof it.subtotalUf === 'number'
           ? it.subtotalUf
@@ -123,6 +124,7 @@ export function mapCotizacionToSupabase(c: Partial<Cotizacion>): any {
     let calcClp = 0;
     const ufVal = c.ufValue || 38000;
     c.items.forEach((it: any) => {
+      if (it.isDivider) return;
       const subUf =
         typeof it.subtotalUf === 'number'
           ? it.subtotalUf

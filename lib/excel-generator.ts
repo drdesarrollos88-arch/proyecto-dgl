@@ -134,52 +134,189 @@ export async function generateCotizacionExcel(cotizacion: Cotizacion): Promise<E
   ws.getCell('D60').value = 'Valores de ensayos de laboratorio';
   ws.getCell('D60').font = { bold: true };
 
-  // Items rows
+  const hasDividers = cotizacion.items.some((it) => it.isDivider);
   let rowIdx = 61;
-  cotizacion.items.forEach((item, idx) => {
-    const r = ws.getRow(rowIdx);
-    r.getCell('A').value = sanitizeForExcel(item.code);
-    r.getCell('C').value = `1.1.${idx + 1}`;
-    r.getCell('D').value = sanitizeForExcel(item.designation);
-    r.getCell('G').value = sanitizeForExcel(item.norm);
-    r.getCell('H').value = item.minWeightKg ? Number(item.minWeightKg) || item.minWeightKg : '';
-    r.getCell('I').value = sanitizeForExcel(item.unit);
 
-    const unitPriceUf = Number(item.ufPrice) * Number(item.factor || 1);
-    const qty = Number(item.quantity);
-    const subtotalUf = unitPriceUf * qty;
+  if (!hasDividers) {
+    cotizacion.items.forEach((item, idx) => {
+      const r = ws.getRow(rowIdx);
+      r.getCell('A').value = sanitizeForExcel(item.code);
+      r.getCell('C').value = `1.1.${idx + 1}`;
+      r.getCell('D').value = sanitizeForExcel(item.designation);
+      r.getCell('G').value = sanitizeForExcel(item.norm);
+      r.getCell('H').value = item.minWeightKg ? Number(item.minWeightKg) || item.minWeightKg : '';
+      r.getCell('I').value = sanitizeForExcel(item.unit);
 
-    const unitPrice = isUsd
-      ? (unitPriceUf * ufVal) / usdVal
-      : isClp
-      ? Math.round(unitPriceUf * ufVal)
-      : unitPriceUf;
+      const unitPriceUf = Number(item.ufPrice) * Number(item.factor || 1);
+      const qty = Number(item.quantity);
+      const subtotalUf = unitPriceUf * qty;
 
-    const subtotal = isUsd
-      ? (subtotalUf * ufVal) / usdVal
-      : isClp
-      ? Math.round(subtotalUf * ufVal)
-      : subtotalUf;
+      const unitPrice = isUsd
+        ? (unitPriceUf * ufVal) / usdVal
+        : isClp
+        ? Math.round(unitPriceUf * ufVal)
+        : unitPriceUf;
 
-    r.getCell('J').value = isClp ? unitPrice : Math.round(unitPrice * 100) / 100;
-    r.getCell('J').numFmt = isClp ? '$#,##0' : '#,##0.00';
+      const subtotal = isUsd
+        ? (subtotalUf * ufVal) / usdVal
+        : isClp
+        ? Math.round(subtotalUf * ufVal)
+        : subtotalUf;
 
-    r.getCell('K').value = qty;
-    r.getCell('L').value = isClp ? subtotal : Math.round(subtotal * 100) / 100;
-    r.getCell('L').numFmt = isClp ? '$#,##0' : '#,##0.00';
+      r.getCell('J').value = isClp ? unitPrice : Math.round(unitPrice * 100) / 100;
+      r.getCell('J').numFmt = isClp ? '$#,##0' : '#,##0.00';
 
-    // Thin borders
-    ['A', 'C', 'D', 'G', 'H', 'I', 'J', 'K', 'L'].forEach((c) => {
-      r.getCell(c).border = {
-        top: { style: 'thin', color: { argb: 'FFE0E0E0' } },
-        bottom: { style: 'thin', color: { argb: 'FFE0E0E0' } },
-        left: { style: 'thin', color: { argb: 'FFE0E0E0' } },
-        right: { style: 'thin', color: { argb: 'FFE0E0E0' } },
-      };
+      r.getCell('K').value = qty;
+      r.getCell('L').value = isClp ? subtotal : Math.round(subtotal * 100) / 100;
+      r.getCell('L').numFmt = isClp ? '$#,##0' : '#,##0.00';
+
+      // Thin borders
+      ['A', 'C', 'D', 'G', 'H', 'I', 'J', 'K', 'L'].forEach((c) => {
+        r.getCell(c).border = {
+          top: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+          bottom: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+          left: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+          right: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+        };
+      });
+
+      rowIdx++;
+    });
+  } else {
+    let dividerIndex = 0;
+    let itemInDividerIndex = 0;
+    let currentPartidaSubtotal = 0;
+    let currentPartidaTitle = '';
+    let currentPartidaNum = '';
+
+    const pushPartidaSubtotalExcel = () => {
+      if (currentPartidaNum && itemInDividerIndex > 0) {
+        const subRow = ws.getRow(rowIdx);
+        subRow.getCell('D').value = `Subtotal ${currentPartidaNum} (${currentPartidaTitle}):`;
+        subRow.getCell('D').font = { bold: true, color: { argb: 'FF334155' } };
+        subRow.getCell('D').alignment = { horizontal: 'right' };
+
+        subRow.getCell('L').value = isClp
+          ? Math.round(currentPartidaSubtotal)
+          : Math.round(currentPartidaSubtotal * 100) / 100;
+        subRow.getCell('L').font = { bold: true, color: { argb: 'FF004C87' } };
+        subRow.getCell('L').numFmt = isClp ? '$#,##0' : '#,##0.00';
+
+        ['C', 'D', 'G', 'H', 'I', 'J', 'K', 'L'].forEach((col) => {
+          subRow.getCell(col).fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFF1F5F9' },
+          };
+          subRow.getCell(col).border = {
+            top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+            bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+          };
+        });
+        rowIdx++;
+      }
+    };
+
+    cotizacion.items.forEach((item) => {
+      if (item.isDivider) {
+        pushPartidaSubtotalExcel();
+
+        dividerIndex++;
+        itemInDividerIndex = 0;
+        currentPartidaSubtotal = 0;
+        currentPartidaNum = `1.1.${dividerIndex}`;
+        currentPartidaTitle = item.dividerTitle || item.designation || `Partida ${dividerIndex}`;
+
+        const divRow = ws.getRow(rowIdx);
+        divRow.getCell('C').value = currentPartidaNum;
+        divRow.getCell('C').font = { bold: true, color: { argb: 'FF004C87' } };
+        divRow.getCell('D').value = currentPartidaTitle.toUpperCase();
+        divRow.getCell('D').font = { bold: true, color: { argb: 'FF004C87' } };
+
+        ['C', 'D', 'G', 'H', 'I', 'J', 'K', 'L'].forEach((col) => {
+          divRow.getCell(col).fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFE2E8F0' },
+          };
+          divRow.getCell(col).border = {
+            top: { style: 'medium', color: { argb: 'FF004C87' } },
+            bottom: { style: 'thin', color: { argb: 'FF94A3B8' } },
+          };
+        });
+
+        rowIdx++;
+      } else {
+        if (dividerIndex === 0) {
+          dividerIndex = 1;
+          currentPartidaNum = '1.1.1';
+          currentPartidaTitle = 'Partida 1';
+          const divRow = ws.getRow(rowIdx);
+          divRow.getCell('C').value = '1.1.1';
+          divRow.getCell('C').font = { bold: true, color: { argb: 'FF004C87' } };
+          divRow.getCell('D').value = 'PARTIDA 1';
+          divRow.getCell('D').font = { bold: true, color: { argb: 'FF004C87' } };
+          ['C', 'D', 'G', 'H', 'I', 'J', 'K', 'L'].forEach((col) => {
+            divRow.getCell(col).fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FFE2E8F0' },
+            };
+          });
+          rowIdx++;
+        }
+
+        itemInDividerIndex++;
+        const itemNum = `1.1.${dividerIndex}.${itemInDividerIndex}`;
+
+        const r = ws.getRow(rowIdx);
+        r.getCell('A').value = sanitizeForExcel(item.code);
+        r.getCell('C').value = itemNum;
+        r.getCell('D').value = sanitizeForExcel(item.designation);
+        r.getCell('G').value = sanitizeForExcel(item.norm);
+        r.getCell('H').value = item.minWeightKg ? Number(item.minWeightKg) || item.minWeightKg : '';
+        r.getCell('I').value = sanitizeForExcel(item.unit);
+
+        const unitPriceUf = Number(item.ufPrice) * Number(item.factor || 1);
+        const qty = Number(item.quantity);
+        const subtotalUf = unitPriceUf * qty;
+
+        const unitPrice = isUsd
+          ? (unitPriceUf * ufVal) / usdVal
+          : isClp
+          ? Math.round(unitPriceUf * ufVal)
+          : unitPriceUf;
+
+        const subtotal = isUsd
+          ? (subtotalUf * ufVal) / usdVal
+          : isClp
+          ? Math.round(subtotalUf * ufVal)
+          : subtotalUf;
+
+        currentPartidaSubtotal += subtotal;
+
+        r.getCell('J').value = isClp ? unitPrice : Math.round(unitPrice * 100) / 100;
+        r.getCell('J').numFmt = isClp ? '$#,##0' : '#,##0.00';
+
+        r.getCell('K').value = qty;
+        r.getCell('L').value = isClp ? subtotal : Math.round(subtotal * 100) / 100;
+        r.getCell('L').numFmt = isClp ? '$#,##0' : '#,##0.00';
+
+        ['A', 'C', 'D', 'G', 'H', 'I', 'J', 'K', 'L'].forEach((c) => {
+          r.getCell(c).border = {
+            top: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+            bottom: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+            left: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+            right: { style: 'thin', color: { argb: 'FFE0E0E0' } },
+          };
+        });
+
+        rowIdx++;
+      }
     });
 
-    rowIdx++;
-  });
+    pushPartidaSubtotalExcel();
+  }
 
   // Total Row
   const totalRow = ws.getRow(rowIdx);

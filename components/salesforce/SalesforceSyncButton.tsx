@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Cotizacion } from '@/lib/types';
-import { Cloud, CloudUpload, Loader2, ExternalLink } from 'lucide-react';
+import { Cloud, CloudUpload, Loader2, ExternalLink, RefreshCw } from 'lucide-react';
 
 interface SalesforceSyncButtonProps {
   cotizacion: Cotizacion;
@@ -28,17 +28,7 @@ export default function SalesforceSyncButton({
 
     if (loading) return;
 
-    // 1. Validación: Si ya fue cargada, bloquear rotundamente
-    if (isSynced) {
-      alert(
-        `Esta cotización ya fue cargada en Salesforce previamente (Oportunidad ID: ${
-          cotizacion.salesforceOpportunityId || cotizacion.salesforceQuoteId
-        }).\n\nPara evitar duplicados en Salesforce, solo es posible cargarla una única vez.`
-      );
-      return;
-    }
-
-    // 2. Validación: Si es borrador, no permitir la carga
+    // 1. Validación: Si es borrador, no permitir la carga
     if (isDraft) {
       alert(
         `No es posible enviar borradores a Salesforce.\n\nPor favor cambie el estado de la cotización "${cotizacion.code}" a "Finalizada" antes de sincronizar.`
@@ -46,19 +36,25 @@ export default function SalesforceSyncButton({
       return;
     }
 
-    // 3. Confirmación previa al usuario
-    const confirmed = confirm(
-      `¿Deseas cargar la cotización ${cotizacion.code} a Salesforce IDIEM?\n\n` +
-      `• Cliente: ${cotizacion.clientName}\n` +
-      `• Proyecto: ${cotizacion.projectName || 'Sin especificar'}\n` +
-      `• Sección DGL: ${cotizacion.seccion || 'Por defecto'}\n` +
-      `• Centro de Costo (CC): ${cotizacion.centroCosto || '2340'}\n` +
-      `• Sector Proyecto: ${cotizacion.sectorProyecto || 'Inmobiliario'}\n` +
-      `• Subsector Proyecto: ${cotizacion.subsectorProyecto || 'No Aplica'}\n` +
-      `• Zona Proyecto: ${cotizacion.zonaProyecto || 'Región Metropolitana'}\n\n` +
-      `Se creará la Oportunidad, la Cotización (Quote) oficial con su servicio y se adjuntará el documento PDF definitivo.\n\n` +
-      `Nota: Esta acción solo se puede realizar 1 única vez.`
-    );
+    // 2. Confirmación según sea creación o actualización
+    const confirmMessage = isSynced
+      ? `¿Deseas actualizar la cotización existente en Salesforce?\n\n` +
+        `• Código propuesta: ${cotizacion.code}\n` +
+        `• Oportunidad ID: ${cotizacion.salesforceOpportunityId}\n` +
+        `• Nuevo Monto: ${cotizacion.totalUf} UF (CLP calculado por Salesforce)\n` +
+        `• Archivo: Se adjuntará el nuevo PDF de esta versión\n\n` +
+        `Esta acción sobreescribirá la Oportunidad y Cotización existente sin duplicar registros.`
+      : `¿Deseas cargar la cotización ${cotizacion.code} a Salesforce IDIEM?\n\n` +
+        `• Cliente: ${cotizacion.clientName}\n` +
+        `• Proyecto: ${cotizacion.projectName || 'Sin especificar'}\n` +
+        `• Sección DGL: ${cotizacion.seccion || 'Por defecto'}\n` +
+        `• Centro de Costo (CC): ${cotizacion.centroCosto || '2340'}\n` +
+        `• Sector Proyecto: ${cotizacion.sectorProyecto || 'Inmobiliario'}\n` +
+        `• Subsector Proyecto: ${cotizacion.subsectorProyecto || 'No Aplica'}\n` +
+        `• Zona Proyecto: ${cotizacion.zonaProyecto || 'Región Metropolitana'}\n\n` +
+        `Se creará la Oportunidad, la Cotización (Quote) oficial con su servicio y se adjuntará el documento PDF definitivo.`;
+
+    const confirmed = confirm(confirmMessage);
     if (!confirmed) return;
 
     setLoading(true);
@@ -96,7 +92,11 @@ export default function SalesforceSyncButton({
         }
       }
 
-      alert(`¡Cotización cargada con éxito en Salesforce!\nOportunidad ID: ${data.data?.opportunityId || 'Registrada'}`);
+      alert(
+        isSynced
+          ? `¡Cotización y Oportunidad actualizadas con éxito en Salesforce!\nOportunidad ID: ${cotizacion.salesforceOpportunityId}`
+          : `¡Cotización cargada con éxito en Salesforce!\nOportunidad ID: ${data.data?.opportunityId || 'Registrada'}`
+      );
     } catch (err: any) {
       const msg = err?.message || 'Error de red o servidor al comunicar con Salesforce.';
       setErrorMsg(msg);
@@ -106,26 +106,43 @@ export default function SalesforceSyncButton({
     }
   };
 
-  // CASO 1: Ya sincronizada (Límite de 1 carga cumplido) -> Enlace directo a Salesforce, sin re-sync
+  // CASO 1: Ya sincronizada -> Botón enlace directo + Botón Actualizar
   if (isSynced) {
     if (variant === 'button') {
       return (
-        <a
-          href={targetUrl || '#'}
-          target="_blank"
-          rel="noopener noreferrer"
-          title={`Cotización ya cargada en Salesforce (${cotizacion.salesforceOpportunityId || 'ID'}). Clic para abrir en Salesforce.`}
-          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-300 transition-colors shadow-2xs cursor-pointer"
-        >
-          <Cloud className="w-4 h-4 text-sky-600 fill-sky-200" />
-          <span>En Salesforce</span>
-          <ExternalLink className="w-3.5 h-3.5 text-sky-500" />
-        </a>
+        <div className="inline-flex items-center gap-1.5 flex-wrap">
+          <a
+            href={targetUrl || '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={`Cotización ya cargada en Salesforce (${cotizacion.salesforceOpportunityId || 'ID'}). Clic para abrir.`}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-300 transition-colors shadow-2xs cursor-pointer"
+          >
+            <Cloud className="w-3.5 h-3.5 text-sky-600 fill-sky-200" />
+            <span>En Salesforce</span>
+            <ExternalLink className="w-3 h-3 text-sky-500" />
+          </a>
+
+          <button
+            type="button"
+            onClick={handleSync}
+            disabled={loading}
+            title="Actualizar registro existente en Salesforce con la nueva versión, monto UF y nuevo PDF"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-slate-700 hover:text-sky-700 hover:bg-sky-50 border border-slate-200 hover:border-sky-300 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+          >
+            {loading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-600" />
+            ) : (
+              <RefreshCw className="w-3.5 h-3.5 text-sky-600" />
+            )}
+            <span>{loading ? 'Actualizando...' : 'Actualizar en Salesforce'}</span>
+          </button>
+        </div>
       );
     }
 
     return (
-      <div className="relative inline-flex items-center">
+      <div className="relative inline-flex items-center gap-1">
         <a
           href={targetUrl || '#'}
           target="_blank"
@@ -136,6 +153,19 @@ export default function SalesforceSyncButton({
           <Cloud className="w-3.5 h-3.5 fill-sky-100 stroke-sky-600" />
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 absolute top-0.5 right-0.5" title="Sincronizada"></span>
         </a>
+        <button
+          type="button"
+          onClick={handleSync}
+          disabled={loading}
+          title="Actualizar Oportunidad y servicio en Salesforce"
+          className="p-1 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-md transition-colors cursor-pointer inline-flex items-center"
+        >
+          {loading ? (
+            <Loader2 className="w-3 h-3 animate-spin text-sky-600" />
+          ) : (
+            <RefreshCw className="w-3 h-3" />
+          )}
+        </button>
       </div>
     );
   }

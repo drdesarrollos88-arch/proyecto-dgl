@@ -118,21 +118,24 @@ async function getDefaultStageName(instanceUrl: string, accessToken: string): Pr
 
 /**
  * Construye el nombre unificado estricto para Oportunidad y Cotización (Quote):
- * PR.DGL.CCCC.2026.XXXX - NOMBRE CLIENTE - NOMBRE PROPUESTA
- * Sin corchetes ni sufijos de versión (-V2).
+ * PR.DGL.CCCC.2026.XXXX[-VN] - NOMBRE CLIENTE - NOMBRE PROPUESTA
  */
 export function buildUnifiedSalesforceName(cotizacion: Cotizacion, unitCode: string): string {
   const cleanCode = (cotizacion.code || '').replace(/[\[\]]/g, '').trim();
   let correlativoNum = '0001';
 
-  // Buscar número de 4 dígitos al final del código
-  const match = cleanCode.match(/(\d{4})(?:-V\d+)?$/i);
+  // Buscar número de 4 dígitos y sufijo de versión si existe
+  const match = cleanCode.match(/(\d{4})(-V\d+)?$/i);
   if (match) {
-    correlativoNum = match[1];
+    const numPart = match[1];
+    const versionPart = match[2] && match[2].toUpperCase() !== '-V1' ? match[2].toUpperCase() : '';
+    correlativoNum = `${numPart}${versionPart}`;
   } else {
-    const anyNumMatch = cleanCode.match(/\.(\d+)(?:-V\d+)?$/i);
+    const anyNumMatch = cleanCode.match(/\.(\d+)(-V\d+)?$/i);
     if (anyNumMatch) {
-      correlativoNum = anyNumMatch[1].padStart(4, '0');
+      const numPart = anyNumMatch[1].padStart(4, '0');
+      const versionPart = anyNumMatch[2] && anyNumMatch[2].toUpperCase() !== '-V1' ? anyNumMatch[2].toUpperCase() : '';
+      correlativoNum = `${numPart}${versionPart}`;
     }
   }
 
@@ -235,13 +238,6 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
     );
   }
 
-  // Regla B: Límite estricto de 1 sola carga (Anti-duplicación)
-  if (cotizacion.salesforceOpportunityId || cotizacion.salesforceQuoteId) {
-    throw new Error(
-      `Esta cotización ya fue cargada en Salesforce previamente (Oportunidad ID: ${cotizacion.salesforceOpportunityId || cotizacion.salesforceQuoteId}). Para evitar duplicados en Salesforce, solo se permite cargarla una única vez.`
-    );
-  }
-
   // 1. Obtener cliente activo y autenticado
   const { accessToken, instanceUrl } = await getValidSalesforceClient();
 
@@ -288,90 +284,225 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
   // 6. Obtener nombre unificado y lista de precios oficial Standard
   const unifiedName = buildUnifiedSalesforceName(cotizacion, unitCode);
   const standardPricebook = await getServiciosEspecialesPricebookEntry(instanceUrl, accessToken, unitCode);
+  const ufTotal = cotizacion.totalUf || (cotizacion.ufValue ? Number((amount / cotizacion.ufValue).toFixed(2)) : 0);
 
-  // 7. PASO 1: Crear la Oportunidad en etapa Elaboración con la cadena de dependencias oficial IDIEM
-  const requestDate = (cotizacion.date ? new Date(cotizacion.date) : new Date()).toISOString().slice(0, 10);
-  const oppPayload: Record<string, any> = {
-    Name: unifiedName,
-    CloseDate: closeDate,
-    Fecha_de_la_Solicitud__c: requestDate,
-    StageName: 'Elaboración',
-    RecordTypeId: '012f4000000OfXyAAK',
-    Pricebook2Id: standardPricebook.pricebook2Id,
-    Division__c: 'DGL',
-    Seccion__c: seccionSfCode,
-    Unidad__c: unitCode,
-    Tipo_de_servicio_por_CC__c: 'Ensayos',
-    Sector_del_Proyecto__c: cotizacion.sectorProyecto || 'Inmobiliario',
-    Subsector_del_Proyecto__c: cotizacion.subsectorProyecto || 'No Aplica',
-    Zona_Proyecto__c: cotizacion.zonaProyecto || 'Región Metropolitana',
-    LeadSource: 'Directo División',
-    Amount: amount,
-    Description: `Cotización IDIEM: ${cotizacion.code}\nCliente: ${cotizacion.clientName}\nProyecto: ${cotizacion.projectName || 'Sin especificar'}\nCentro de Costo: ${cotizacion.centroCosto || unitCode}\nTotal: ${amount} (${cotizacion.currency || 'UF'})`,
-  };
+  const isUpdate = Boolean(cotizacion.salesforceOpportunityId);
+  let opportunityId: string | undefined = cotizacion.salesforceOpportunityId;
+  let opportunityUrl: string | undefined = cotizacion.salesforceOpportunityUrl;
+  let quoteId: string | undefined = cotizacion.salesforceQuoteId;
+  let quoteUrl: string | undefined = cotizacion.salesforceQuoteUrl;
 
-  if (accountId) {
-    oppPayload.AccountId = accountId;
-  }
+  if (isUpdate && opportunityId) {
+    // =========================================================================
+    // MODO ACTUALIZACIÓN: Sobrescribir Opportunity, Quote y QuoteLineItem existentes
+    // =========================================================================
+    opportunityUrl = `${instanceUrl}/lightning/r/Opportunity/${opportunityId}/view`;
 
-  const oppRes = await sfRequest(instanceUrl, accessToken, 'sobjects/Opportunity', {
-    method: 'POST',
-    body: JSON.stringify(oppPayload),
-  });
-
-  if (!oppRes?.id) {
-    throw new Error('Salesforce no retornó un Id al crear la Oportunidad.');
-  }
-
-  const opportunityId = oppRes.id;
-  const opportunityUrl = `${instanceUrl}/lightning/r/Opportunity/${opportunityId}/view`;
-
-  // 8. PASO 2: Crear la Cotización (POST a Quote) con el MISMO nombre
-  let quoteId: string | undefined;
-  let quoteUrl: string | undefined;
-  try {
-    const quotePayload: Record<string, any> = {
-      OpportunityId: opportunityId,
+    // 7A. PATCH a Opportunity existente
+    const oppUpdatePayload: Record<string, any> = {
       Name: unifiedName,
-      Pricebook2Id: standardPricebook.pricebook2Id,
-      ExpirationDate: closeDate,
-      Status: cotizacion.status === 'Finalizada' ? 'Presentada' : 'Borrador',
-      Description: `Generado desde Cotizador DGL IDIEM. Correlativo: ${cotizacion.code}`,
+      CloseDate: closeDate,
+      Amount: amount,
+      Division__c: 'DGL',
+      Seccion__c: seccionSfCode,
+      Unidad__c: unitCode,
+      Tipo_de_servicio_por_CC__c: 'Ensayos',
+      Sector_del_Proyecto__c: cotizacion.sectorProyecto || 'Inmobiliario',
+      Subsector_del_Proyecto__c: cotizacion.subsectorProyecto || 'No Aplica',
+      Zona_Proyecto__c: cotizacion.zonaProyecto || 'Región Metropolitana',
+      Description: `Cotización IDIEM: ${cotizacion.code}\nCliente: ${cotizacion.clientName}\nProyecto: ${cotizacion.projectName || 'Sin especificar'}\nCentro de Costo: ${cotizacion.centroCosto || unitCode}\nTotal: ${amount} (${cotizacion.currency || 'UF'})`,
     };
 
-    const quoteRes = await sfRequest(instanceUrl, accessToken, 'sobjects/Quote', {
-      method: 'POST',
-      body: JSON.stringify(quotePayload),
+    if (accountId) {
+      oppUpdatePayload.AccountId = accountId;
+    }
+
+    await sfRequest(instanceUrl, accessToken, `sobjects/Opportunity/${opportunityId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(oppUpdatePayload),
     });
+    console.log(`✓ Oportunidad existente ${opportunityId} actualizada con nombre: ${unifiedName}`);
 
-    if (quoteRes?.id) {
-      quoteId = quoteRes.id;
-      quoteUrl = `${instanceUrl}/lightning/r/Quote/${quoteId}/view`;
-
-      // PASO 2.1: Crear el Servicio Cotización (QuoteLineItem) con Servicios Especiales
+    // 8A. Localizar o actualizar Quote existente
+    if (!quoteId) {
       try {
-        const ufTotal = cotizacion.totalUf || (cotizacion.ufValue ? Number((amount / cotizacion.ufValue).toFixed(2)) : 0);
-        const qliPayload: Record<string, any> = {
-          QuoteId: quoteId,
-          PricebookEntryId: standardPricebook.pricebookEntryId,
-          Product2Id: standardPricebook.product2Id,
-          Quantity: 1,
-          UnitPrice: amount,
-          Precio_del_Servicio_UF__c: ufTotal,
-          IsLast__c: true,
-        };
-
-        await sfRequest(instanceUrl, accessToken, 'sobjects/QuoteLineItem', {
-          method: 'POST',
-          body: JSON.stringify(qliPayload),
-        });
-        console.log('✓ QuoteLineItem Servicios Especiales agregado exitosamente a Quote en Salesforce.');
-      } catch (qliErr: any) {
-        console.warn('Aviso: No se pudo agregar QuoteLineItem a Quote en Salesforce:', qliErr?.message);
+        const qQuery = encodeURIComponent(`SELECT Id FROM Quote WHERE OpportunityId = '${opportunityId}' LIMIT 1`);
+        const qQueryRes = await sfRequest(instanceUrl, accessToken, `query?q=${qQuery}`);
+        if (qQueryRes?.records && qQueryRes.records.length > 0) {
+          quoteId = qQueryRes.records[0].Id;
+        }
+      } catch (err) {
+        console.warn('Aviso buscando Quote existente en Salesforce:', err);
       }
     }
-  } catch (quoteErr: any) {
-    console.warn('Aviso: No se pudo crear el objeto Quote (puede que no esté habilitado en esta org), adjuntando directo a Opportunity:', quoteErr?.message);
+
+    if (quoteId) {
+      quoteUrl = `${instanceUrl}/lightning/r/Quote/${quoteId}/view`;
+      try {
+        // Actualizar nombre y vigencia de la Cotización oficial en Salesforce
+        await sfRequest(instanceUrl, accessToken, `sobjects/Quote/${quoteId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            Name: unifiedName,
+            ExpirationDate: closeDate,
+            Description: `Actualizado desde Cotizador DGL IDIEM. Correlativo: ${cotizacion.code}`,
+          }),
+        });
+        console.log(`✓ Quote ${quoteId} actualizado con nombre: ${unifiedName}`);
+
+        // Actualizar el servicio (QuoteLineItem) con el nuevo monto de UF y cantidad 1
+        // Salesforce calcula CLP por defecto
+        const qliQuery = encodeURIComponent(
+          `SELECT Id, Quantity, Precio_del_Servicio_UF__c FROM QuoteLineItem WHERE QuoteId = '${quoteId}' LIMIT 1`
+        );
+        const qliRes = await sfRequest(instanceUrl, accessToken, `query?q=${qliQuery}`);
+        if (qliRes?.records && qliRes.records.length > 0) {
+          const qliId = qliRes.records[0].Id;
+          await sfRequest(instanceUrl, accessToken, `sobjects/QuoteLineItem/${qliId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              Quantity: 1,
+              Precio_del_Servicio_UF__c: ufTotal,
+            }),
+          });
+          console.log(`✓ QuoteLineItem ${qliId} actualizado con UF: ${ufTotal} y Cantidad: 1`);
+        } else {
+          // Si no existía línea, crearla
+          await sfRequest(instanceUrl, accessToken, 'sobjects/QuoteLineItem', {
+            method: 'POST',
+            body: JSON.stringify({
+              QuoteId: quoteId,
+              PricebookEntryId: standardPricebook.pricebookEntryId,
+              Product2Id: standardPricebook.product2Id,
+              Quantity: 1,
+              UnitPrice: amount,
+              Precio_del_Servicio_UF__c: ufTotal,
+              IsLast__c: true,
+            }),
+          });
+        }
+      } catch (qUpdateErr: any) {
+        console.warn('Aviso actualizando Quote o QuoteLineItem en Salesforce:', qUpdateErr?.message);
+      }
+    } else {
+      // Si la Oportunidad no tenía Quote aún, crearla
+      try {
+        const quotePayload: Record<string, any> = {
+          OpportunityId: opportunityId,
+          Name: unifiedName,
+          Pricebook2Id: standardPricebook.pricebook2Id,
+          ExpirationDate: closeDate,
+          Status: 'Presentada',
+          Description: `Generado desde Cotizador DGL IDIEM. Correlativo: ${cotizacion.code}`,
+        };
+        const quoteRes = await sfRequest(instanceUrl, accessToken, 'sobjects/Quote', {
+          method: 'POST',
+          body: JSON.stringify(quotePayload),
+        });
+        if (quoteRes?.id) {
+          quoteId = quoteRes.id;
+          quoteUrl = `${instanceUrl}/lightning/r/Quote/${quoteId}/view`;
+          await sfRequest(instanceUrl, accessToken, 'sobjects/QuoteLineItem', {
+            method: 'POST',
+            body: JSON.stringify({
+              QuoteId: quoteId,
+              PricebookEntryId: standardPricebook.pricebookEntryId,
+              Product2Id: standardPricebook.product2Id,
+              Quantity: 1,
+              UnitPrice: amount,
+              Precio_del_Servicio_UF__c: ufTotal,
+              IsLast__c: true,
+            }),
+          });
+        }
+      } catch (createQErr: any) {
+        console.warn('Aviso creando Quote en modo actualización:', createQErr?.message);
+      }
+    }
+  } else {
+    // =========================================================================
+    // MODO CREACIÓN: Nueva Oportunidad, Quote y QuoteLineItem
+    // =========================================================================
+    const requestDate = (cotizacion.date ? new Date(cotizacion.date) : new Date()).toISOString().slice(0, 10);
+    const oppPayload: Record<string, any> = {
+      Name: unifiedName,
+      CloseDate: closeDate,
+      Fecha_de_la_Solicitud__c: requestDate,
+      StageName: 'Elaboración',
+      RecordTypeId: '012f4000000OfXyAAK',
+      Pricebook2Id: standardPricebook.pricebook2Id,
+      Division__c: 'DGL',
+      Seccion__c: seccionSfCode,
+      Unidad__c: unitCode,
+      Tipo_de_servicio_por_CC__c: 'Ensayos',
+      Sector_del_Proyecto__c: cotizacion.sectorProyecto || 'Inmobiliario',
+      Subsector_del_Proyecto__c: cotizacion.subsectorProyecto || 'No Aplica',
+      Zona_Proyecto__c: cotizacion.zonaProyecto || 'Región Metropolitana',
+      LeadSource: 'Directo División',
+      Amount: amount,
+      Description: `Cotización IDIEM: ${cotizacion.code}\nCliente: ${cotizacion.clientName}\nProyecto: ${cotizacion.projectName || 'Sin especificar'}\nCentro de Costo: ${cotizacion.centroCosto || unitCode}\nTotal: ${amount} (${cotizacion.currency || 'UF'})`,
+    };
+
+    if (accountId) {
+      oppPayload.AccountId = accountId;
+    }
+
+    const oppRes = await sfRequest(instanceUrl, accessToken, 'sobjects/Opportunity', {
+      method: 'POST',
+      body: JSON.stringify(oppPayload),
+    });
+
+    if (!oppRes?.id) {
+      throw new Error('Salesforce no retornó un Id al crear la Oportunidad.');
+    }
+
+    opportunityId = oppRes.id;
+    opportunityUrl = `${instanceUrl}/lightning/r/Opportunity/${opportunityId}/view`;
+
+    // 8B. PASO 2: Crear la Cotización (POST a Quote) con el MISMO nombre
+    try {
+      const quotePayload: Record<string, any> = {
+        OpportunityId: opportunityId,
+        Name: unifiedName,
+        Pricebook2Id: standardPricebook.pricebook2Id,
+        ExpirationDate: closeDate,
+        Status: cotizacion.status === 'Finalizada' ? 'Presentada' : 'Borrador',
+        Description: `Generado desde Cotizador DGL IDIEM. Correlativo: ${cotizacion.code}`,
+      };
+
+      const quoteRes = await sfRequest(instanceUrl, accessToken, 'sobjects/Quote', {
+        method: 'POST',
+        body: JSON.stringify(quotePayload),
+      });
+
+      if (quoteRes?.id) {
+        quoteId = quoteRes.id;
+        quoteUrl = `${instanceUrl}/lightning/r/Quote/${quoteId}/view`;
+
+        // PASO 2.1: Crear el Servicio Cotización (QuoteLineItem) con Servicios Especiales
+        try {
+          const qliPayload: Record<string, any> = {
+            QuoteId: quoteId,
+            PricebookEntryId: standardPricebook.pricebookEntryId,
+            Product2Id: standardPricebook.product2Id,
+            Quantity: 1,
+            UnitPrice: amount,
+            Precio_del_Servicio_UF__c: ufTotal,
+            IsLast__c: true,
+          };
+
+          await sfRequest(instanceUrl, accessToken, 'sobjects/QuoteLineItem', {
+            method: 'POST',
+            body: JSON.stringify(qliPayload),
+          });
+          console.log('✓ QuoteLineItem Servicios Especiales agregado exitosamente a Quote en Salesforce.');
+        } catch (qliErr: any) {
+          console.warn('Aviso: No se pudo agregar QuoteLineItem a Quote en Salesforce:', qliErr?.message);
+        }
+      }
+    } catch (quoteErr: any) {
+      console.warn('Aviso: No se pudo crear el objeto Quote, adjuntando directo a Opportunity:', quoteErr?.message);
+    }
   }
 
   // 8. PASO 3: Generar PDF en memoria y convertir a Base64
@@ -490,7 +621,9 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
 
   return {
     success: true,
-    message: quoteId 
+    message: isUpdate
+      ? `Cotización y Oportunidad actualizadas con éxito en Salesforce (nombre, servicio UF y nuevo PDF sobrescritos sin duplicados).`
+      : quoteId
       ? `Cotización cargada con éxito en Salesforce (Oportunidad y Quote enlazadas con PDF adjunto).`
       : `Oportunidad creada con éxito en Salesforce con PDF adjunto.`,
     opportunityId,

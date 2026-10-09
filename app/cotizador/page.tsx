@@ -577,15 +577,16 @@ function CotizadorContent() {
             c.status === 'Finalizada' || c.status === 'Enviada' || c.status === 'Aprobada';
 
           if (isAlreadyFinalized) {
-            // Solo si ya fue finalizada/oficial se crea una nueva versión de trabajo
+            // Se crea una nueva versión de trabajo que sobreescribe la propuesta activa
+            // conservando el historial de la versión anterior y el mismo identificador de registro
             setIsVersionMode(true);
             const nextCode = getNextVersionCode(c.code);
             setCode(nextCode);
-            setSavedId(null);
+            setSavedId(c.id); // Mantener el mismo ID para actualizar el registro existente
             setDate(new Date().toISOString().slice(0, 10)); // Nueva fecha de emisión para nueva versión
             setStatusMessage({
               type: 'success',
-              text: `Cotización oficial "${c.code}" (${c.status}) cargada. Se ha generado la nueva versión de trabajo "${nextCode}". Las modificaciones se guardarán como una nueva propuesta sin alterar el registro oficial original.`,
+              text: `Cotización oficial "${c.code}" (${c.status}) cargada. Se ha generado la nueva versión de trabajo "${nextCode}". Las modificaciones actualizarán este registro conservando el historial de la versión previa y sincronizando en Salesforce sin duplicar la oportunidad.`,
             });
           } else {
             // Si es un borrador en proceso, se continúa editando exactamente el mismo borrador sin incrementar versión
@@ -1246,9 +1247,16 @@ function CotizadorContent() {
         activeAnalisis: assistantActiveAnalisis,
         updatedAt: new Date().toISOString(),
       } : undefined),
-      createdAt: new Date().toISOString(),
+      version: originalQuote?.version || 1,
+      versionHistory: originalQuote?.versionHistory || [],
+      salesforceOpportunityId: originalQuote?.salesforceOpportunityId,
+      salesforceOpportunityUrl: originalQuote?.salesforceOpportunityUrl,
+      salesforceQuoteId: originalQuote?.salesforceQuoteId,
+      salesforceQuoteUrl: originalQuote?.salesforceQuoteUrl,
+      salesforceSyncedAt: originalQuote?.salesforceSyncedAt,
+      createdAt: originalQuote?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      createdBy: user?.name || 'Comercial',
+      createdBy: originalQuote?.createdBy || user?.name || 'Comercial',
     };
   }, [
     savedId,
@@ -1282,6 +1290,8 @@ function CotizadorContent() {
     observations,
     condicionesComerciales,
     showIndicatorsInPdf,
+    originalQuote,
+    user?.name,
     user,
   ]);
 
@@ -1313,10 +1323,41 @@ function CotizadorContent() {
 
       const currentMsgs = assistantChatMessagesRef.current || assistantChatMessages;
       const currentAnalisis = assistantActiveAnalisisRef.current || assistantActiveAnalisis;
+
+      let updatedVersionHistory = [...(originalQuote?.versionHistory || currentCotizacion.versionHistory || [])];
+      if (originalQuote && isVersionMode && !updatedVersionHistory.some((v) => v.versionCode === originalQuote.code)) {
+        updatedVersionHistory.push({
+          versionNumber: originalQuote.version || 1,
+          versionCode: originalQuote.code,
+          savedAt: originalQuote.updatedAt || originalQuote.createdAt || new Date().toISOString(),
+          savedBy: originalQuote.updatedBy || originalQuote.createdBy || user?.name || 'Comercial',
+          status: originalQuote.status,
+          totalUf: originalQuote.totalUf,
+          totalClp: originalQuote.totalClp,
+          totalUsd: originalQuote.totalUsd,
+          totalWeightKg: originalQuote.totalWeightKg,
+          ufValue: originalQuote.ufValue,
+          dollarValue: originalQuote.dollarValue,
+          items: originalQuote.items,
+          observations: originalQuote.observations,
+          condicionesComerciales: originalQuote.condicionesComerciales,
+          showEconomicIndicators: originalQuote.showEconomicIndicators,
+          salesforceOpportunityId: originalQuote.salesforceOpportunityId,
+          salesforceQuoteId: originalQuote.salesforceQuoteId,
+        });
+      }
+
       const cotizacionToSave = {
         ...currentCotizacion,
         commercialSignature: activeSig || currentCotizacion.commercialSignature,
         status: 'Borrador' as const,
+        version: isVersionMode ? (originalQuote?.version || 1) + 1 : (currentCotizacion.version || 1),
+        versionHistory: updatedVersionHistory,
+        salesforceOpportunityId: originalQuote?.salesforceOpportunityId || currentCotizacion.salesforceOpportunityId,
+        salesforceOpportunityUrl: originalQuote?.salesforceOpportunityUrl || currentCotizacion.salesforceOpportunityUrl,
+        salesforceQuoteId: originalQuote?.salesforceQuoteId || currentCotizacion.salesforceQuoteId,
+        salesforceQuoteUrl: originalQuote?.salesforceQuoteUrl || currentCotizacion.salesforceQuoteUrl,
+        salesforceSyncedAt: originalQuote?.salesforceSyncedAt || currentCotizacion.salesforceSyncedAt,
         aiChatState: currentMsgs && currentMsgs.length > 0 ? {
           messages: currentMsgs,
           activeAnalisis: currentAnalisis,
@@ -1387,6 +1428,13 @@ function CotizadorContent() {
         clientName: activeClient,
         commercialSignature: activeSig || currentCotizacion.commercialSignature,
         status: (originalQuote?.status || currentCotizacion.status || 'Borrador') as any,
+        version: currentCotizacion.version || originalQuote?.version || 1,
+        versionHistory: currentCotizacion.versionHistory || originalQuote?.versionHistory || [],
+        salesforceOpportunityId: originalQuote?.salesforceOpportunityId || currentCotizacion.salesforceOpportunityId,
+        salesforceOpportunityUrl: originalQuote?.salesforceOpportunityUrl || currentCotizacion.salesforceOpportunityUrl,
+        salesforceQuoteId: originalQuote?.salesforceQuoteId || currentCotizacion.salesforceQuoteId,
+        salesforceQuoteUrl: originalQuote?.salesforceQuoteUrl || currentCotizacion.salesforceQuoteUrl,
+        salesforceSyncedAt: originalQuote?.salesforceSyncedAt || currentCotizacion.salesforceSyncedAt,
         aiChatState: currentMsgs && currentMsgs.length > 0 ? {
           messages: currentMsgs,
           activeAnalisis: currentAnalisis,
@@ -1486,11 +1534,42 @@ function CotizadorContent() {
 
       const finalMsgs = assistantChatMessagesRef.current || assistantChatMessages;
       const finalAnalisis = assistantActiveAnalisisRef.current || assistantActiveAnalisis;
+
+      let updatedVersionHistory = [...(originalQuote?.versionHistory || currentCotizacion.versionHistory || [])];
+      if (originalQuote && isVersionMode && !updatedVersionHistory.some((v) => v.versionCode === originalQuote.code)) {
+        updatedVersionHistory.push({
+          versionNumber: originalQuote.version || 1,
+          versionCode: originalQuote.code,
+          savedAt: originalQuote.updatedAt || originalQuote.createdAt || new Date().toISOString(),
+          savedBy: originalQuote.updatedBy || originalQuote.createdBy || user?.name || 'Comercial',
+          status: originalQuote.status,
+          totalUf: originalQuote.totalUf,
+          totalClp: originalQuote.totalClp,
+          totalUsd: originalQuote.totalUsd,
+          totalWeightKg: originalQuote.totalWeightKg,
+          ufValue: originalQuote.ufValue,
+          dollarValue: originalQuote.dollarValue,
+          items: originalQuote.items,
+          observations: originalQuote.observations,
+          condicionesComerciales: originalQuote.condicionesComerciales,
+          showEconomicIndicators: originalQuote.showEconomicIndicators,
+          salesforceOpportunityId: originalQuote.salesforceOpportunityId,
+          salesforceQuoteId: originalQuote.salesforceQuoteId,
+        });
+      }
+
       const cotizacionForPdf: Cotizacion = {
         ...currentCotizacion,
         commercialSignature: activeSig || currentCotizacion.commercialSignature,
         showEconomicIndicators: showIndicatorsInPdf,
         status: 'Finalizada',
+        version: isVersionMode ? (originalQuote?.version || 1) + 1 : (currentCotizacion.version || 1),
+        versionHistory: updatedVersionHistory,
+        salesforceOpportunityId: originalQuote?.salesforceOpportunityId || currentCotizacion.salesforceOpportunityId,
+        salesforceOpportunityUrl: originalQuote?.salesforceOpportunityUrl || currentCotizacion.salesforceOpportunityUrl,
+        salesforceQuoteId: originalQuote?.salesforceQuoteId || currentCotizacion.salesforceQuoteId,
+        salesforceQuoteUrl: originalQuote?.salesforceQuoteUrl || currentCotizacion.salesforceQuoteUrl,
+        salesforceSyncedAt: originalQuote?.salesforceSyncedAt || currentCotizacion.salesforceSyncedAt,
         aiChatState: finalMsgs && finalMsgs.length > 0 ? {
           messages: finalMsgs,
           activeAnalisis: finalAnalisis,
@@ -1999,7 +2078,7 @@ function CotizadorContent() {
                 Modo Edición / Nueva Versión
               </span>
               <span>
-                Editando a partir de la propuesta oficial <strong className="font-mono">{originalQuote.code}</strong> ({originalQuote.status}). Al guardar se registrará una nueva versión con código <strong className="font-mono text-blue-900 bg-white px-1.5 py-0.5 rounded border border-amber-300 font-bold">{code}</strong> manteniendo el original oficial intacto en el historial.
+                Editando a partir de la propuesta oficial <strong className="font-mono">{originalQuote.code}</strong> ({originalQuote.status}). Al guardar o finalizar se actualizará este registro a la nueva versión <strong className="font-mono text-blue-900 bg-white px-1.5 py-0.5 rounded border border-amber-300 font-bold">{code}</strong>, conservando la versión previa en el historial y actualizando la misma oportunidad en Salesforce sin duplicados.
               </span>
             </div>
             <div className="flex items-center gap-3 self-end sm:self-auto">

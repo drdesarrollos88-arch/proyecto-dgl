@@ -48,6 +48,7 @@ function CotizacionesContent() {
   const [isDeletingBatch, setIsDeletingBatch] = useState(false);
 
   const [previewCotizacion, setPreviewCotizacion] = useState<Cotizacion | null>(null);
+  const [selectedPreviewVersion, setSelectedPreviewVersion] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(true);
 
   // Leer parámetros de búsqueda de la URL al montar el componente
@@ -738,11 +739,21 @@ function CotizacionesContent() {
                             >
                               {c.code}
                             </Link>
-                            {vNum && (
-                              <span className="px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 font-bold text-[9px] tracking-tight">
-                                V{vNum}
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1 flex-wrap">
+                              {vNum && (
+                                <span className="px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 font-bold text-[9px] tracking-tight">
+                                  V{vNum}
+                                </span>
+                              )}
+                              {c.versionHistory && c.versionHistory.length > 0 && (
+                                <span
+                                  title={`Tiene ${c.versionHistory.length} versión(es) previa(s) archivada(s)`}
+                                  className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-medium text-[9px] border border-slate-200"
+                                >
+                                  +{c.versionHistory.length} hist
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
 
@@ -875,6 +886,7 @@ function CotizacionesContent() {
                             <button
                               type="button"
                               onClick={() => {
+                                setSelectedPreviewVersion(null);
                                 setPreviewLoading(true);
                                 setPreviewCotizacion(c);
                               }}
@@ -1047,13 +1059,25 @@ function CotizacionesContent() {
                     </>
                   ) : (
                     <a
-                      href={`/api/cotizaciones/${previewCotizacion.id}/pdf?draft=false`}
-                      download={`Cotizacion_${previewCotizacion.code}.pdf`}
+                      href={`/api/cotizaciones/${previewCotizacion.id}/pdf?draft=false${
+                        selectedPreviewVersion ? `&version=${selectedPreviewVersion}` : ''
+                      }`}
+                      download={`Cotizacion_${
+                        selectedPreviewVersion
+                          ? previewCotizacion.versionHistory?.find((v) => String(v.versionNumber) === selectedPreviewVersion)?.versionCode || previewCotizacion.code
+                          : previewCotizacion.code
+                      }.pdf`}
                       className="flex items-center gap-1.5 bg-[#E20000] hover:bg-[#C20000] text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
                       title="Descargar documento PDF oficial definitivo"
                     >
                       <FileText className="w-3.5 h-3.5" />
-                      <span>Descargar PDF Oficial</span>
+                      <span>
+                        {selectedPreviewVersion
+                          ? `Descargar ${
+                              previewCotizacion.versionHistory?.find((v) => String(v.versionNumber) === selectedPreviewVersion)?.versionCode.split('-').pop() || 'V'
+                            } (PDF)`
+                          : 'Descargar PDF Oficial'}
+                      </span>
                     </a>
                   )}
 
@@ -1099,7 +1123,7 @@ function CotizacionesContent() {
                 </div>
               </div>
 
-              {/* Barra Informativa de Clasificación Salesforce & DGL */}
+              {/* Barra Informativa de Clasificación Salesforce & DGL y Selector de Versiones */}
               <div className="px-5 py-2 bg-slate-800 border-t border-slate-700/80 flex flex-wrap items-center justify-between text-[11px] text-slate-300 gap-2">
                 <div className="flex flex-wrap items-center gap-2.5">
                   <span className="inline-flex items-center gap-1 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700 font-mono text-[10px]">
@@ -1122,6 +1146,48 @@ function CotizacionesContent() {
                     <span className="text-slate-400">Zona:</span>
                     <strong className="text-amber-300">{previewCotizacion.zonaProyecto || 'Región Metropolitana'}</strong>
                   </span>
+
+                  {/* Selector de Historial de Versiones */}
+                  {previewCotizacion.versionHistory && previewCotizacion.versionHistory.length > 0 && (
+                    <div className="inline-flex items-center gap-1 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700 text-[10px]">
+                      <span className="text-slate-400 font-semibold">Versión:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedPreviewVersion(null);
+                          setPreviewLoading(true);
+                        }}
+                        className={`px-1.5 py-0.5 rounded font-bold transition-colors cursor-pointer ${
+                          selectedPreviewVersion === null
+                            ? 'bg-blue-600 text-white'
+                            : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                        }`}
+                      >
+                        {previewCotizacion.code.includes('-V') ? previewCotizacion.code.split('-').pop() : 'V2'} (Actual)
+                      </button>
+                      {previewCotizacion.versionHistory.map((vh) => {
+                        const verLabel = vh.versionCode.includes('-V') ? vh.versionCode.split('-').pop() : `V${vh.versionNumber || 1}`;
+                        const isSel = selectedPreviewVersion === String(vh.versionNumber);
+                        return (
+                          <button
+                            key={vh.versionCode}
+                            type="button"
+                            onClick={() => {
+                              setSelectedPreviewVersion(String(vh.versionNumber));
+                              setPreviewLoading(true);
+                            }}
+                            className={`px-1.5 py-0.5 rounded font-bold transition-colors cursor-pointer ${
+                              isSel
+                                ? 'bg-blue-600 text-white'
+                                : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                            }`}
+                          >
+                            {verLabel}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
                   <span>Salesforce:</span>
@@ -1140,8 +1206,11 @@ function CotizacionesContent() {
                   </div>
                 )}
                 <iframe
+                  key={selectedPreviewVersion || 'active'}
                   src={`/api/cotizaciones/${previewCotizacion.id}/pdf?inline=true${
-                    previewCotizacion.status === 'Borrador' ? '&draft=true' : '&draft=false'
+                    selectedPreviewVersion ? `&version=${selectedPreviewVersion}` : ''
+                  }${
+                    previewCotizacion.status === 'Borrador' && !selectedPreviewVersion ? '&draft=true' : '&draft=false'
                   }`}
                   className="w-full h-full border-0"
                   title={`Vista Previa ${previewCotizacion.code}`}

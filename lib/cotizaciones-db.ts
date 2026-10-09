@@ -86,6 +86,12 @@ export function mapSupabaseToCotizacion(row: any): Cotizacion {
     totalWeightKg,
     observations: Array.isArray(row.observations) ? row.observations : [],
     status: (row.status as any) || 'Borrador',
+    version: row.version || 1,
+    versionHistory: Array.isArray(row.ai_chat_state?.versionHistory)
+      ? row.ai_chat_state.versionHistory
+      : Array.isArray(row.version_history)
+      ? row.version_history
+      : [],
     aiChatState: row.ai_chat_state || row.aiChatState || undefined,
     salesforceOpportunityId: row.salesforce_opportunity_id || row.salesforceOpportunityId || undefined,
     salesforceOpportunityUrl: row.salesforce_opportunity_url || row.salesforceOpportunityUrl || undefined,
@@ -166,13 +172,14 @@ export function mapCotizacionToSupabase(c: Partial<Cotizacion>): any {
     validity_days: 30,
     delivery_time: null,
     payment_terms: c.paymentCondition || null,
-    version: 1,
+    version: c.version || 1,
     seccion: c.seccion || getDGLInfoByCC(c.centroCosto || c.code || '2340').seccion,
     sector_proyecto: c.sectorProyecto || 'Inmobiliario',
     subsector_proyecto: c.subsectorProyecto || 'No Aplica',
     zona_proyecto: c.zonaProyecto || 'Región Metropolitana',
     ai_chat_state: {
       ...(c.aiChatState || {}),
+      versionHistory: c.versionHistory || [],
       projectMeta: {
         seccion: c.seccion || getDGLInfoByCC(c.centroCosto || c.code || '2340').seccion,
         sectorProyecto: c.sectorProyecto || 'Inmobiliario',

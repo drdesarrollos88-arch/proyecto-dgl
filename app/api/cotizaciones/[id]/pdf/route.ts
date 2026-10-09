@@ -49,23 +49,53 @@ export async function GET(
   }
 
   const isDraftParam = req.nextUrl.searchParams.get('draft');
-  const isDraft = isDraftParam !== null ? isDraftParam === 'true' : finalCotizacion.status === 'Borrador';
+  const versionParam = req.nextUrl.searchParams.get('version');
+
+  let targetCotizacion = { ...finalCotizacion };
+  if (versionParam && Array.isArray(finalCotizacion.versionHistory) && finalCotizacion.versionHistory.length > 0) {
+    const found = finalCotizacion.versionHistory.find(
+      (v) =>
+        String(v.versionNumber) === versionParam ||
+        v.versionCode.toLowerCase() === versionParam.toLowerCase() ||
+        v.versionCode.toLowerCase().endsWith(`-v${versionParam.toLowerCase()}`) ||
+        v.versionCode.endsWith(`.${versionParam}`)
+    );
+    if (found) {
+      targetCotizacion = {
+        ...finalCotizacion,
+        code: found.versionCode,
+        items: found.items || finalCotizacion.items,
+        totalUf: found.totalUf,
+        totalClp: found.totalClp,
+        totalUsd: found.totalUsd,
+        totalWeightKg: found.totalWeightKg,
+        observations: found.observations || finalCotizacion.observations,
+        condicionesComerciales: found.condicionesComerciales || finalCotizacion.condicionesComerciales,
+        showEconomicIndicators: found.showEconomicIndicators ?? finalCotizacion.showEconomicIndicators,
+        ufValue: found.ufValue || finalCotizacion.ufValue,
+        dollarValue: found.dollarValue || finalCotizacion.dollarValue,
+        status: found.status || finalCotizacion.status,
+      };
+    }
+  }
+
+  const isDraft = isDraftParam !== null ? isDraftParam === 'true' : targetCotizacion.status === 'Borrador';
 
   const showIndicatorsParam = req.nextUrl.searchParams.get('showIndicators');
   const showEconomicIndicators =
     showIndicatorsParam !== null
       ? showIndicatorsParam === 'true'
-      : finalCotizacion.showEconomicIndicators !== false;
+      : targetCotizacion.showEconomicIndicators !== false;
 
-  const doc = generateCotizacionPdf(finalCotizacion, logoBase64, formato, {
+  const doc = generateCotizacionPdf(targetCotizacion, logoBase64, formato, {
     isDraft,
     showEconomicIndicators,
   });
   const pdfBuffer = Buffer.from(doc.output('arraybuffer'));
 
-  const cleanCode = cotizacion.code.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const cleanCode = targetCotizacion.code.replace(/[^a-zA-Z0-9_-]/g, '_');
   const prefix = isDraft ? 'Borrador_Cotizacion_' : 'Cotizacion_';
-  const filename = `${prefix}${cleanCode}_${(cotizacion.clientName || 'Cliente').slice(0, 15).replace(/\s+/g, '_')}.pdf`;
+  const filename = `${prefix}${cleanCode}_${(targetCotizacion.clientName || 'Cliente').slice(0, 15).replace(/\s+/g, '_')}.pdf`;
 
   const isInline =
     req.nextUrl.searchParams.get('inline') === 'true' ||

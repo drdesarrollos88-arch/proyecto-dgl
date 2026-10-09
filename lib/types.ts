@@ -271,11 +271,33 @@ export interface Cotizacion {
   deletedAt?: string;
   deletedBy?: string;
   deletedById?: string;
+  version?: number;
+  versionHistory?: CotizacionVersionSnapshot[];
   salesforceOpportunityId?: string;
   salesforceOpportunityUrl?: string;
   salesforceQuoteId?: string;
   salesforceQuoteUrl?: string;
   salesforceSyncedAt?: string;
+}
+
+export interface CotizacionVersionSnapshot {
+  versionNumber: number; // e.g. 1, 2...
+  versionCode: string; // e.g. 'PR.DGL.3340.2026.0656'
+  savedAt: string;
+  savedBy?: string;
+  status: 'Borrador' | 'Finalizada' | 'Enviada' | 'Aprobada' | 'Rechazada';
+  totalUf: number;
+  totalClp: number;
+  totalUsd?: number;
+  totalWeightKg: number;
+  ufValue: number;
+  dollarValue?: number;
+  items: CotizacionItem[];
+  observations?: string[];
+  condicionesComerciales?: CotizacionCondicionesComerciales;
+  showEconomicIndicators?: boolean;
+  salesforceOpportunityId?: string;
+  salesforceQuoteId?: string;
 }
 
 export interface CotizacionCondicionesComerciales {

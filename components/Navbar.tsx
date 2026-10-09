@@ -35,7 +35,9 @@ import {
   Hash,
   ShieldCheck,
   BookOpen,
+  Trophy,
 } from 'lucide-react';
+import CierreOportunidadModal from '@/components/salesforce/CierreOportunidadModal';
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -46,6 +48,7 @@ export default function Navbar() {
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showFormatoModal, setShowFormatoModal] = useState(false);
+  const [showCierreModal, setShowCierreModal] = useState(false);
   const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -109,6 +112,7 @@ export default function Navbar() {
   };
 
   const isCotizacionActive = pathname.startsWith('/cotizador') || pathname.startsWith('/cotizaciones');
+  const isVentasActive = pathname.startsWith('/ventas') || showCierreModal;
   const isTarifarioActive = pathname.startsWith('/tarifario');
   const isClientesActive = pathname.startsWith('/clientes');
   const isConfigActive = pathname.startsWith('/usuarios') || pathname.startsWith('/configuracion') || showFormatoModal;
@@ -236,12 +240,103 @@ export default function Navbar() {
                         </span>
                       </div>
                     </Link>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveDropdown(null);
+                        setShowCierreModal(true);
+                      }}
+                      className="w-full text-left flex items-start gap-2.5 px-3.5 py-2 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 transition-colors group cursor-pointer border-t border-slate-100"
+                    >
+                      <Trophy className="w-4 h-4 text-amber-600 mt-0.5 shrink-0 group-hover:scale-110 transition-transform" />
+                      <div className="flex flex-col">
+                        <span className="text-xs font-semibold leading-snug text-slate-800 group-hover:text-emerald-800">
+                          Cierre de Oportunidad
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-normal">
+                          Cerrar ganada/perdida en Salesforce
+                        </span>
+                      </div>
+                    </button>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* 2. Tarifado Oficial Menu */}
+            {/* 2. Ventas Menu */}
+            <div
+              className="relative nav-dropdown-container"
+              onMouseEnter={() => handleMouseEnter('ventas')}
+              onMouseLeave={handleMouseLeave}
+            >
+              <button
+                onClick={() => handleDropdownClick('ventas')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                  isVentasActive
+                    ? 'bg-red-50 text-red-700 border border-red-100 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                <Trophy className="w-3.5 h-3.5 text-amber-600" />
+                <span>Ventas</span>
+                <ChevronDown
+                  className={`w-3 h-3 transition-transform duration-150 ${
+                    activeDropdown === 'ventas' ? 'rotate-180 text-red-700' : 'text-slate-400'
+                  }`}
+                />
+              </button>
+
+              {activeDropdown === 'ventas' && (
+                <div
+                  className="absolute left-0 mt-1 w-64 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in slide-in-from-top-1 duration-150 divide-y divide-slate-100"
+                  onMouseEnter={() => handleMouseEnter('ventas')}
+                  onMouseLeave={handleMouseLeave}
+                >
+                  <div className="py-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveDropdown(null);
+                        setShowCierreModal(true);
+                      }}
+                      className="w-full text-left flex items-start gap-2.5 px-3.5 py-2 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 transition-colors group cursor-pointer"
+                    >
+                      <Trophy className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0 group-hover:scale-110 transition-transform" />
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold leading-snug text-slate-900 group-hover:text-emerald-800 flex items-center gap-1.5">
+                          <span>Cierre de Oportunidad</span>
+                          <span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1.5 py-0.2 rounded-full">
+                            SF Directo
+                          </span>
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-normal">
+                          Cerrar ganada (con cuotas) o perdida en Salesforce
+                        </span>
+                      </div>
+                    </button>
+
+                    <Link
+                      href="/ventas"
+                      onClick={() => setActiveDropdown(null)}
+                      className="flex items-start gap-2.5 px-3.5 py-2 hover:bg-blue-50 text-slate-700 hover:text-blue-800 transition-colors group"
+                    >
+                      <Briefcase className="w-4 h-4 text-blue-600 mt-0.5 shrink-0 group-hover:scale-110 transition-transform" />
+                      <div className="flex flex-col">
+                        <span className="text-xs font-semibold leading-snug text-slate-800 group-hover:text-blue-800">
+                          Panel de Negocios & Ventas
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-normal">
+                          Ver propuestas en curso y calendario de cuotas
+                        </span>
+                      </div>
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 3. Tarifado Oficial Menu */}
             <div
               className="relative nav-dropdown-container"
               onMouseEnter={() => handleMouseEnter('tarifario')}
@@ -763,6 +858,15 @@ export default function Navbar() {
           <span>Historial</span>
         </Link>
         <Link
+          href="/ventas"
+          className={`flex items-center gap-1 py-1 ${
+            pathname.startsWith('/ventas') ? 'text-red-700 font-bold' : 'text-slate-600'
+          }`}
+        >
+          <Trophy className="w-3.5 h-3.5 text-amber-600" />
+          <span>Ventas</span>
+        </Link>
+        <Link
           href="/cotizador"
           className={`flex items-center gap-1 py-1 ${
             pathname.startsWith('/cotizador') ? 'text-red-700 font-bold' : 'text-slate-600'
@@ -824,6 +928,17 @@ export default function Navbar() {
         isOpen={showFormatoModal}
         onClose={() => setShowFormatoModal(false)}
       />
+
+      {showCierreModal && (
+        <CierreOportunidadModal
+          isOpen={showCierreModal}
+          onClose={() => setShowCierreModal(false)}
+          onSuccess={() => {
+            setShowCierreModal(false);
+            router.refresh();
+          }}
+        />
+      )}
     </header>
   );
 }

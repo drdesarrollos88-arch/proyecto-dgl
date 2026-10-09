@@ -6,34 +6,31 @@ import {
   Cotizacion,
   CuotaFacturacionDetalle,
   MOTIVOS_RECHAZO_SALESFORCE,
-  MotivoRechazoSalesforce,
 } from '@/lib/types';
 import {
   X,
   Trophy,
   XCircle,
-  Calendar,
   DollarSign,
   TrendingUp,
   TrendingDown,
-  Percent,
   CheckCircle2,
   AlertTriangle,
   Loader2,
   ExternalLink,
   RotateCcw,
-  Sparkles,
   Layers,
+  Search,
   ArrowRight,
-  Info,
+  Filter,
   Check,
 } from 'lucide-react';
 
 interface CierreOportunidadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  cotizacion: Cotizacion;
-  onSuccess: (updatedCotizacion: Cotizacion) => void;
+  cotizacion?: Cotizacion | null;
+  onSuccess?: (updatedCotizacion: Cotizacion) => void;
 }
 
 export default function CierreOportunidadModal({
@@ -45,15 +42,24 @@ export default function CierreOportunidadModal({
   const [mounted, setMounted] = useState(false);
   const [tab, setTab] = useState<'ganada' | 'perdida'>('ganada');
 
+  // Cotización activa (puede venir como prop o ser seleccionada en el buscador del modal)
+  const [activeCotizacion, setActiveCotizacion] = useState<Cotizacion | null>(cotizacion || null);
+
+  // Selector inicial de cotizaciones si no vino una preseleccionada
+  const [cotsList, setCotsList] = useState<Cotizacion[]>([]);
+  const [loadingCots, setLoadingCots] = useState(false);
+  const [searchQuote, setSearchQuote] = useState('');
+  const [quoteFilterMode, setQuoteFilterMode] = useState<'por_cerrar' | 'todas'>('por_cerrar');
+
   // Valores de Cierre Ganada
-  const ufVal = cotizacion.ufValue || 38000;
-  const originalUf = cotizacion.totalUf || 0;
-  const originalClp = cotizacion.totalClp || Math.round(originalUf * ufVal);
+  const ufVal = activeCotizacion?.ufValue || 38000;
+  const originalUf = activeCotizacion?.totalUf || 0;
+  const originalClp = activeCotizacion?.totalClp || Math.round(originalUf * ufVal);
 
   const [closingUf, setClosingUf] = useState<number>(originalUf);
   const [closingClp, setClosingClp] = useState<number>(originalClp);
   const [fechaCierre, setFechaCierre] = useState<string>(() => new Date().toISOString().split('T')[0]);
-  const [cantidadCuotas, setCantidadCuotas] = useState<number>(() => (originalUf > 50 ? 2 : 1));
+  const [cantidadCuotas, setCantidadCuotas] = useState<number>(2);
   const [fechaPrimeraFacturacion, setFechaPrimeraFacturacion] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() + 15);
@@ -75,12 +81,38 @@ export default function CierreOportunidadModal({
     setMounted(true);
   }, []);
 
-  // Al abrir el modal o cambiar cotizacion, inicializar campos
+  // Si cambia la prop cotizacion
   useEffect(() => {
-    if (isOpen && cotizacion) {
-      const prevCierre = cotizacion.cierreNegocio;
-      const initialUf = prevCierre?.montoCierreUf ?? cotizacion.totalUf ?? 0;
-      const initialClp = prevCierre?.montoCierreClp ?? cotizacion.totalClp ?? Math.round(initialUf * ufVal);
+    if (cotizacion) {
+      setActiveCotizacion(cotizacion);
+    } else {
+      setActiveCotizacion(null);
+    }
+  }, [cotizacion, isOpen]);
+
+  // Si se abre sin cotización preseleccionada, cargar lista de cotizaciones para búsqueda
+  useEffect(() => {
+    if (isOpen && !cotizacion) {
+      setLoadingCots(true);
+      fetch('/api/cotizaciones')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.cotizaciones && Array.isArray(data.cotizaciones)) {
+            setCotsList(data.cotizaciones);
+          }
+        })
+        .catch((e) => console.error('Error cargando cotizaciones para cierre:', e))
+        .finally(() => setLoadingCots(false));
+    }
+  }, [isOpen, cotizacion]);
+
+  // Al tener o cambiar activeCotizacion, inicializar campos
+  useEffect(() => {
+    if (isOpen && activeCotizacion) {
+      const currentUfVal = activeCotizacion.ufValue || 38000;
+      const prevCierre = activeCotizacion.cierreNegocio;
+      const initialUf = prevCierre?.montoCierreUf ?? activeCotizacion.totalUf ?? 0;
+      const initialClp = prevCierre?.montoCierreClp ?? activeCotizacion.totalClp ?? Math.round(initialUf * currentUfVal);
 
       setClosingUf(initialUf);
       setClosingClp(initialClp);
@@ -113,7 +145,7 @@ export default function CierreOportunidadModal({
       setErrorMessage(null);
       setSuccessResult(null);
     }
-  }, [isOpen, cotizacion]);
+  }, [isOpen, activeCotizacion]);
 
   // Generador inteligente de propuesta de cuotas
   const generarDistribucionCuotas = (
@@ -122,22 +154,23 @@ export default function CierreOportunidadModal({
     totalClpVal: number,
     startDateStr: string
   ) => {
+    const safeNum = Math.max(1, Math.min(120, num || 1));
     const list: CuotaFacturacionDetalle[] = [];
     const baseDate = new Date(startDateStr || new Date().toISOString().split('T')[0]);
-    const basePct = Number((100 / num).toFixed(2));
-    const baseUf = Number((totalUfVal / num).toFixed(2));
-    const baseClp = Math.floor(totalClpVal / num);
+    const basePct = Number((100 / safeNum).toFixed(2));
+    const baseUf = Number((totalUfVal / safeNum).toFixed(2));
+    const baseClp = Math.floor(totalClpVal / safeNum);
 
     let acumPct = 0;
     let acumUf = 0;
     let acumClp = 0;
 
-    for (let i = 1; i <= num; i++) {
+    for (let i = 1; i <= safeNum; i++) {
       const d = new Date(baseDate);
       d.setMonth(d.getMonth() + (i - 1));
       const fechaStr = d.toISOString().split('T')[0];
 
-      const isLast = i === num;
+      const isLast = i === safeNum;
       const pct = isLast ? Number((100 - acumPct).toFixed(2)) : basePct;
       const uf = isLast ? Number((totalUfVal - acumUf).toFixed(2)) : baseUf;
       const clp = isLast ? totalClpVal - acumClp : baseClp;
@@ -174,16 +207,16 @@ export default function CierreOportunidadModal({
     generarDistribucionCuotas(cantidadCuotas, newUf, newClp, fechaPrimeraFacturacion);
   };
 
-  // Manejar cambio en cantidad de cuotas
+  // Manejar cambio libre en cantidad de cuotas (ej. 24, 36)
   const handleCantidadCuotasChange = (num: number) => {
-    setCantidadCuotas(num);
-    generarDistribucionCuotas(num, closingUf, closingClp, fechaPrimeraFacturacion);
+    const safeNum = Math.max(1, Math.min(120, num || 1));
+    setCantidadCuotas(safeNum);
+    generarDistribucionCuotas(safeNum, closingUf, closingClp, fechaPrimeraFacturacion);
   };
 
   // Manejar cambio en fecha primera facturación
   const handleFechaInicioChange = (dateStr: string) => {
     setFechaPrimeraFacturacion(dateStr);
-    // Reajustar fechas de las cuotas proporcionalmente
     const baseDate = new Date(dateStr);
     setCuotas((prev) =>
       prev.map((c, idx) => {
@@ -288,15 +321,34 @@ export default function CierreOportunidadModal({
   const diffOriginalUf = Number((closingUf - originalUf).toFixed(2));
   const diffOriginalPct = originalUf > 0 ? Number(((diffOriginalUf / originalUf) * 100).toFixed(1)) : 0;
 
+  // Filtrado de cotizaciones para el buscador inicial
+  const filteredCotsList = useMemo(() => {
+    const q = searchQuote.toLowerCase().trim();
+    return cotsList.filter((c) => {
+      if (quoteFilterMode === 'por_cerrar') {
+        const st = c.status || 'Borrador';
+        if (st === 'Borrador' || st === 'Perdida') return false;
+      }
+      if (q) {
+        return (
+          c.code.toLowerCase().includes(q) ||
+          c.clientName.toLowerCase().includes(q) ||
+          (c.projectName && c.projectName.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    });
+  }, [cotsList, searchQuote, quoteFilterMode]);
+
   // Enviar Cierre a Salesforce
   const handleSubmit = async () => {
+    if (!activeCotizacion) return;
     setLoading(true);
     setErrorMessage(null);
 
     try {
       if (tab === 'ganada') {
         if (!balance.isCuadrado) {
-          // Ajustar automáticamente antes de enviar para garantizar integridad
           handleAutoAjustarUltimaCuota();
         }
 
@@ -305,7 +357,7 @@ export default function CierreOportunidadModal({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'ganada',
-            cotizacionId: cotizacion.id,
+            cotizacionId: activeCotizacion.id,
             closingUf,
             closingClp,
             fechaCierre,
@@ -322,7 +374,7 @@ export default function CierreOportunidadModal({
 
         setSuccessResult(data.data);
         if (data.data?.cotizacion) {
-          onSuccess(data.data.cotizacion);
+          onSuccess?.(data.data.cotizacion);
         }
       } else {
         // Cierre Perdida
@@ -331,7 +383,7 @@ export default function CierreOportunidadModal({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'perdida',
-            cotizacionId: cotizacion.id,
+            cotizacionId: activeCotizacion.id,
             fechaCierre,
             motivoRechazo,
             observaciones: observacionesPerdida,
@@ -345,7 +397,7 @@ export default function CierreOportunidadModal({
 
         setSuccessResult(data.data);
         if (data.data?.cotizacion) {
-          onSuccess(data.data.cotizacion);
+          onSuccess?.(data.data.cotizacion);
         }
       }
     } catch (err: any) {
@@ -373,12 +425,29 @@ export default function CierreOportunidadModal({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-bold text-slate-900 text-base">Cierre Comercial de Oportunidad</h3>
-                <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/70">
-                  {cotizacion.code}
-                </span>
+                {activeCotizacion && (
+                  <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/70">
+                    {activeCotizacion.code}
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 truncate max-w-xl">
-                {cotizacion.clientName} {cotizacion.projectName ? `• ${cotizacion.projectName}` : ''}
+                {activeCotizacion ? (
+                  <>
+                    <span>{activeCotizacion.clientName} {activeCotizacion.projectName ? `• ${activeCotizacion.projectName}` : ''}</span>
+                    {!cotizacion && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveCotizacion(null)}
+                        className="ml-2 text-blue-600 hover:underline font-bold"
+                      >
+                        (Cambiar cotización)
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  'Seleccione la cotización o propuesta que desea cerrar en Salesforce'
+                )}
               </p>
             </div>
           </div>
@@ -386,14 +455,133 @@ export default function CierreOportunidadModal({
             type="button"
             onClick={onClose}
             disabled={loading}
-            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Pantalla de Éxito */}
-        {successResult ? (
+        {/* PASO 0: SELECTOR DE COTIZACIÓN (SI NO HAY UNA ACTIVA) */}
+        {!activeCotizacion ? (
+          <div className="p-6 overflow-y-auto space-y-4 flex-1">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Buscar por código (ej. PR.DGL.2340...), cliente o proyecto..."
+                  value={searchQuote}
+                  onChange={(e) => setSearchQuote(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setQuoteFilterMode('por_cerrar')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                    quoteFilterMode === 'por_cerrar'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  Listas para Cierre
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQuoteFilterMode('todas')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
+                    quoteFilterMode === 'todas'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  Todas las Propuestas
+                </button>
+              </div>
+            </div>
+
+            {loadingCots ? (
+              <div className="py-16 text-center">
+                <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-2" />
+                <p className="text-xs text-slate-500">Cargando propuestas para cierre...</p>
+              </div>
+            ) : filteredCotsList.length === 0 ? (
+              <div className="py-16 text-center bg-slate-50 rounded-2xl border border-slate-200/80">
+                <Filter className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm font-bold text-slate-700">No se encontraron propuestas</p>
+                <p className="text-xs text-slate-400 mt-1">Intenta con otro término de búsqueda o cambia el filtro.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <span className="text-[11px] font-bold uppercase text-slate-500 tracking-wider">
+                  Selecciona una propuesta ({filteredCotsList.length} disponibles):
+                </span>
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-xs max-h-96 overflow-y-auto">
+                  {filteredCotsList.map((c) => (
+                    <div
+                      key={c.id}
+                      onClick={() => setActiveCotizacion(c)}
+                      className="p-3.5 hover:bg-blue-50/50 transition-colors cursor-pointer flex items-center justify-between gap-4 group"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-xs text-slate-900 group-hover:text-blue-700">
+                            {c.code}
+                          </span>
+                          <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                            c.status === 'Ganada'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : c.status === 'Aprobada'
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : c.status === 'Enviada'
+                              ? 'bg-purple-50 text-purple-700'
+                              : 'bg-blue-50 text-blue-700'
+                          }`}>
+                            {c.status || 'Borrador'}
+                          </span>
+                          {c.salesforceOpportunityId && (
+                            <span className="text-[9px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1 py-0.2 rounded">
+                              Enlazada en SF
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs font-semibold text-slate-800 mt-0.5 truncate">
+                          {c.clientName}
+                        </div>
+                        {c.projectName && (
+                          <div className="text-[11px] text-slate-500 truncate">
+                            {c.projectName}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="text-right shrink-0 flex items-center gap-4">
+                        <div>
+                          <div className="font-mono font-bold text-xs text-slate-900">
+                            {c.totalUf} UF
+                          </div>
+                          <div className="text-[10px] font-mono text-slate-500">
+                            ${c.totalClp?.toLocaleString('es-CL')} CLP
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="px-3 py-1.5 rounded-xl bg-slate-100 group-hover:bg-blue-600 group-hover:text-white text-slate-700 text-xs font-bold transition-all flex items-center gap-1 shadow-2xs"
+                        >
+                          <span>Cerrar</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : successResult ? (
+          /* Pantalla de Éxito */
           <div className="p-8 flex flex-col items-center justify-center text-center space-y-4">
             <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${
               tab === 'ganada' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'
@@ -467,7 +655,7 @@ export default function CierreOportunidadModal({
                 <button
                   type="button"
                   onClick={() => setTab('ganada')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     tab === 'ganada'
                       ? 'bg-emerald-600 text-white shadow-xs'
                       : 'text-slate-600 hover:bg-slate-200/60'
@@ -480,7 +668,7 @@ export default function CierreOportunidadModal({
                 <button
                   type="button"
                   onClick={() => setTab('perdida')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     tab === 'perdida'
                       ? 'bg-rose-600 text-white shadow-xs'
                       : 'text-slate-600 hover:bg-slate-200/60'
@@ -626,24 +814,46 @@ export default function CierreOportunidadModal({
                         />
                       </div>
 
-                      {/* Cantidad de Cuotas */}
+                      {/* Cantidad de Cuotas (Número Totalmente Editable) */}
                       <div className="space-y-1">
-                        <label className="text-[11px] font-bold text-slate-700">Cantidad de Cuotas *</label>
-                        <select
-                          value={cantidadCuotas}
-                          onChange={(e) => handleCantidadCuotasChange(parseInt(e.target.value, 10))}
-                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
-                        >
-                          <option value="1">1 cuota (Pago único / 100%)</option>
-                          <option value="2">2 cuotas (50% / 50%)</option>
-                          <option value="3">3 cuotas (Mensuales)</option>
-                          <option value="4">4 cuotas (Mensuales)</option>
-                          <option value="5">5 cuotas (Mensuales)</option>
-                          <option value="6">6 cuotas (Mensuales)</option>
-                          <option value="8">8 cuotas (Mensuales)</option>
-                          <option value="10">10 cuotas (Mensuales)</option>
-                          <option value="12">12 cuotas (1 año)</option>
-                        </select>
+                        <label className="text-[11px] font-bold text-slate-700 flex items-center justify-between">
+                          <span>Cantidad de Cuotas *</span>
+                          <span className="text-[10px] text-blue-600 font-semibold">Editable (ej. 24, 36)</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="1"
+                            max="120"
+                            step="1"
+                            value={cantidadCuotas || ''}
+                            onChange={(e) => {
+                              const val = parseInt(e.target.value, 10);
+                              handleCantidadCuotasChange(isNaN(val) ? 1 : val);
+                            }}
+                            className="w-full pl-3 pr-16 py-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                            placeholder="Ej. 1, 12, 24, 36..."
+                          />
+                          <span className="absolute right-3 top-2 text-[11px] font-bold text-slate-400">cuota(s)</span>
+                        </div>
+                        {/* Chips de sugerencia rápida */}
+                        <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                          <span className="text-[9px] text-slate-400 font-medium">Accesos rápidos:</span>
+                          {[1, 2, 3, 6, 12, 24, 36].map((n) => (
+                            <button
+                              key={n}
+                              type="button"
+                              onClick={() => handleCantidadCuotasChange(n)}
+                              className={`px-1.5 py-0.5 rounded text-[9px] font-bold transition-colors cursor-pointer ${
+                                cantidadCuotas === n
+                                  ? 'bg-blue-600 text-white shadow-2xs'
+                                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
+                            >
+                              {n}m
+                            </button>
+                          ))}
+                        </div>
                       </div>
 
                       {/* Inicio de Pago (1ª Facturación) */}
@@ -659,26 +869,26 @@ export default function CierreOportunidadModal({
                     </div>
                   </div>
 
-                  {/* SECCIÓN 3: TABLA DE CUOTAS EDITABLE Y VALIDACIÓN */}
+                  {/* SECCIÓN 3: TABLA DE CUOTAS EDITABLE Y VALIDACIÓN CON SCROLL INTERNO */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
                         3. Detalle de Cuotas a Ingresar en Salesforce (Cuota_de_facturacion__c)
                       </span>
                       <span className="text-[10px] text-slate-500">
-                        Puedes ajustar la fecha, porcentaje o montos de cada cuota
+                        {cuotas.length} cuota(s) en proyección mensual
                       </span>
                     </div>
 
-                    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
+                    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs max-h-80 overflow-y-auto">
                       <table className="w-full text-xs">
-                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold text-[10px] uppercase">
+                        <thead className="sticky top-0 bg-slate-50 border-b border-slate-200 text-slate-600 font-bold text-[10px] uppercase z-10 shadow-2xs">
                           <tr>
-                            <th className="py-2 px-3 text-left w-16"># Cuota</th>
-                            <th className="py-2 px-3 text-left">Fecha Estimada</th>
-                            <th className="py-2 px-3 text-center w-28">% Distribución</th>
-                            <th className="py-2 px-3 text-right w-36">Monto UF</th>
-                            <th className="py-2 px-3 text-right w-44">Monto CLP</th>
+                            <th className="py-2.5 px-3 text-left w-20"># Cuota</th>
+                            <th className="py-2.5 px-3 text-left">Fecha Estimada</th>
+                            <th className="py-2.5 px-3 text-center w-28">% Distribución</th>
+                            <th className="py-2.5 px-3 text-right w-36">Monto UF</th>
+                            <th className="py-2.5 px-3 text-right w-44">Monto CLP</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -738,8 +948,8 @@ export default function CierreOportunidadModal({
                             </tr>
                           ))}
                         </tbody>
-                        {/* Fila de Totales y Balance */}
-                        <tfoot className="bg-slate-50/90 border-t border-slate-200 font-bold text-xs">
+                        {/* Fila de Totales y Balance Pinned */}
+                        <tfoot className="sticky bottom-0 bg-slate-50/95 backdrop-blur-xs border-t border-slate-200 font-bold text-xs z-10">
                           <tr>
                             <td colSpan={2} className="py-2 px-3 text-slate-700">
                               Total Suma de Cuotas:
@@ -791,7 +1001,7 @@ export default function CierreOportunidadModal({
                         <button
                           type="button"
                           onClick={handleAutoAjustarUltimaCuota}
-                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold shadow-xs transition-colors shrink-0"
+                          className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold shadow-xs transition-colors shrink-0 cursor-pointer"
                         >
                           Ajustar en última cuota
                         </button>
@@ -869,7 +1079,7 @@ export default function CierreOportunidadModal({
                 type="button"
                 onClick={onClose}
                 disabled={loading}
-                className="px-4 py-2 border border-slate-300 hover:bg-slate-100 rounded-xl text-xs font-semibold text-slate-700 transition-colors"
+                className="px-4 py-2 border border-slate-300 hover:bg-slate-100 rounded-xl text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
               >
                 Cancelar
               </button>
@@ -909,4 +1119,3 @@ export default function CierreOportunidadModal({
     document.body
   );
 }
-

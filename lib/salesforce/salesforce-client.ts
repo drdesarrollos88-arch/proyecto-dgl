@@ -69,7 +69,7 @@ export function getRedirectUri(origin?: string): string {
 /**
  * Construye la URL de autorización OAuth 2.0 hacia Salesforce
  */
-export async function buildSalesforceAuthUrl(origin: string, challenge: string): Promise<string> {
+export async function buildSalesforceAuthUrl(origin: string, challenge: string, state?: string): Promise<string> {
   const clientId = cleanStr(process.env.SALESFORCE_CLIENT_ID);
   const loginUrl = (cleanStr(process.env.SALESFORCE_LOGIN_URL) || 'https://login.salesforce.com').replace(/\/$/, '');
   const redirectUri = getRedirectUri(origin);
@@ -81,6 +81,7 @@ export async function buildSalesforceAuthUrl(origin: string, challenge: string):
     code_challenge: challenge,
     code_challenge_method: 'S256',
     prompt: 'consent',
+    ...(state ? { state } : {}),
   });
 
   return `${loginUrl}/services/oauth2/authorize?${params.toString()}`;
@@ -266,9 +267,9 @@ export async function getValidSalesforceClient(): Promise<{
 
   const instanceUrl = auth.instanceUrl || 'https://idiem.my.salesforce.com';
 
-  // 1. Probar si el token actual está vivo
+  // 1. Probar si el token actual está vivo (ping ligero a /limits para evitar descargar megabytes de metadata)
   try {
-    const testRes = await fetch(`${instanceUrl}/services/data/v59.0/sobjects/Opportunity/describe`, {
+    const testRes = await fetch(`${instanceUrl}/services/data/v59.0/limits`, {
       headers: { Authorization: `Bearer ${auth.accessToken}` },
     });
 

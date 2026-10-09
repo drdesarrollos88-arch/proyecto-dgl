@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
-import { getTarifario } from '@/lib/db';
+import { getTarifarioAsync } from '@/lib/tarifario-db';
 import { getCurrentUser } from '@/lib/auth';
 import { TarifarioItem } from '@/lib/types';
 
@@ -126,7 +126,7 @@ export async function GET(req: NextRequest) {
   const categoriesParam = searchParams.get('categories');
   const separateSheets = searchParams.get('separateSheets') === 'true';
 
-  let items = getTarifario();
+  let items = await getTarifarioAsync();
 
   const selectedCcs = ccsParam
     ? ccsParam.split(',').map((s) => decodeURIComponent(s.trim())).filter(Boolean)
@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { selectedCombinations, separateSheets = false } = body;
 
-    let items = getTarifario();
+    let items = await getTarifarioAsync();
 
     if (Array.isArray(selectedCombinations) && selectedCombinations.length > 0) {
       items = items.filter((it) =>

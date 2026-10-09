@@ -6,9 +6,9 @@ interface RateLimitEntry {
 
 const attemptsMap = new Map<string, RateLimitEntry>();
 
-// Clean up old entries every 15 minutes
-setInterval(() => {
-  const now = Date.now();
+// Opportunistic cleanup of stale entries without background timers (edge-friendly)
+function cleanStaleEntries(now: number) {
+  if (attemptsMap.size < 50) return;
   for (const [key, entry] of attemptsMap.entries()) {
     if (entry.lockedUntil && entry.lockedUntil < now) {
       attemptsMap.delete(key);
@@ -16,10 +16,11 @@ setInterval(() => {
       attemptsMap.delete(key);
     }
   }
-}, 15 * 60 * 1000);
+}
 
 export function checkRateLimit(key: string): { allowed: boolean; retryAfterSeconds?: number } {
   const now = Date.now();
+  cleanStaleEntries(now);
   const entry = attemptsMap.get(key);
 
   if (!entry) {

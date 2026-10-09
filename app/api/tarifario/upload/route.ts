@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
 import { getCurrentUser } from '@/lib/auth';
-import { replaceTarifario } from '@/lib/db';
+import { replaceTarifarioAsync } from '@/lib/tarifario-db';
 import { TarifarioItem } from '@/lib/types';
 import { isAdminRole } from '@/lib/permissions';
 
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    replaceTarifario(items, currentUser.name);
+    await replaceTarifarioAsync(items, currentUser.name);
 
     return NextResponse.json({
       success: true,

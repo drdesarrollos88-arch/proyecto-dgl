@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getCasosHistoricosRAG, buscarCasosHistoricosSimilares } from '@/lib/rag-service';
+import { getCasosHistoricosRAGAsync, buscarCasosHistoricosSimilaresAsync } from '@/lib/rag-service';
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -9,7 +9,7 @@ export async function GET() {
   }
 
   try {
-    const casos = getCasosHistoricosRAG();
+    const casos = await getCasosHistoricosRAGAsync();
     return NextResponse.json({ success: true, casos });
   } catch (err) {
     console.error('Error al obtener casos RAG:', err);
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const resultado = buscarCasosHistoricosSimilares(
+    const resultado = await buscarCasosHistoricosSimilaresAsync(
       query.trim(),
       centroCosto,
       limit ? Number(limit) : 2

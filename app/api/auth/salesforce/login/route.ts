@@ -5,8 +5,9 @@ export async function GET(req: NextRequest) {
   try {
     const origin = req.nextUrl.origin;
     const { verifier, challenge } = await generatePkce();
+    const state = crypto.randomUUID();
 
-    const authUrl = await buildSalesforceAuthUrl(origin, challenge);
+    const authUrl = await buildSalesforceAuthUrl(origin, challenge, state);
 
     const isPopup = req.nextUrl.searchParams.get('popup') === 'true';
 
@@ -21,12 +22,26 @@ export async function GET(req: NextRequest) {
         path: '/',
         maxAge: 600, // 10 minutos
       });
+      response.cookies.set('sf_oauth_state', state, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 600,
+      });
       return response;
     }
 
     const redirectUrl = new URL(cleanAuthUrl);
     const response = NextResponse.redirect(redirectUrl);
     response.cookies.set('sf_pkce_verifier', verifier, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 600,
+    });
+    response.cookies.set('sf_oauth_state', state, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',

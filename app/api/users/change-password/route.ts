@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, verifyPassword, hashPassword } from '@/lib/auth';
-import { getUserById, updateUserPassword } from '@/lib/db';
+import { getUserByIdAsync, updateUserAsync } from '@/lib/users-db';
 
 export async function POST(req: NextRequest) {
   const currentUser = await getCurrentUser();
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const user = getUserById(currentUser.id);
+    const user = await getUserByIdAsync(currentUser.id);
     if (!user) {
       return NextResponse.json({ error: 'Usuario no encontrado.' }, { status: 404 });
     }
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     }
 
     const newHash = await hashPassword(newPassword);
-    const updated = updateUserPassword(currentUser.id, newHash);
+    const updated = await updateUserAsync(currentUser.id, { passwordHash: newHash });
 
     if (!updated) {
       return NextResponse.json({ error: 'Error al actualizar la contraseña.' }, { status: 500 });

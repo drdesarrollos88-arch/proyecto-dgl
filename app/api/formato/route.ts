@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getFormatoSettings, saveFormatoSettings } from '@/lib/db';
+import { getFormatoSettingsAsync, saveFormatoSettingsAsync } from '@/lib/configuracion-db';
 import { isAdminRole } from '@/lib/permissions';
 
 export async function GET() {
@@ -9,7 +9,7 @@ export async function GET() {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const settings = getFormatoSettings();
+  const settings = await getFormatoSettingsAsync();
   return NextResponse.json({ success: true, settings });
 }
 
@@ -46,7 +46,7 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    const updated = saveFormatoSettings(data, currentUser.name);
+    const updated = await saveFormatoSettingsAsync(data, currentUser.name);
     return NextResponse.json({ success: true, settings: updated });
   } catch (err) {
     console.error('Error saving formato settings:', err);

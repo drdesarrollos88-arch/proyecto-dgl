@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserById, updateUserProfile } from '@/lib/db';
+import { getUserByIdAsync, updateUserAsync } from '@/lib/users-db';
 
 export async function GET() {
   const currentUser = await getCurrentUser();
@@ -8,7 +8,7 @@ export async function GET() {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
   }
 
-  const user = getUserById(currentUser.id);
+  const user = await getUserByIdAsync(currentUser.id);
   if (!user) {
     return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
   }
@@ -36,7 +36,7 @@ export async function PUT(req: NextRequest) {
       signature: data.signature !== undefined ? data.signature : undefined,
     };
 
-    const updated = updateUserProfile(currentUser.id, allowedFields);
+    const updated = await updateUserAsync(currentUser.id, allowedFields);
     if (!updated) {
       return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
     }

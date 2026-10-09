@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
-import { getTarifario, getReglasAprendidas } from './db';
-import { buscarCasosHistoricosSimilares } from './rag-service';
+import { getReglasAprendidas } from './db';
+import { getTarifarioAsync } from './tarifario-db';
+import { buscarCasosHistoricosSimilaresAsync } from './rag-service';
 import { buscarBibliografiaRelevante } from './bibliografia-db';
 import { TarifarioItem } from './types';
 
@@ -139,7 +140,7 @@ ESQUEMA JSON OBLIGATORIO:
 `;
 
 export async function analizarSolicitudConIa(input: AiAnalisisInput): Promise<AiAnalisisResponse> {
-  const tarifario = getTarifario();
+  const tarifario = await getTarifarioAsync();
   const apiKey =
     input.apiKey?.trim() ||
     process.env.GEMINI_API_KEY?.trim() ||
@@ -155,7 +156,7 @@ export async function analizarSolicitudConIa(input: AiAnalisisInput): Promise<Ai
       // 1. Recuperar Bibliografía Técnica e Histórica con Prevalencia Técnica
       const fullText = (input.texto || '') + ' ' + (input.fileName || '');
       const biblioInfo = await buscarBibliografiaRelevante(fullText, 2, 2);
-      const ragInfo = buscarCasosHistoricosSimilares(fullText, undefined, 2);
+      const ragInfo = await buscarCasosHistoricosSimilaresAsync(fullText, undefined, 2);
 
       // 2. Recuperar Reglas y Sinónimos Aprendidos por el equipo (Opción B)
       const reglasActivas = getReglasAprendidas({ estado: 'activo' });
@@ -782,7 +783,7 @@ export async function buscarEnsayosConIA(
   const qClean = query.trim();
   if (!qClean) return [];
 
-  const tarifario = getTarifario();
+  const tarifario = await getTarifarioAsync();
   const apiKey =
     customApiKey?.trim() ||
     process.env.GEMINI_API_KEY?.trim() ||
@@ -916,7 +917,7 @@ export async function chatAsistenteTecnicoComercial(params: {
   };
   apiKey?: string;
 }): Promise<AiChatResponse> {
-  const tarifario = getTarifario();
+  const tarifario = await getTarifarioAsync();
   const apiKey =
     params.apiKey?.trim() ||
     process.env.GEMINI_API_KEY?.trim() ||
@@ -961,7 +962,7 @@ export async function chatAsistenteTecnicoComercial(params: {
 
   // 1. Recuperar Bibliografía Técnica e Histórica con Prevalencia Técnica
   const biblioInfo = await buscarBibliografiaRelevante(params.mensaje, 2, 1);
-  const ragInfo = buscarCasosHistoricosSimilares(params.mensaje, params.contexto?.centroCosto, 1);
+  const ragInfo = await buscarCasosHistoricosSimilaresAsync(params.mensaje, params.contexto?.centroCosto, 1);
 
   // 2. Recuperar reglas y sinónimos aprendidos (Opción B)
   const reglasActivas = getReglasAprendidas({ estado: 'activo' });

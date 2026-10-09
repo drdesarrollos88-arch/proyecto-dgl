@@ -1,6 +1,7 @@
 import { Cotizacion, CotizacionItem, getDGLInfoByCC } from './types';
 import { isSupabaseConfigured, supabaseAdmin } from './supabase';
-import { advanceCorrelativo, saveCotizacion } from './db';
+import { saveCotizacion } from './db';
+import { advanceCorrelativoAsync } from './configuracion-db';
 import initialDbData from '../data/db.json';
 
 // Cache en memoria para soporte resiliente e instantáneo
@@ -296,7 +297,7 @@ export async function saveCotizacionAsync(
     if (match) {
       const num = parseInt(match[2], 10);
       if (!isNaN(num)) {
-        advanceCorrelativo(cotizacion.centroCosto, num);
+        await advanceCorrelativoAsync(cotizacion.centroCosto, num);
       }
     }
   }

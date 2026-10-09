@@ -9,8 +9,8 @@ import { registrarAuditoria } from '@/lib/audit-db';
 import { Cotizacion, CotizacionItem } from '@/lib/types';
 
 // Token secreto para comunicación segura con Google Apps Script
-const INBOUND_EMAIL_SECRET =
-  process.env.DGL_INBOUND_EMAIL_SECRET?.trim() || 'dgl_secret_workspace_2026';
+const rawSecret = process.env.DGL_INBOUND_EMAIL_SECRET?.trim();
+const INBOUND_EMAIL_SECRET = rawSecret || (process.env.NODE_ENV === 'production' ? '' : 'dgl_secret_workspace_2026');
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,9 +19,9 @@ export async function POST(req: NextRequest) {
     const apiKeyHeader = req.headers.get('x-dgl-api-key') || '';
     const token = authHeader.replace(/^Bearer\s+/i, '').trim() || apiKeyHeader.trim();
 
-    if (token !== INBOUND_EMAIL_SECRET) {
+    if (!INBOUND_EMAIL_SECRET || token !== INBOUND_EMAIL_SECRET) {
       return NextResponse.json(
-        { error: 'No autorizado. Token de integración de correo inválido.' },
+        { error: 'No autorizado. Token de integración de correo inválido o no configurado.' },
         { status: 401 }
       );
     }

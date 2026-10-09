@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getCorrelativoConfig, saveCorrelativoConfig } from '@/lib/db';
+import { getCorrelativoConfigAsync, saveCorrelativoConfigAsync } from '@/lib/configuracion-db';
 import { hasPermission, isAdminRole } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +12,7 @@ export async function GET() {
   }
 
   try {
-    const config = getCorrelativoConfig();
+    const config = await getCorrelativoConfigAsync();
     return NextResponse.json({ success: true, config });
   } catch (err) {
     console.error('Error fetching correlativo config:', err);
@@ -40,7 +40,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Cuerpo de solicitud no válido' }, { status: 400 });
     }
 
-    const updated = saveCorrelativoConfig(body);
+    const updated = await saveCorrelativoConfigAsync(body);
     return NextResponse.json({ success: true, config: updated });
   } catch (err) {
     console.error('Error saving correlativo config:', err);

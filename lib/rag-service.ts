@@ -1,4 +1,5 @@
 import { getCotizaciones } from './db';
+import { getCotizacionesAsync } from './cotizaciones-db';
 import { Cotizacion, CasoReferenciaRAG } from './types';
 
 /**
@@ -138,12 +139,7 @@ function cotizacionToRagCase(cot: Cotizacion): CasoReferenciaRAG | null {
   };
 }
 
-/**
- * Obtiene todas las cotizaciones históricas elegibles para el RAG,
- * combinando las cotizaciones finalizadas en la base de datos con los casos base.
- */
-export function getCasosHistoricosRAG(): CasoReferenciaRAG[] {
-  const cotizaciones = getCotizaciones();
+function buildCasosFromCotizaciones(cotizaciones: Cotizacion[]): CasoReferenciaRAG[] {
   const dbCases: CasoReferenciaRAG[] = [];
 
   // Considerar EXCLUSIVAMENTE cotizaciones finalizadas (o aprobadas/enviadas formalmente).
@@ -169,10 +165,23 @@ export function getCasosHistoricosRAG(): CasoReferenciaRAG[] {
 }
 
 /**
- * Motor de recuperación de casos similares (RAG Geotécnico).
- * Busca las cotizaciones más pertinentes para utilizarlas como Few-Shot examples en el prompt.
+ * Obtiene todas las cotizaciones históricas elegibles para el RAG de forma asíncrona desde Supabase.
  */
-export function buscarCasosHistoricosSimilares(
+export async function getCasosHistoricosRAGAsync(): Promise<CasoReferenciaRAG[]> {
+  const cotizaciones = await getCotizacionesAsync();
+  return buildCasosFromCotizaciones(cotizaciones);
+}
+
+/**
+ * Obtiene todas las cotizaciones históricas elegibles para el RAG desde la memoria o almacenamiento local.
+ */
+export function getCasosHistoricosRAG(): CasoReferenciaRAG[] {
+  const cotizaciones = getCotizaciones();
+  return buildCasosFromCotizaciones(cotizaciones);
+}
+
+function scoreAndFormatCasos(
+  casos: CasoReferenciaRAG[],
   queryText: string,
   centroCostoSugerido?: string,
   limit: number = 2
@@ -180,7 +189,6 @@ export function buscarCasosHistoricosSimilares(
   casos: CasoReferenciaRAG[];
   promptSnippet: string;
 } {
-  const casos = getCasosHistoricosRAG();
   if (casos.length === 0) {
     return { casos: [], promptSnippet: '' };
   }
@@ -251,4 +259,34 @@ export function buscarCasosHistoricosSimilares(
     casos: selected,
     promptSnippet: snippetLines.join('\n'),
   };
+}
+
+/**
+ * Motor de recuperación de casos similares de forma asíncrona (Supabase directo).
+ */
+export async function buscarCasosHistoricosSimilaresAsync(
+  queryText: string,
+  centroCostoSugerido?: string,
+  limit: number = 2
+): Promise<{
+  casos: CasoReferenciaRAG[];
+  promptSnippet: string;
+}> {
+  const casos = await getCasosHistoricosRAGAsync();
+  return scoreAndFormatCasos(casos, queryText, centroCostoSugerido, limit);
+}
+
+/**
+ * Motor de recuperación de casos similares (RAG Geotécnico sincrónico).
+ */
+export function buscarCasosHistoricosSimilares(
+  queryText: string,
+  centroCostoSugerido?: string,
+  limit: number = 2
+): {
+  casos: CasoReferenciaRAG[];
+  promptSnippet: string;
+} {
+  const casos = getCasosHistoricosRAG();
+  return scoreAndFormatCasos(casos, queryText, centroCostoSugerido, limit);
 }

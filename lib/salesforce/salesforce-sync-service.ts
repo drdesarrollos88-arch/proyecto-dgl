@@ -1,7 +1,7 @@
 import { Cotizacion, getDGLInfoByCC } from '@/lib/types';
 import { getValidSalesforceClient } from './salesforce-client';
 import { generateCotizacionPdf } from '@/lib/pdf-generator';
-import { getFormatoSettings, getUsers } from '@/lib/db';
+import { getFormatoSettingsAsync } from '@/lib/configuracion-db';
 import { saveCotizacionAsync } from '@/lib/cotizaciones-db';
 import fs from 'fs';
 import path from 'path';
@@ -508,13 +508,19 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
   // 8. PASO 3: Generar PDF en memoria y convertir a Base64
   let base64Pdf = '';
   try {
-    const formato = getFormatoSettings();
+    const formato = await getFormatoSettingsAsync();
     let logoBase64: string | undefined = formato.headerImage;
     if (!logoBase64) {
-      const logoPath = path.join(process.cwd(), 'public', 'logo_125.png');
-      if (fs.existsSync(logoPath)) {
-        const raw = fs.readFileSync(logoPath);
-        logoBase64 = `data:image/png;base64,${raw.toString('base64')}`;
+      try {
+        if (typeof process !== 'undefined' && process.cwd) {
+          const logoPath = path.join(process.cwd(), 'public', 'logo_125.png');
+          if (fs.existsSync(logoPath)) {
+            const raw = fs.readFileSync(logoPath);
+            logoBase64 = `data:image/png;base64,${raw.toString('base64')}`;
+          }
+        }
+      } catch (fsErr) {
+        console.warn('No se pudo leer logo_125.png desde disco local:', fsErr);
       }
     }
 

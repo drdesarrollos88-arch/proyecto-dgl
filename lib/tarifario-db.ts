@@ -1112,3 +1112,34 @@ export async function deleteSubcategoryFromStructureAsync(
 
   return { success: true, count: 0 };
 }
+
+/**
+ * Reemplaza o actualiza el tarifario en lote en Supabase y memoria.
+ */
+export async function replaceTarifarioAsync(items: TarifarioItem[], updatedBy: string): Promise<void> {
+  const now = new Date().toISOString();
+  const processedItems = items.map((it) => ({
+    ...it,
+    isOfficial: true,
+    updatedAt: now,
+    updatedBy,
+  }));
+
+  _cachedTarifario = processedItems;
+
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      const rows = processedItems.map(mapItemToRow);
+      const chunkSize = 100;
+      for (let i = 0; i < rows.length; i += chunkSize) {
+        const chunk = rows.slice(i, i + chunkSize);
+        const { error } = await supabaseAdmin.from('tarifario').upsert(chunk, { onConflict: 'id' });
+        if (error) {
+          console.error(`Error en lote ${i}-${i + chunk.length} al guardar tarifario en Supabase:`, error.message);
+        }
+      }
+    } catch (err) {
+      console.error('Error persistiendo lote de tarifario en Supabase:', err);
+    }
+  }
+}

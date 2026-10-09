@@ -5,6 +5,12 @@ export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
   const error = req.nextUrl.searchParams.get('error');
   const errorDesc = req.nextUrl.searchParams.get('error_description');
+  const state = req.nextUrl.searchParams.get('state');
+  const storedState = req.cookies.get('sf_oauth_state')?.value;
+
+  if (storedState && state && state !== storedState) {
+    return NextResponse.redirect(new URL('/cotizaciones?salesforce_error=invalid_csrf_state', req.nextUrl.origin));
+  }
 
   if (error || !code) {
     const errorMsg = errorDesc || error || 'Autorización cancelada o denegada en Salesforce';
@@ -20,7 +26,7 @@ export async function GET(req: NextRequest) {
           </div>
           <script>
             if (window.opener) {
-              window.opener.postMessage({ type: 'SALESFORCE_AUTH_ERROR', message: ${JSON.stringify(errorMsg)} }, '*');
+              window.opener.postMessage({ type: 'SALESFORCE_AUTH_ERROR', message: ${JSON.stringify(errorMsg)} }, ${JSON.stringify(req.nextUrl.origin)});
             }
           </script>
         </body>
@@ -56,7 +62,7 @@ export async function GET(req: NextRequest) {
         </div>
         <script>
           if (window.opener) {
-            window.opener.postMessage({ type: 'SALESFORCE_AUTH_SUCCESS', user: ${JSON.stringify(authData.userName)} }, '*');
+            window.opener.postMessage({ type: 'SALESFORCE_AUTH_SUCCESS', user: ${JSON.stringify(authData.userName)} }, ${JSON.stringify(req.nextUrl.origin)});
             setTimeout(() => window.close(), 1200);
           } else {
             setTimeout(() => {
@@ -72,6 +78,7 @@ export async function GET(req: NextRequest) {
     });
 
     res.cookies.delete('sf_pkce_verifier');
+    res.cookies.delete('sf_oauth_state');
     return res;
   } catch (err: any) {
     console.error('Error procesando callback de Salesforce:', err);

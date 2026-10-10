@@ -20,7 +20,7 @@ export interface SalesforceSyncResult {
 /**
  * Realiza una llamada HTTP REST a la API de Salesforce
  */
-async function sfRequest(
+export async function sfRequest(
   instanceUrl: string,
   accessToken: string,
   endpoint: string,

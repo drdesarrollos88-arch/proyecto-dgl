@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { SessionUser, EconomicIndicators } from '@/lib/types';
-import { isAdminRole } from '@/lib/permissions';
+import { isAdminRole, isSuperAdminRole } from '@/lib/permissions';
 import ProfileModal from '@/components/ProfileModal';
 import FormatoModal from '@/components/FormatoModal';
 import {
@@ -36,6 +36,7 @@ import {
   ShieldCheck,
   BookOpen,
   Trophy,
+  Scale,
 } from 'lucide-react';
 import CierreOportunidadModal from '@/components/salesforce/CierreOportunidadModal';
 
@@ -334,6 +335,30 @@ export default function Navbar() {
                         </span>
                       </div>
                     </Link>
+
+                    {/* Conciliador EERR vs Salesforce (Solo Soporte / Superadmin) */}
+                    {(isSuperAdminRole(user?.role) || user?.profileId === 'superadmin') && (
+                      <Link
+                        href="/ventas/conciliador"
+                        onClick={() => setActiveDropdown(null)}
+                        className="flex items-start gap-2.5 px-3.5 py-2 hover:bg-purple-50 text-slate-700 hover:text-purple-800 transition-colors group border-t border-slate-100"
+                      >
+                        <Scale className="w-4 h-4 text-purple-600 mt-0.5 shrink-0 group-hover:scale-110 transition-transform" />
+                        <div className="flex flex-col flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold leading-snug text-slate-900 group-hover:text-purple-800">
+                              Conciliador EERR vs SF
+                            </span>
+                            <span className="bg-purple-100 text-purple-800 text-[9px] font-black px-1.5 py-0.2 rounded-full">
+                              Soporte
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 font-normal">
+                            Cuadratura mensual de facturación y cuotas
+                          </span>
+                        </div>
+                      </Link>
+                    )}
                   </div>
                 </div>
               )}
@@ -896,6 +921,17 @@ export default function Navbar() {
               <span>Auditoría</span>
             </Link>
           </>
+        )}
+        {(isSuperAdminRole(user?.role) || user?.profileId === 'superadmin') && (
+          <Link
+            href="/ventas/conciliador"
+            className={`flex items-center gap-1 py-1 ${
+              pathname.startsWith('/ventas/conciliador') ? 'text-purple-700 font-bold' : 'text-slate-600'
+            }`}
+          >
+            <Scale className="w-3.5 h-3.5 text-purple-600" />
+            <span>Conciliador</span>
+          </Link>
         )}
       </div>
 

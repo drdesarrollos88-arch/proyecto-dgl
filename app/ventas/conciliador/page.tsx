@@ -44,6 +44,9 @@ import {
   ExternalLink,
   SlidersHorizontal,
   Info,
+  Table,
+  Download,
+  LayoutGrid,
 } from 'lucide-react';
 
 const MESES = [
@@ -71,6 +74,10 @@ export default function ConciliadorPage() {
   const [selectedDivision, setSelectedDivision] = useState<string>('DGL');
   const [sfSource, setSfSource] = useState<'excel' | 'salesforce_live'>('excel');
   const [filtroCuentaComercial, setFiltroCuentaComercial] = useState<FiltroCuentaComercial>('todas');
+
+  // Modo de visualización: 'excel' (columnas de planilla) o 'tarjetas' (dividida)
+  const [tipoVista, setTipoVista] = useState<'excel' | 'tarjetas'>('excel');
+  const [detalleItemModal, setDetalleItemModal] = useState<ConciliacionItem | null>(null);
 
   // Datos principales
   const [items, setItems] = useState<ConciliacionItem[]>([]);
@@ -508,6 +515,92 @@ export default function ConciliadorPage() {
       return matchEerr || matchSf;
     });
   }, [items, filtroEstado, searchTerm]);
+
+  // Totales dinámicos de los registros visibles en la planilla
+  const totalEerrVisible = useMemo(() => {
+    return filteredItems.reduce((acc, it) => acc + (it.eerr?.montoClp || 0), 0);
+  }, [filteredItems]);
+
+  const totalSfVisible = useMemo(() => {
+    return filteredItems.reduce((acc, it) => acc + (it.cuota?.montoClp || 0), 0);
+  }, [filteredItems]);
+
+  const totalDifVisible = useMemo(() => {
+    return totalEerrVisible - totalSfVisible;
+  }, [totalEerrVisible, totalSfVisible]);
+
+  // Exportar registros filtrados a archivo Excel (.csv con delimitador ; y BOM UTF-8)
+  const handleExportarExcelCsv = () => {
+    if (filteredItems.length === 0) {
+      alert('No hay registros para exportar con los filtros seleccionados.');
+      return;
+    }
+
+    const headers = [
+      '#',
+      'Tipo Doc EERR',
+      'N° Doc EERR',
+      'Fecha EERR',
+      'RUT EERR',
+      'Razón Social EERR',
+      'Referencia / Glosa EERR',
+      'Monto EERR CLP',
+      'Estado Conciliación',
+      'Diferencia CLP',
+      'Diagnóstico / IA',
+      'Oportunidad Salesforce',
+      'Cliente Salesforce',
+      'RUT Salesforce',
+      'N° Cuota SF',
+      'Fecha Pago SF',
+      'Monto Salesforce CLP',
+      'Es Cuenta Comercial SF',
+    ];
+
+    const escapeCsv = (val: any) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const rows = filteredItems.map((it, idx) => [
+      idx + 1,
+      it.eerr ? (it.eerr.tipo === 'traspaso_interno' ? 'Traspaso Interno' : 'Factura') : '',
+      it.eerr?.referenciaExterna || it.eerr?.comprobante || '',
+      it.eerr?.fecha || '',
+      it.eerr?.rut || '',
+      it.eerr?.razonSocial || '',
+      it.eerr?.referenciaInterna || it.eerr?.glosa || '',
+      it.eerr?.montoClp ?? '',
+      it.estado,
+      it.diferenciaClp,
+      it.explicacionIa || '',
+      it.cuota?.opportunityName || '',
+      it.cuota?.cuenta || '',
+      it.cuota?.rutEmpresa || '',
+      it.cuota?.numeroCuota ?? '',
+      it.cuota?.fechaPago || '',
+      it.cuota?.montoClp ?? '',
+      it.cuota?.esCuentaComercial ? 'SÍ' : 'NO',
+    ]);
+
+    const csvContent =
+      '\uFEFF' +
+      [headers.map(escapeCsv).join(';'), ...rows.map((r) => r.map(escapeCsv).join(';'))].join('\r\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute(
+      'download',
+      `Conciliacion_${selectedDivision}_Mes${selectedMes}_${selectedAnio}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   // Si está cargando usuario o no es superadmin
   if (loadingUser) {
@@ -1143,19 +1236,62 @@ export default function ConciliadorPage() {
             </button>
           </div>
 
-          <div className="relative w-full sm:w-64">
-            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Filtrar por RUT, cliente, ref o monto..."
-              className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
+            <div className="relative w-full sm:w-60">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Buscar RUT, cliente, doc, monto..."
+                className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            {/* Selector de Modo de Visualización: Planilla Excel vs Tarjetas */}
+            <div className="inline-flex rounded-xl p-0.5 bg-slate-100 border border-slate-200 text-xs">
+              <button
+                type="button"
+                onClick={() => setTipoVista('excel')}
+                className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  tipoVista === 'excel'
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Vista en columnas de Excel (Planilla tabular completa)"
+              >
+                <Table className="w-3.5 h-3.5" />
+                <span>Columnas Excel</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTipoVista('tarjetas')}
+                className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  tipoVista === 'tarjetas'
+                    ? 'bg-slate-900 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Vista comparativa en tarjetas divididas"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Tarjetas</span>
+              </button>
+            </div>
+
+            {/* Botón de Exportación Rápida a Excel CSV */}
+            <button
+              type="button"
+              onClick={handleExportarExcelCsv}
+              className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 rounded-xl text-xs font-bold shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="Descargar datos actuales directamente en formato Excel (.csv delimitado por punto y coma)"
+            >
+              <Download className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Exportar Excel</span>
+            </button>
           </div>
         </div>
 
-        {/* Tabla Comparativa Dual: EERR vs Salesforce (Uno a Uno) */}
+        {/* Tabla Comparativa: Vista Excel (Columnas) o Vista Tarjetas */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
           {loading ? (
             <div className="py-20 text-center text-slate-400 flex flex-col items-center gap-3">
@@ -1168,7 +1304,358 @@ export default function ConciliadorPage() {
               <p className="text-xs font-bold text-slate-700">No se encontraron registros con los filtros seleccionados</p>
               <p className="text-[11px] text-slate-400 mt-1">Intenta cambiando el mes o limpiando el filtro de búsqueda.</p>
             </div>
+          ) : tipoVista === 'excel' ? (
+            /* VISTA EN COLUMNAS DE EXCEL (PLANILLA COMPLETA) */
+            <div className="overflow-x-auto max-h-[760px] overflow-y-auto">
+              <table className="w-full text-left text-[11px] border-collapse bg-white font-sans whitespace-nowrap">
+                <thead className="sticky top-0 z-20 shadow-xs">
+                  {/* Fila 1: Grupos Principales de Columnas */}
+                  <tr className="text-[10px] font-black uppercase tracking-wider text-white">
+                    <th colSpan={8} className="bg-slate-800 py-2 px-3 text-center border-r border-slate-700">
+                      Facturación Real EERR (Departamento de Gestión)
+                    </th>
+                    <th colSpan={3} className="bg-indigo-900 py-2 px-3 text-center border-r border-indigo-800">
+                      Cuadratura & Brecha
+                    </th>
+                    <th colSpan={6} className="bg-slate-900 py-2 px-3 text-center">
+                      Cuota Proyectada Salesforce ({selectedDivision})
+                    </th>
+                  </tr>
+
+                  {/* Fila 2: Cabeceras Individuales de Columnas */}
+                  <tr className="bg-slate-100 text-slate-700 font-extrabold text-[10px] uppercase border-b border-slate-300">
+                    <th className="py-2 px-2 text-center border-r border-slate-200 w-10">#</th>
+                    <th className="py-2 px-2 text-center border-r border-slate-200">Tipo</th>
+                    <th className="py-2 px-2 text-center border-r border-slate-200">N° Doc</th>
+                    <th className="py-2 px-2 text-center border-r border-slate-200">Fecha EERR</th>
+                    <th className="py-2 px-2 text-center border-r border-slate-200">RUT EERR</th>
+                    <th className="py-2 px-3 text-left border-r border-slate-200 min-w-[200px] max-w-[280px]">Razón Social (EERR)</th>
+                    <th className="py-2 px-3 text-left border-r border-slate-200 min-w-[180px] max-w-[260px]">Referencia / Glosa</th>
+                    <th className="py-2 px-3 text-right border-r-2 border-slate-400 min-w-[110px] bg-slate-200/50 text-slate-900 font-black">Monto EERR</th>
+
+                    <th className="py-2 px-2.5 text-center border-r border-slate-200 min-w-[110px]">Estado Match</th>
+                    <th className="py-2 px-2.5 text-right border-r border-slate-200 min-w-[100px]">Diferencia ($)</th>
+                    <th className="py-2 px-2 text-center border-r-2 border-slate-400 min-w-[130px]">Acción</th>
+
+                    <th className="py-2 px-3 text-left border-r border-slate-200 min-w-[200px] max-w-[280px]">Oportunidad SF</th>
+                    <th className="py-2 px-3 text-left border-r border-slate-200 min-w-[180px] max-w-[240px]">Cliente SF</th>
+                    <th className="py-2 px-2 text-center border-r border-slate-200">RUT SF</th>
+                    <th className="py-2 px-2 text-center border-r border-slate-200 w-14">Cuota</th>
+                    <th className="py-2 px-2 text-center border-r border-slate-200">Fecha Pago</th>
+                    <th className="py-2 px-3 text-right min-w-[110px] bg-indigo-50 text-indigo-950 font-black">Monto SF</th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-200 font-normal">
+                  {filteredItems.map((it, idx) => {
+                    const esConciliado = it.estado === 'conciliado';
+                    const esDiferencia = it.estado === 'diferencia_monto';
+                    const esDesfase = it.estado === 'desfase_temporal';
+                    const esNoProy = it.estado === 'no_proyectado';
+                    const esNoFact = it.estado === 'no_facturado';
+
+                    return (
+                      <tr
+                        key={it.id}
+                        className={`transition-colors text-[11px] ${
+                          it.accionAplicada
+                            ? 'bg-emerald-50/70'
+                            : esConciliado
+                            ? 'hover:bg-emerald-50/30'
+                            : esDiferencia
+                            ? 'hover:bg-amber-50/40 bg-amber-50/10'
+                            : esDesfase
+                            ? 'hover:bg-orange-50/40 bg-orange-50/10'
+                            : esNoProy
+                            ? 'hover:bg-blue-50/40 bg-blue-50/10'
+                            : 'hover:bg-red-50/40 bg-red-50/10'
+                        } ${idx % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'}`}
+                      >
+                        {/* 1. # */}
+                        <td className="py-2 px-2 text-center text-slate-400 font-mono border-r border-slate-200">
+                          {idx + 1}
+                        </td>
+
+                        {/* 2. Tipo Doc */}
+                        <td className="py-2 px-2 text-center border-r border-slate-200">
+                          {it.eerr ? (
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
+                                it.eerr.tipo === 'traspaso_interno'
+                                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                  : 'bg-blue-100 text-blue-900 border border-blue-200'
+                              }`}
+                            >
+                              {it.eerr.tipo === 'traspaso_interno' ? 'Traspaso' : 'Factura'}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
+                        </td>
+
+                        {/* 3. N° Doc */}
+                        <td className="py-2 px-2 text-center font-mono font-bold text-slate-800 border-r border-slate-200">
+                          {it.eerr?.referenciaExterna ? `Doc: ${it.eerr.referenciaExterna}` : it.eerr?.comprobante ? `C: ${it.eerr.comprobante}` : '-'}
+                        </td>
+
+                        {/* 4. Fecha EERR */}
+                        <td className="py-2 px-2 text-center font-mono text-slate-600 border-r border-slate-200">
+                          {it.eerr?.fecha || '-'}
+                        </td>
+
+                        {/* 5. RUT EERR */}
+                        <td className="py-2 px-2 text-center font-mono text-slate-600 border-r border-slate-200">
+                          {it.eerr?.rut || '-'}
+                        </td>
+
+                        {/* 6. Razón Social (EERR) */}
+                        <td
+                          className="py-2 px-3 text-left font-semibold text-slate-900 border-r border-slate-200 max-w-[280px] truncate"
+                          title={it.eerr?.razonSocial || ''}
+                        >
+                          {it.eerr?.razonSocial || <span className="text-slate-300 italic">(Sin EERR)</span>}
+                        </td>
+
+                        {/* 7. Referencia / Glosa */}
+                        <td
+                          className="py-2 px-3 text-left text-slate-600 border-r border-slate-200 max-w-[260px] truncate text-[10px]"
+                          title={it.eerr?.referenciaInterna || it.eerr?.glosa || ''}
+                        >
+                          {it.eerr?.referenciaInterna || it.eerr?.glosa || '-'}
+                        </td>
+
+                        {/* 8. Monto EERR */}
+                        <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 border-r-2 border-slate-400 bg-slate-50/70">
+                          {it.eerr ? (
+                            <span>${it.eerr.montoClp.toLocaleString('es-CL')}</span>
+                          ) : (
+                            <span className="text-slate-300 font-normal">-</span>
+                          )}
+                        </td>
+
+                        {/* 9. Estado Match */}
+                        <td className="py-2 px-2.5 text-center border-r border-slate-200">
+                          {esConciliado && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
+                              <span>Match 100%</span>
+                            </span>
+                          )}
+                          {esDiferencia && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
+                              <AlertTriangle className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                              <span>Dif. Monto</span>
+                            </span>
+                          )}
+                          {esDesfase && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-orange-100 text-orange-900 border border-orange-200">
+                              <Clock className="w-2.5 h-2.5 text-orange-600 shrink-0" />
+                              <span>Desfase Mes</span>
+                            </span>
+                          )}
+                          {esNoProy && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-900 border border-blue-200">
+                              <PlusCircle className="w-2.5 h-2.5 text-blue-600 shrink-0" />
+                              <span>No Proy. SF</span>
+                            </span>
+                          )}
+                          {esNoFact && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-red-100 text-red-900 border border-red-200">
+                              <XCircle className="w-2.5 h-2.5 text-red-600 shrink-0" />
+                              <span>No Fact. EERR</span>
+                            </span>
+                          )}
+                        </td>
+
+                        {/* 10. Diferencia ($) */}
+                        <td className="py-2 px-2.5 text-right font-mono font-bold border-r border-slate-200">
+                          {it.diferenciaClp !== 0 ? (
+                            <span className={it.diferenciaClp > 0 ? 'text-blue-700' : 'text-red-700'}>
+                              {it.diferenciaClp > 0 ? '+' : ''}${it.diferenciaClp.toLocaleString('es-CL')}
+                            </span>
+                          ) : (
+                            <span className="text-emerald-600 font-mono font-semibold">$0</span>
+                          )}
+                        </td>
+
+                        {/* 11. Acción & Detalle IA */}
+                        <td className="py-2 px-2 text-center border-r-2 border-slate-400">
+                          <div className="flex items-center justify-center gap-1">
+                            {esConciliado && (
+                              <button
+                                onClick={() => handleSeleccionarAccion(it, 'aceptar_match')}
+                                disabled={it.accionAplicada === 'aceptar_match'}
+                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-100 disabled:text-emerald-800 text-white rounded-md text-[9px] font-bold transition-colors cursor-pointer"
+                                title="Confirmar conciliación exacta"
+                              >
+                                {it.accionAplicada === 'aceptar_match' ? '✓ Ok' : 'Cuadrar'}
+                              </button>
+                            )}
+
+                            {esDiferencia && (
+                              <button
+                                onClick={() =>
+                                  handleSeleccionarAccion(it, 'ajustar_cuota', {
+                                    nuevoMontoClp: it.eerr?.montoClp,
+                                  })
+                                }
+                                className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-[9px] font-bold transition-colors cursor-pointer"
+                                title={`Ajustar cuota a $${(it.eerr?.montoClp || 0).toLocaleString('es-CL')}`}
+                              >
+                                Ajustar $
+                              </button>
+                            )}
+
+                            {esDesfase && (
+                              <button
+                                onClick={() => handleSeleccionarAccion(it, 'mover_cuota')}
+                                className="px-2 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded-md text-[9px] font-bold transition-colors cursor-pointer"
+                                title="Mover cuota a este mes"
+                              >
+                                Mover Mes
+                              </button>
+                            )}
+
+                            {esNoProy && (
+                              <button
+                                onClick={() => handleSeleccionarAccion(it, 'crear_cuota')}
+                                className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[9px] font-bold transition-colors cursor-pointer"
+                                title="Crear cuota en Salesforce"
+                              >
+                                + Crear SF
+                              </button>
+                            )}
+
+                            {esNoFact && (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => handleSeleccionarAccion(it, 'postergar_mes')}
+                                  className="px-1.5 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded-md text-[9px] font-bold cursor-pointer"
+                                  title="Postergar al mes siguiente"
+                                >
+                                  Postergar
+                                </button>
+                                <button
+                                  onClick={() => handleSeleccionarAccion(it, 'eliminar_cuota')}
+                                  className="px-1.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md text-[9px] font-bold cursor-pointer"
+                                  title="Eliminar cuota"
+                                >
+                                  Eliminar
+                                </button>
+                              </div>
+                            )}
+
+                            {it.explicacionIa && (
+                              <button
+                                onClick={() => setDetalleItemModal(it)}
+                                className="p-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors cursor-pointer"
+                                title={`Diagnóstico IA: ${it.explicacionIa}`}
+                              >
+                                <Sparkles className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* 12. Oportunidad SF */}
+                        <td className="py-2 px-3 text-left border-r border-slate-200 max-w-[280px]">
+                          {it.cuota ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold text-slate-900 truncate" title={it.cuota.opportunityName}>
+                                {it.cuota.opportunityName}
+                              </span>
+                              {it.cuota.esCuentaComercial && (
+                                <span
+                                  className="shrink-0 text-[8px] font-black px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-800 border border-purple-200"
+                                  title="Cuenta Comercial Salesforce"
+                                >
+                                  SF Comercial
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-slate-300 italic">(Sin cuota en SF)</span>
+                          )}
+                        </td>
+
+                        {/* 13. Cliente SF */}
+                        <td
+                          className="py-2 px-3 text-left border-r border-slate-200 max-w-[240px] truncate"
+                          title={it.cuota?.cuenta || ''}
+                        >
+                          {it.cuota ? (
+                            <span className={it.cuota.esCuentaComercial ? 'text-purple-900 font-extrabold' : 'text-slate-800'}>
+                              {it.cuota.cuenta}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
+                        </td>
+
+                        {/* 14. RUT SF */}
+                        <td className="py-2 px-2 text-center font-mono text-slate-600 border-r border-slate-200">
+                          {it.cuota?.rutEmpresa || '-'}
+                        </td>
+
+                        {/* 15. Cuota # */}
+                        <td className="py-2 px-2 text-center font-mono font-bold text-indigo-700 border-r border-slate-200">
+                          {it.cuota?.numeroCuota != null ? `#${it.cuota.numeroCuota}` : '-'}
+                        </td>
+
+                        {/* 16. Fecha Pago SF */}
+                        <td className="py-2 px-2 text-center font-mono text-slate-600 border-r border-slate-200">
+                          {it.cuota?.fechaPago || '-'}
+                        </td>
+
+                        {/* 17. Monto SF */}
+                        <td className="py-2 px-3 text-right font-mono font-bold text-indigo-950 bg-indigo-50/50">
+                          {it.cuota ? (
+                            <span>${it.cuota.montoClp.toLocaleString('es-CL')}</span>
+                          ) : (
+                            <span className="text-slate-300 font-normal">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+
+                {/* Fila Inferior: Totales de Columnas al estilo Excel */}
+                <tfoot className="sticky bottom-0 bg-slate-100 font-bold border-t-2 border-slate-400 z-10 text-[11px] shadow-xs">
+                  <tr>
+                    <td colSpan={7} className="py-2.5 px-3 text-right font-extrabold text-slate-700 uppercase">
+                      Total Facturado EERR ({filteredItems.filter((i) => i.eerr).length} items):
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono font-black text-slate-900 bg-slate-200/80 border-r-2 border-slate-400">
+                      ${totalEerrVisible.toLocaleString('es-CL')}
+                    </td>
+                    <td className="py-2.5 px-2 text-center text-slate-500 font-bold">
+                      Dif. Neta:
+                    </td>
+                    <td
+                      className={`py-2.5 px-2.5 text-right font-mono font-black ${
+                        Math.abs(totalDifVisible) <= 2000
+                          ? 'text-emerald-700'
+                          : totalDifVisible > 0
+                          ? 'text-blue-700'
+                          : 'text-red-700'
+                      }`}
+                    >
+                      {totalDifVisible > 0 ? '+' : ''}${totalDifVisible.toLocaleString('es-CL')}
+                    </td>
+                    <td className="py-2.5 px-2 border-r-2 border-slate-400"></td>
+                    <td colSpan={5} className="py-2.5 px-3 text-right font-extrabold text-indigo-900 uppercase">
+                      Total Proyectado Salesforce ({filteredItems.filter((i) => i.cuota).length} cuotas):
+                    </td>
+                    <td className="py-2.5 px-3 text-right font-mono font-black text-indigo-950 bg-indigo-100/90">
+                      ${totalSfVisible.toLocaleString('es-CL')}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           ) : (
+            /* VISTA CLÁSICA EN TARJETAS */
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-600">
@@ -1435,6 +1922,100 @@ export default function ConciliadorPage() {
             </div>
           )}
         </div>
+
+        {/* Modal de Detalle Completo de Fila y Diagnóstico IA */}
+        {detalleItemModal && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="p-2 rounded-xl bg-indigo-50 text-indigo-700">
+                    <Sparkles className="w-5 h-5" />
+                  </span>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Detalle y Diagnóstico del Registro
+                    </h3>
+                    <span className="text-[11px] text-slate-400">
+                      Criterio de Cruce: {detalleItemModal.criterioMatch}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setDetalleItemModal(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Contenido Comparativo */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                {/* Lado EERR */}
+                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1.5">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Facturación EERR</span>
+                  {detalleItemModal.eerr ? (
+                    <>
+                      <p className="font-bold text-slate-900">{detalleItemModal.eerr.razonSocial}</p>
+                      <p className="text-slate-600">RUT: <span className="font-mono">{detalleItemModal.eerr.rut}</span></p>
+                      <p className="text-slate-600">Doc: <span className="font-mono">{detalleItemModal.eerr.referenciaExterna || detalleItemModal.eerr.comprobante}</span></p>
+                      <p className="text-slate-600">Fecha: {detalleItemModal.eerr.fecha}</p>
+                      <p className="text-slate-500 italic text-[11px]">{detalleItemModal.eerr.referenciaInterna || detalleItemModal.eerr.glosa}</p>
+                      <p className="font-mono font-bold text-slate-900 text-sm pt-1">
+                        ${detalleItemModal.eerr.montoClp.toLocaleString('es-CL')} CLP
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-slate-400 italic">No hay documento asociado en EERR este mes.</p>
+                  )}
+                </div>
+
+                {/* Lado Salesforce */}
+                <div className="bg-indigo-50/50 p-3.5 rounded-2xl border border-indigo-100 space-y-1.5">
+                  <span className="text-[10px] font-bold text-indigo-700 uppercase block">Cuota Salesforce</span>
+                  {detalleItemModal.cuota ? (
+                    <>
+                      <p className="font-bold text-slate-900">{detalleItemModal.cuota.opportunityName}</p>
+                      <p className="text-slate-600">Cliente: <strong>{detalleItemModal.cuota.cuenta}</strong></p>
+                      <p className="text-slate-600">RUT SF: <span className="font-mono">{detalleItemModal.cuota.rutEmpresa || '-'}</span></p>
+                      <p className="text-slate-600">Cuota: #{detalleItemModal.cuota.numeroCuota} (Fecha: {detalleItemModal.cuota.fechaPago})</p>
+                      {detalleItemModal.cuota.esCuentaComercial && (
+                        <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-100 text-purple-800">
+                          🏷️ Cuenta Comercial Salesforce
+                        </span>
+                      )}
+                      <p className="font-mono font-bold text-indigo-950 text-sm pt-1">
+                        ${detalleItemModal.cuota.montoClp.toLocaleString('es-CL')} CLP
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-slate-400 italic">No hay cuota programada en Salesforce.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Explicación IA */}
+              {detalleItemModal.explicacionIa && (
+                <div className="bg-indigo-50 border border-indigo-200 p-3.5 rounded-2xl text-xs text-indigo-900 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold text-indigo-800">
+                    <Sparkles className="w-4 h-4 text-indigo-600" />
+                    <span>Diagnóstico Heurístico & IA (Certeza: {detalleItemModal.confianzaIa || 85}%):</span>
+                  </div>
+                  <p className="leading-relaxed">{detalleItemModal.explicacionIa}</p>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-2">
+                <button
+                  onClick={() => setDetalleItemModal(null)}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Barra Flotante de Cambios Preparados para Salesforce */}
         {colaAcciones.length > 0 && (

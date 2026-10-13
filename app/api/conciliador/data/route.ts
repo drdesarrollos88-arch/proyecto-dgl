@@ -6,6 +6,7 @@ import {
   fetchLiveSalesforceCuotas,
   conciliarPeriodo,
   detectPredominantPeriod,
+  esCuentaComercialSalesforce,
 } from '@/lib/conciliador-service';
 import sampleData from '@/data/conciliador-sample.json';
 import path from 'path';
@@ -37,6 +38,7 @@ export async function GET(req: NextRequest) {
   const anio = parseInt(searchParams.get('anio') || '2026', 10);
   const division = searchParams.get('division') || 'DGL';
   const source = searchParams.get('source') || 'excel'; // 'excel' | 'salesforce_live'
+  const filtroCuentaComercial = (searchParams.get('filtroCuentaComercial') as any) || 'todas';
 
   try {
     let eerrItems: any[] = [];
@@ -87,6 +89,7 @@ export async function GET(req: NextRequest) {
       division,
       usarIaGemini: true,
       consolidadoDivisiones,
+      filtroCuentaComercial,
     });
 
     // Detectar meses disponibles en el dataset
@@ -100,7 +103,13 @@ export async function GET(req: NextRequest) {
         (e) => e.mes === mes && e.anio === anio && (division === 'TODAS' || e.division === division)
       ),
       sfItems: finalSfItems.filter(
-        (s) => s.mes === mes && s.anio === anio && (division === 'TODAS' || s.division === division)
+        (s) =>
+          s.mes === mes &&
+          s.anio === anio &&
+          (division === 'TODAS' || s.division === division) &&
+          (filtroCuentaComercial === 'todas' ||
+            (filtroCuentaComercial === 'excluir' && !esCuentaComercialSalesforce(s)) ||
+            (filtroCuentaComercial === 'solo' && esCuentaComercialSalesforce(s)))
       ),
       mesesConDatos,
       divisionesConDatos,
@@ -133,8 +142,55 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (req.headers.get('content-type')?.includes('application/json')) {
+      etapaActual = '2. Procesamiento de recálculo en memoria JSON';
+      const body = await req.json();
+      const mesFinal = Number(body.mes) || 1;
+      const anioFinal = Number(body.anio) || 2026;
+      const divisionFinal = String(body.division || 'DGL');
+      const filtroCuentaComercial = body.filtroCuentaComercial || 'todas';
+      const allEerrItems = body.allEerrItems || body.eerrItems || [];
+      const allSfItems = body.allSfItems || body.sfItems || [];
+
+      const { items, resumen } = await conciliarPeriodo({
+        eerrItems: allEerrItems,
+        sfItems: allSfItems,
+        mes: mesFinal,
+        anio: anioFinal,
+        division: divisionFinal,
+        usarIaGemini: false,
+        consolidadoDivisiones: body.consolidadoDivisiones,
+        filtroCuentaComercial,
+      });
+
+      const filteredEerr = allEerrItems.filter(
+        (e: any) => e.mes === mesFinal && e.anio === anioFinal && (divisionFinal === 'TODAS' || (e.division || 'DGL') === divisionFinal)
+      );
+      const filteredSf = allSfItems.filter(
+        (s: any) =>
+          s.mes === mesFinal &&
+          s.anio === anioFinal &&
+          (divisionFinal === 'TODAS' || (s.division || 'DGL') === divisionFinal) &&
+          (filtroCuentaComercial === 'todas' ||
+            (filtroCuentaComercial === 'excluir' && !esCuentaComercialSalesforce(s)) ||
+            (filtroCuentaComercial === 'solo' && esCuentaComercialSalesforce(s)))
+      );
+
+      return NextResponse.json({
+        success: true,
+        mesDetectado: mesFinal,
+        anioDetectado: anioFinal,
+        divisionDetectada: divisionFinal,
+        resumen,
+        items,
+        eerrItems: filteredEerr,
+        sfItems: filteredSf,
+      });
+    }
+
     etapaActual = '2. Recepción de FormData y archivos';
     const formData = await req.formData();
+    const filtroCuentaComercial = (formData.get('filtroCuentaComercial') as any) || 'todas';
 
     let fileEerr = (formData.get('fileEerr') || formData.get('file')) as File | null;
     let fileSf = (formData.get('fileSf') || formData.get('fileCuotas')) as File | null;
@@ -323,6 +379,7 @@ export async function POST(req: NextRequest) {
       division: divisionFinal,
       usarIaGemini: true,
       consolidadoDivisiones: consolidadoDivisiones || (sampleData as any)?.consolidadoDivisiones,
+      filtroCuentaComercial,
     });
 
     // 7. Preparación de respuesta JSON ligera
@@ -331,7 +388,13 @@ export async function POST(req: NextRequest) {
       (e) => e.mes === mesFinal && e.anio === anioFinal && (divisionFinal === 'TODAS' || (e.division || 'DGL') === divisionFinal)
     );
     const filteredSf = sfItems.filter(
-      (s) => s.mes === mesFinal && s.anio === anioFinal && (divisionFinal === 'TODAS' || (s.division || 'DGL') === divisionFinal)
+      (s) =>
+        s.mes === mesFinal &&
+        s.anio === anioFinal &&
+        (divisionFinal === 'TODAS' || (s.division || 'DGL') === divisionFinal) &&
+        (filtroCuentaComercial === 'todas' ||
+          (filtroCuentaComercial === 'excluir' && !esCuentaComercialSalesforce(s)) ||
+          (filtroCuentaComercial === 'solo' && esCuentaComercialSalesforce(s)))
     );
 
     const mesesConDatos = Array.from(new Set(eerrItems.map((e) => e.mes).filter(Boolean))).sort((a, b) => a - b);

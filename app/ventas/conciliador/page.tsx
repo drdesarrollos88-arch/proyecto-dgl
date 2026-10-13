@@ -10,6 +10,7 @@ import {
   SalesforceCuotaRegistro,
   EstadoConciliacion,
   AccionConciliacion,
+  FiltroCuentaComercial,
 } from '@/lib/conciliador-types';
 import { SessionUser } from '@/lib/types';
 import { isSuperAdminRole } from '@/lib/permissions';
@@ -69,6 +70,7 @@ export default function ConciliadorPage() {
   const [selectedAnio, setSelectedAnio] = useState<number>(2026);
   const [selectedDivision, setSelectedDivision] = useState<string>('DGL');
   const [sfSource, setSfSource] = useState<'excel' | 'salesforce_live'>('excel');
+  const [filtroCuentaComercial, setFiltroCuentaComercial] = useState<FiltroCuentaComercial>('todas');
 
   // Datos principales
   const [items, setItems] = useState<ConciliacionItem[]>([]);
@@ -140,30 +142,54 @@ export default function ConciliadorPage() {
       .finally(() => setLoadingUser(false));
   }, []);
 
-  // 2. Cargar datos del período (solo si no hay sesión cargada por archivo)
-  const fetchData = async (origenSf = sfSource) => {
-    if (uploadedSession) return;
+  // 2. Cargar datos del período (o recalcular si hay sesión subida)
+  const fetchData = async (origenSf = sfSource, filtroCc = filtroCuentaComercial) => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await fetch(
-        `/api/conciliador/data?mes=${selectedMes}&anio=${selectedAnio}&division=${selectedDivision}&source=${origenSf}`
-      );
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Error ${res.status} al cargar conciliación.`);
-      }
+      if (uploadedSession) {
+        // Recálculo instantáneo en memoria si hay sesión subida activa
+        const res = await fetch('/api/conciliador/data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mes: selectedMes,
+            anio: selectedAnio,
+            division: selectedDivision,
+            filtroCuentaComercial: filtroCc,
+            allEerrItems: uploadedSession.allEerrItems,
+            allSfItems: uploadedSession.allSfItems,
+          }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Error ${res.status} al recalcular conciliación.`);
+        }
+        const data = await res.json();
+        setItems(data.items || []);
+        setResumen(data.resumen || null);
+        setEerrItems(data.eerrItems || []);
+        setSfItems(data.sfItems || []);
+      } else {
+        const res = await fetch(
+          `/api/conciliador/data?mes=${selectedMes}&anio=${selectedAnio}&division=${selectedDivision}&source=${origenSf}&filtroCuentaComercial=${filtroCc}`
+        );
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Error ${res.status} al cargar conciliación.`);
+        }
 
-      const data = await res.json();
-      setItems(data.items || []);
-      setResumen(data.resumen || null);
-      setEerrItems(data.eerrItems || []);
-      setSfItems(data.sfItems || []);
-      if (Array.isArray(data.mesesConDatos)) {
-        setMesesConDatos(data.mesesConDatos);
-      }
-      if (data.liveError) {
-        alert(`Aviso de Salesforce API: ${data.liveError}`);
+        const data = await res.json();
+        setItems(data.items || []);
+        setResumen(data.resumen || null);
+        setEerrItems(data.eerrItems || []);
+        setSfItems(data.sfItems || []);
+        if (Array.isArray(data.mesesConDatos)) {
+          setMesesConDatos(data.mesesConDatos);
+        }
+        if (data.liveError) {
+          alert(`Aviso de Salesforce API: ${data.liveError}`);
+        }
       }
     } catch (err: any) {
       console.error('Error cargando datos del conciliador:', err);
@@ -175,11 +201,9 @@ export default function ConciliadorPage() {
 
   useEffect(() => {
     if (user && (isSuperAdminRole(user.role) || user.profileId === 'superadmin')) {
-      if (!uploadedSession) {
-        fetchData();
-      }
+      fetchData();
     }
-  }, [user, selectedMes, selectedAnio, selectedDivision, sfSource]);
+  }, [user, selectedMes, selectedAnio, selectedDivision, sfSource, filtroCuentaComercial]);
 
   // Procesar archivos subidos (hasta 2 archivos: EERR y Cuotas)
   const handleProcessUploadedFiles = async (customEerr?: File | null, customSf?: File | null) => {
@@ -211,6 +235,7 @@ export default function ConciliadorPage() {
     }
     if (fSf) formData.append('fileSf', fSf);
     formData.append('division', selectedDivision);
+    formData.append('filtroCuentaComercial', filtroCuentaComercial);
 
     try {
       const res = await fetch('/api/conciliador/data', {
@@ -325,8 +350,9 @@ export default function ConciliadorPage() {
     setUploadedSession(null);
     setFileEerr(null);
     setFileSf(null);
+    setFiltroCuentaComercial('todas');
     setLoading(true);
-    fetch(`/api/conciliador/data?mes=1&anio=2026&division=DGL&source=${sfSource}`)
+    fetch(`/api/conciliador/data?mes=1&anio=2026&division=DGL&source=${sfSource}&filtroCuentaComercial=todas`)
       .then((res) => res.json())
       .then((data) => {
         setSelectedMes(1);
@@ -642,35 +668,133 @@ export default function ConciliadorPage() {
             </div>
           </div>
 
-          {/* Selector de Origen Salesforce */}
-          <div className="flex items-center gap-2 text-xs">
-            <span className="font-bold text-slate-600">Fuente Salesforce:</span>
-            <div className="inline-flex rounded-xl p-0.5 bg-slate-100 border border-slate-200">
-              <button
-                type="button"
-                onClick={() => setSfSource('excel')}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  sfSource === 'excel'
-                    ? 'bg-white text-slate-900 shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                Hoja Excel
-              </button>
-              <button
-                type="button"
-                onClick={() => setSfSource('salesforce_live')}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer ${
-                  sfSource === 'salesforce_live'
-                    ? 'bg-indigo-600 text-white shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                <span>⚡ API en Vivo</span>
-              </button>
+          {/* Selector de Origen Salesforce y Filtro Cuenta Comercial */}
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            {/* Filtro Cuenta Comercial Salesforce */}
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-slate-700 flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-purple-600 inline-block"></span>
+                <span>Cuenta Comercial SF:</span>
+              </span>
+              <div className="inline-flex rounded-xl p-0.5 bg-slate-100 border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setFiltroCuentaComercial('todas')}
+                  className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                    filtroCuentaComercial === 'todas'
+                      ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                  title="Incluir todas las cuotas de Salesforce en el análisis"
+                >
+                  Todas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFiltroCuentaComercial('excluir')}
+                  className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                    filtroCuentaComercial === 'excluir'
+                      ? 'bg-purple-700 text-white shadow-2xs font-bold'
+                      : 'text-purple-800 hover:text-purple-950'
+                  }`}
+                  title="Excluir del análisis las cuotas que contengan 'Cuenta Comercial Salesforce'"
+                >
+                  <span>🚫 Excluir</span>
+                  {typeof resumen?.conteoCuentaComercial === 'number' && resumen.conteoCuentaComercial > 0 && (
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                        filtroCuentaComercial === 'excluir'
+                          ? 'bg-purple-900 text-purple-100'
+                          : 'bg-purple-200 text-purple-900'
+                      }`}
+                    >
+                      {resumen.conteoCuentaComercial}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFiltroCuentaComercial('solo')}
+                  className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                    filtroCuentaComercial === 'solo'
+                      ? 'bg-purple-800 text-white shadow-2xs font-bold'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                  title="Analizar únicamente las cuotas que contengan 'Cuenta Comercial Salesforce'"
+                >
+                  Solo Comercial
+                </button>
+              </div>
+            </div>
+
+            {/* Selector de Origen Salesforce */}
+            <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
+              <span className="font-bold text-slate-600">Fuente SF:</span>
+              <div className="inline-flex rounded-xl p-0.5 bg-slate-100 border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setSfSource('excel')}
+                  className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
+                    sfSource === 'excel'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  Hoja Excel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSfSource('salesforce_live')}
+                  className={`px-3 py-1 rounded-lg font-semibold flex items-center gap-1 transition-all cursor-pointer ${
+                    sfSource === 'salesforce_live'
+                      ? 'bg-indigo-600 text-white shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  <span>⚡ API en Vivo</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
+
+        {/* Notificación explicativa de Filtro de Cuenta Comercial Activo */}
+        {filtroCuentaComercial === 'excluir' && resumen?.conteoCuentaComercial ? (
+          <div className="bg-purple-50/90 border border-purple-200 text-purple-950 px-4 py-2.5 rounded-2xl text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-2xs animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-purple-800 flex items-center gap-1">
+                <span>🚫</span> Filtro de Exclusión Aplicado:
+              </span>
+              <span>
+                Se han excluido <strong>{resumen.conteoCuentaComercial} cuota(s)</strong> con texto <em>"Cuenta Comercial Salesforce"</em> por un total de{' '}
+                <strong>${(resumen.montoCuentaComercialClp || 0).toLocaleString('es-CL')} CLP</strong> del análisis comparativo y de los totales de Salesforce.
+              </span>
+            </div>
+            <button
+              onClick={() => setFiltroCuentaComercial('todas')}
+              className="text-[11px] font-bold text-purple-800 hover:text-purple-950 underline cursor-pointer shrink-0"
+            >
+              Restablecer a todas las cuotas
+            </button>
+          </div>
+        ) : filtroCuentaComercial === 'solo' ? (
+          <div className="bg-purple-50/90 border border-purple-200 text-purple-950 px-4 py-2.5 rounded-2xl text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-2xs animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-purple-800 flex items-center gap-1">
+                <span>🏷️</span> Modo Especial Solo Cuenta Comercial SF:
+              </span>
+              <span>
+                Se están auditando únicamente las oportunidades y cuotas que contienen <em>"Cuenta Comercial Salesforce"</em> ({sfItems.length} cuotas activas).
+              </span>
+            </div>
+            <button
+              onClick={() => setFiltroCuentaComercial('todas')}
+              className="text-[11px] font-bold text-purple-800 hover:text-purple-950 underline cursor-pointer shrink-0"
+            >
+              Ver todas las cuotas
+            </button>
+          </div>
+        ) : null}
 
         {/* Banner de Validación y Detección Automática de Período */}
         {uploadedSession && (
@@ -1258,10 +1382,17 @@ export default function ConciliadorPage() {
                         <td className="py-3.5 px-4 align-top">
                           {it.cuota ? (
                             <div className="space-y-1">
-                              <div className="flex items-center justify-between">
-                                <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                                  Cuota #{it.cuota.numeroCuota}
-                                </span>
+                              <div className="flex items-center justify-between flex-wrap gap-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                                    Cuota #{it.cuota.numeroCuota}
+                                  </span>
+                                  {it.cuota.esCuentaComercial && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-purple-100 text-purple-800 border border-purple-200">
+                                      🏷️ Cuenta Comercial SF
+                                    </span>
+                                  )}
+                                </div>
                                 <span className="text-[10px] text-slate-400">
                                   Fecha Pago: {it.cuota.fechaPago}
                                 </span>
@@ -1272,7 +1403,10 @@ export default function ConciliadorPage() {
                               </p>
 
                               <p className="text-[11px] text-slate-600">
-                                Cliente: <strong>{it.cuota.cuenta}</strong>
+                                Cliente:{' '}
+                                <strong className={it.cuota.esCuentaComercial ? 'text-purple-900 font-extrabold' : ''}>
+                                  {it.cuota.cuenta}
+                                </strong>
                                 {it.cuota.rutEmpresa && ` (RUT: ${it.cuota.rutEmpresa})`}
                               </p>
 

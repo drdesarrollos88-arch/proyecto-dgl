@@ -57,6 +57,7 @@ export interface SalesforceCuotaRegistro {
   seccion?: string;
   unidad?: string;
   traspasoInterno: boolean;
+  esCuentaComercial?: boolean;
 }
 
 export interface ConciliacionItem {
@@ -75,7 +76,10 @@ export interface ConciliacionItem {
   anioDestinoPostergar?: number;
   nuevoMontoClp?: number;
   justificacion?: string;
+  esCuentaComercial?: boolean;
 }
+
+export type FiltroCuentaComercial = 'todas' | 'excluir' | 'solo';
 
 export interface ConsolidadoDivisionControl {
   division: string;
@@ -105,5 +109,8 @@ export interface ConciliacionResumen {
   porcentajeCuadratura: number;
   consolidadoDivisiones?: Record<string, ConsolidadoDivisionControl>;
   consolidadoDivisionActual?: ConsolidadoDivisionControl;
+  filtroCuentaComercial?: FiltroCuentaComercial;
+  conteoCuentaComercial?: number;
+  montoCuentaComercialClp?: number;
 }
 

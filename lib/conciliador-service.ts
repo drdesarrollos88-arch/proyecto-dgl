@@ -8,6 +8,7 @@ import {
   ConciliacionResumen,
   TipoComprobanteEerr,
   ConsolidadoDivisionControl,
+  FiltroCuentaComercial,
 } from './conciliador-types';
 import { getValidSalesforceClient } from './salesforce/salesforce-client';
 import { sfRequest } from './salesforce/salesforce-sync-service';
@@ -35,6 +36,12 @@ export function extractCodigoOportunidad(text: any): string | undefined {
   if (matchAlt) return matchAlt[1].trim();
 
   return undefined;
+}
+
+export function esCuentaComercialSalesforce(cuota?: { cuenta?: string; opportunityName?: string } | null): boolean {
+  if (!cuota) return false;
+  const texto = `${cuota.cuenta || ''} ${cuota.opportunityName || ''}`.toLowerCase();
+  return texto.includes('cuenta comercial salesforce');
 }
 
 export function parseExcelDate(val: any): { fechaIso: string; mes: number; anio: number } {
@@ -424,6 +431,7 @@ export async function parseLibroEerr(
         seccion: String(row.getCell(colSecSf).value || ''),
         unidad: String(row.getCell(colUnidadSf).value || ''),
         traspasoInterno: isTraspaso,
+        esCuentaComercial: esCuentaComercialSalesforce({ cuenta: cuentaVal, opportunityName: oppName }),
       });
     }
   }
@@ -507,6 +515,10 @@ export async function fetchLiveSalesforceCuotas(
       cuenta: rec.Oportunidad__r?.Account?.Name || '',
       division,
       traspasoInterno: false,
+      esCuentaComercial: esCuentaComercialSalesforce({
+        cuenta: rec.Oportunidad__r?.Account?.Name || '',
+        opportunityName: rec.Oportunidad__r?.Name || '',
+      }),
     };
   });
 }
@@ -522,8 +534,18 @@ export async function conciliarPeriodo(params: {
   division?: string;
   usarIaGemini?: boolean;
   consolidadoDivisiones?: Record<string, ConsolidadoDivisionControl>;
+  filtroCuentaComercial?: FiltroCuentaComercial;
 }): Promise<{ items: ConciliacionItem[]; resumen: ConciliacionResumen }> {
-  const { eerrItems, sfItems, mes, anio, division = 'DGL', usarIaGemini = true, consolidadoDivisiones } = params;
+  const {
+    eerrItems,
+    sfItems,
+    mes,
+    anio,
+    division = 'DGL',
+    usarIaGemini = true,
+    consolidadoDivisiones,
+    filtroCuentaComercial = 'todas',
+  } = params;
 
   // 1. Filtrar registros para el mes, año y división seleccionada
   const filteredEerr = eerrItems.filter(
@@ -533,12 +555,14 @@ export async function conciliarPeriodo(params: {
       (!division || division === 'TODAS' || e.division.toUpperCase() === division.toUpperCase())
   );
 
-  const filteredSf = sfItems.filter(
-    (s) =>
-      s.mes === mes &&
-      s.anio === anio &&
-      (!division || division === 'TODAS' || s.division.toUpperCase() === division.toUpperCase())
-  );
+  const filteredSf = sfItems.filter((s) => {
+    if (s.mes !== mes || s.anio !== anio) return false;
+    if (division && division !== 'TODAS' && s.division.toUpperCase() !== division.toUpperCase()) return false;
+    const esCta = esCuentaComercialSalesforce(s);
+    if (filtroCuentaComercial === 'excluir' && esCta) return false;
+    if (filtroCuentaComercial === 'solo' && !esCta) return false;
+    return true;
+  });
 
   const conciliados: ConciliacionItem[] = [];
   const eerrUsados = new Set<string>();
@@ -573,6 +597,7 @@ export async function conciliarPeriodo(params: {
         criterioMatch: 'codigo_exacto',
         accionSugerida: esMatchExacto ? 'aceptar_match' : 'ajustar_cuota',
         nuevoMontoClp: e.montoClp,
+        esCuentaComercial: esCuentaComercialSalesforce(sfMatch),
       });
     }
   }
@@ -610,19 +635,23 @@ export async function conciliarPeriodo(params: {
         explicacionIa: `Coincide por RUT (${e.rut}) y monto similar entre EERR y cuota programada.`,
         accionSugerida: esMatchExacto ? 'aceptar_match' : 'ajustar_cuota',
         nuevoMontoClp: e.montoClp,
+        esCuentaComercial: esCuentaComercialSalesforce(sfMatch),
       });
     }
   }
 
   // PASO 3: Detección de Desfase Temporal (cuotas programadas en mes anterior o siguiente pero facturadas aquí)
   const remainingEerr = filteredEerr.filter((e) => !eerrUsados.has(e.id));
-  const otherMonthSf = sfItems.filter(
-    (s) =>
-      !sfUsados.has(s.id) &&
-      (s.mes === mes - 1 || s.mes === mes + 1) &&
-      s.anio === anio &&
-      (!division || division === 'TODAS' || s.division.toUpperCase() === division.toUpperCase())
-  );
+  const otherMonthSf = sfItems.filter((s) => {
+    if (sfUsados.has(s.id)) return false;
+    if (s.mes !== mes - 1 && s.mes !== mes + 1) return false;
+    if (s.anio !== anio) return false;
+    if (division && division !== 'TODAS' && s.division.toUpperCase() !== division.toUpperCase()) return false;
+    const esCta = esCuentaComercialSalesforce(s);
+    if (filtroCuentaComercial === 'excluir' && esCta) return false;
+    if (filtroCuentaComercial === 'solo' && !esCta) return false;
+    return true;
+  });
 
   for (const e of remainingEerr) {
     if (eerrUsados.has(e.id)) continue;
@@ -654,6 +683,7 @@ export async function conciliarPeriodo(params: {
         explicacionIa: `La cuota estaba programada para el mes ${sfMatchDesfase.mes}/${sfMatchDesfase.anio}, pero fue efectivamente facturada en este mes (${mes}/${anio}).`,
         accionSugerida: 'mover_cuota',
         nuevoMontoClp: e.montoClp,
+        esCuentaComercial: esCuentaComercialSalesforce(sfMatchDesfase),
       });
     }
   }
@@ -751,6 +781,7 @@ Responde ÚNICAMENTE en JSON con este formato exacto:
                   explicacionIa: sug.explicacion,
                   accionSugerida: Math.abs(difClp) <= 2000 ? 'aceptar_match' : 'ajustar_cuota',
                   nuevoMontoClp: matchedE.montoClp,
+                  esCuentaComercial: esCuentaComercialSalesforce(matchedS),
                 });
               }
             }
@@ -792,6 +823,7 @@ Responde ÚNICAMENTE en JSON con este formato exacto:
         accionSugerida: 'postergar_mes',
         mesDestinoPostergar: mes === 12 ? 1 : mes + 1,
         anioDestinoPostergar: mes === 12 ? anio + 1 : anio,
+        esCuentaComercial: esCuentaComercialSalesforce(s),
       });
     }
   }
@@ -822,6 +854,17 @@ Responde ÚNICAMENTE en JSON con este formato exacto:
       ? consolidadoDivisiones[division.toUpperCase()]
       : undefined;
 
+  // Estadísticas de Cuenta Comercial en el período total (para información en la UI)
+  const todasSfEnPeriodo = sfItems.filter(
+    (s) =>
+      s.mes === mes &&
+      s.anio === anio &&
+      (!division || division === 'TODAS' || s.division.toUpperCase() === division.toUpperCase())
+  );
+  const sfComercialesEnPeriodo = todasSfEnPeriodo.filter(esCuentaComercialSalesforce);
+  const conteoCuentaComercial = sfComercialesEnPeriodo.length;
+  const montoCuentaComercialClp = sfComercialesEnPeriodo.reduce((acc, c) => acc + c.montoClp, 0);
+
   const resumen: ConciliacionResumen = {
     mes,
     anio,
@@ -841,6 +884,9 @@ Responde ÚNICAMENTE en JSON con este formato exacto:
     porcentajeCuadratura: pctCuadratura,
     consolidadoDivisiones,
     consolidadoDivisionActual,
+    filtroCuentaComercial,
+    conteoCuentaComercial,
+    montoCuentaComercialClp,
   };
 
   return { items: conciliados, resumen };

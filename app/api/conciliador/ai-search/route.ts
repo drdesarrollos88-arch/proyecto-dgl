@@ -75,10 +75,26 @@ INSTRUCCIONES:
 3. Si hay una discrepancia o coincidencia, indica el número de factura, el nombre de la oportunidad y el diferencial de dinero en CLP y UF aproximada.
 4. Si sugieres una acción (ej: ajustar monto, vincular cuota o postergar mes), explícala claramente.`;
 
-    const aiRes = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [{ role: 'user', parts: [{ text: contextoPrompt }] }],
-    });
+    const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+    let aiRes: any = null;
+    let lastError: any = null;
+
+    for (const modelName of candidateModels) {
+      try {
+        aiRes = await ai.models.generateContent({
+          model: modelName,
+          contents: [{ role: 'user', parts: [{ text: contextoPrompt }] }],
+        });
+        if (aiRes) break;
+      } catch (mErr: any) {
+        lastError = mErr;
+        console.warn(`Intento con ${modelName} en ai-search falló:`, mErr?.message || mErr);
+      }
+    }
+
+    if (!aiRes) {
+      throw lastError || new Error('No se pudo conectar con el modelo Gemini.');
+    }
 
     const respuestaTexto = aiRes.text || 'Sin respuesta generada por el Asistente IA.';
 

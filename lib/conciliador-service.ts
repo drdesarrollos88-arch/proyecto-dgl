@@ -708,15 +708,25 @@ Responde ÚNICAMENTE en JSON con este formato exacto:
   }
 ]`;
 
-        const aiRes = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
-          contents: [{ role: 'user', parts: [{ text: promptText }] }],
-        });
+        const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+        let aiRes: any = null;
+        for (const modelName of candidateModels) {
+          try {
+            aiRes = await ai.models.generateContent({
+              model: modelName,
+              contents: [{ role: 'user', parts: [{ text: promptText }] }],
+            });
+            if (aiRes) break;
+          } catch (mErr: any) {
+            console.warn(`Intento con ${modelName} en conciliador heurístico falló:`, mErr?.message || mErr);
+          }
+        }
 
-        const rawJson = (aiRes.text || '').replace(/```json/gi, '').replace(/```/g, '').trim();
-        const suggestions = JSON.parse(rawJson);
+        if (aiRes) {
+          const rawJson = (aiRes.text || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+          const suggestions = JSON.parse(rawJson);
 
-        if (Array.isArray(suggestions)) {
+          if (Array.isArray(suggestions)) {
           for (const sug of suggestions) {
             if (sug?.eerrId && sug?.sfId && sug.confianza >= 70) {
               const matchedE = unmappedEerr.find((e) => e.id === sug.eerrId && !eerrUsados.has(e.id));
@@ -747,10 +757,11 @@ Responde ÚNICAMENTE en JSON con este formato exacto:
           }
         }
       }
-    } catch (err) {
-      console.warn('Aviso en análisis heurístico IA del conciliador:', err);
     }
+  } catch (err) {
+    console.warn('Aviso en análisis heurístico IA del conciliador:', err);
   }
+}
 
   // PASO 5: Agregar Facturas de EERR No Proyectadas (Facturas sin cuota en SF)
   for (const e of filteredEerr) {

@@ -106,10 +106,28 @@ export default function ConciliadorPage() {
   const [loadingAi, setLoadingAi] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
 
-  // Carga de archivo Excel personalizado
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isUploadingFile, setIsUploadingFile] = useState(false);
-  const [archivoCargadoNombre, setArchivoCargadoNombre] = useState<string | null>(null);
+  // Carga Dual de Archivos Excel (EERR y Cuotas Salesforce)
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [fileEerr, setFileEerr] = useState<File | null>(null);
+  const [fileSf, setFileSf] = useState<File | null>(null);
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+
+  // Sesión activa de archivos subidos y detección de período
+  const [uploadedSession, setUploadedSession] = useState<{
+    allEerrItems: EerrRegistro[];
+    allSfItems: SalesforceCuotaRegistro[];
+    mesDetectado: number;
+    anioDetectado: number;
+    divisionDetectada: string;
+    nombreArchivoEerr?: string;
+    nombreArchivoSf?: string;
+    coincidePeriodo: boolean;
+    mensajePeriodo: string;
+  } | null>(null);
+
+  const fileInputEerrRef = useRef<HTMLInputElement>(null);
+  const fileInputSfRef = useRef<HTMLInputElement>(null);
+  const fileInputBothRef = useRef<HTMLInputElement>(null);
 
   // 1. Validar autenticación y rol SuperAdmin
   useEffect(() => {
@@ -122,8 +140,9 @@ export default function ConciliadorPage() {
       .finally(() => setLoadingUser(false));
   }, []);
 
-  // 2. Cargar datos del período
+  // 2. Cargar datos del período (solo si no hay sesión cargada por archivo)
   const fetchData = async (origenSf = sfSource) => {
+    if (uploadedSession) return;
     setLoading(true);
     setErrorMsg(null);
     try {
@@ -156,22 +175,28 @@ export default function ConciliadorPage() {
 
   useEffect(() => {
     if (user && (isSuperAdminRole(user.role) || user.profileId === 'superadmin')) {
-      fetchData();
+      if (!uploadedSession) {
+        fetchData();
+      }
     }
   }, [user, selectedMes, selectedAnio, selectedDivision, sfSource]);
 
-  // Manejo de carga de archivo Excel personalizado
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Procesar archivos subidos (hasta 2 archivos: EERR y Cuotas)
+  const handleProcessUploadedFiles = async (customEerr?: File | null, customSf?: File | null) => {
+    const fEerr = customEerr !== undefined ? customEerr : fileEerr;
+    const fSf = customSf !== undefined ? customSf : fileSf;
 
-    setIsUploadingFile(true);
+    if (!fEerr && !fSf) {
+      alert('Por favor selecciona al menos un archivo (EERR o Cuotas).');
+      return;
+    }
+
+    setIsUploadingFiles(true);
     setErrorMsg(null);
 
     const formData = new FormData();
-    formData.append('file', file);
-    formData.append('mes', String(selectedMes));
-    formData.append('anio', String(selectedAnio));
+    if (fEerr) formData.append('fileEerr', fEerr);
+    if (fSf) formData.append('fileSf', fSf);
     formData.append('division', selectedDivision);
 
     try {
@@ -182,21 +207,96 @@ export default function ConciliadorPage() {
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || 'Error procesando el archivo subido.');
+        throw new Error(errData.error || 'Error procesando los archivos subidos.');
       }
 
       const data = await res.json();
+
+      // Detección automática del período: sincronizar mes y año automáticamente
+      setSelectedMes(data.mesDetectado);
+      setSelectedAnio(data.anioDetectado);
+      if (data.divisionDetectada && data.divisionDetectada !== 'TODAS') {
+        setSelectedDivision(data.divisionDetectada);
+      }
+
       setItems(data.items || []);
       setResumen(data.resumen || null);
       setEerrItems(data.eerrItems || []);
       setSfItems(data.sfItems || []);
-      setArchivoCargadoNombre(file.name);
+      if (Array.isArray(data.mesesConDatos)) {
+        setMesesConDatos(data.mesesConDatos);
+      }
+
+      setUploadedSession({
+        allEerrItems: data.allEerrItems || data.eerrItems || [],
+        allSfItems: data.allSfItems || data.sfItems || [],
+        mesDetectado: data.mesDetectado,
+        anioDetectado: data.anioDetectado,
+        divisionDetectada: data.divisionDetectada,
+        nombreArchivoEerr: data.nombreArchivoEerr,
+        nombreArchivoSf: data.nombreArchivoSf,
+        coincidePeriodo: data.coincidePeriodo,
+        mensajePeriodo: data.mensajePeriodo,
+      });
+
+      setShowUploadModal(false);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Error al subir y procesar el archivo.');
+      setErrorMsg(err.message || 'Error al subir y procesar los archivos.');
     } finally {
-      setIsUploadingFile(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      setIsUploadingFiles(false);
+      if (fileInputEerrRef.current) fileInputEerrRef.current.value = '';
+      if (fileInputSfRef.current) fileInputSfRef.current.value = '';
+      if (fileInputBothRef.current) fileInputBothRef.current.value = '';
     }
+  };
+
+  // Selección múltiple de hasta 2 archivos desde el explorador
+  const handleMultipleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    if (files.length === 1) {
+      const file = files[0];
+      const lower = file.name.toLowerCase();
+      if (lower.includes('cuota') || lower.includes('salesforce') || lower.includes('sf')) {
+        setFileSf(file);
+      } else {
+        setFileEerr(file);
+      }
+    } else {
+      const f1 = files[0];
+      const f2 = files[1];
+      const f1Lower = f1.name.toLowerCase();
+      if (f1Lower.includes('cuota') || f1Lower.includes('salesforce') || f1Lower.includes('sf')) {
+        setFileSf(f1);
+        setFileEerr(f2);
+      } else {
+        setFileEerr(f1);
+        setFileSf(f2);
+      }
+    }
+    setShowUploadModal(true);
+  };
+
+  // Restablecer sesión a datos oficiales del sistema
+  const handleResetSession = () => {
+    setUploadedSession(null);
+    setFileEerr(null);
+    setFileSf(null);
+    setLoading(true);
+    fetch(`/api/conciliador/data?mes=1&anio=2026&division=DGL&source=${sfSource}`)
+      .then((res) => res.json())
+      .then((data) => {
+        setSelectedMes(1);
+        setSelectedAnio(2026);
+        setSelectedDivision('DGL');
+        setItems(data.items || []);
+        setResumen(data.resumen || null);
+        setEerrItems(data.eerrItems || []);
+        setSfItems(data.sfItems || []);
+      })
+      .catch((err) => setErrorMsg(err.message))
+      .finally(() => setLoading(false));
   };
 
   // Consulta al Asistente IA
@@ -410,31 +510,32 @@ export default function ConciliadorPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Input oculto para subir archivo */}
+            {/* Input oculto para selección de hasta 2 archivos juntos */}
             <input
               type="file"
-              ref={fileInputRef}
+              ref={fileInputBothRef}
               accept=".xlsx,.xls"
-              onChange={handleFileUpload}
+              multiple
+              onChange={handleMultipleFilesSelected}
               className="hidden"
             />
             <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploadingFile}
+              onClick={() => setShowUploadModal(true)}
+              disabled={isUploadingFiles}
               className="px-3.5 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-              title="Cargar otro archivo Excel de EERR"
+              title="Cargar hasta 2 archivos Excel (EERR y Cuotas Salesforce)"
             >
-              <Upload className="w-3.5 h-3.5 text-slate-500" />
-              <span>{isUploadingFile ? 'Subiendo...' : 'Subir Excel EERR'}</span>
+              <Upload className="w-3.5 h-3.5 text-indigo-600" />
+              <span>{isUploadingFiles ? 'Analizando...' : 'Cargar Archivos (EERR / Cuotas)'}</span>
             </button>
 
             <button
-              onClick={() => fetchData()}
+              onClick={() => (uploadedSession ? handleResetSession() : fetchData())}
               disabled={loading}
               className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              <span>Recargar Conciliación</span>
+              <span>{uploadedSession ? 'Restablecer a Datos Base' : 'Recargar Conciliación'}</span>
             </button>
           </div>
         </div>
@@ -529,21 +630,93 @@ export default function ConciliadorPage() {
           </div>
         </div>
 
-        {/* Archivo cargado feedback si aplica */}
-        {archivoCargadoNombre && (
-          <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-2 rounded-xl text-xs flex items-center justify-between">
-            <span className="font-medium">
-              ✓ Usando archivo Excel cargado: <strong>{archivoCargadoNombre}</strong>
-            </span>
-            <button
-              onClick={() => {
-                setArchivoCargadoNombre(null);
-                fetchData();
-              }}
-              className="text-emerald-700 hover:underline font-bold text-[11px]"
-            >
-              Volver a Formato EERR oficial
-            </button>
+        {/* Banner de Validación y Detección Automática de Período */}
+        {uploadedSession && (
+          <div
+            className={`p-4 rounded-2xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xs transition-all ${
+              uploadedSession.coincidePeriodo
+                ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
+                : 'bg-amber-50/90 border-amber-300 text-amber-950'
+            }`}
+          >
+            <div className="flex items-start sm:items-center gap-3.5">
+              <div
+                className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${
+                  uploadedSession.coincidePeriodo
+                    ? 'bg-emerald-100 text-emerald-700 border border-emerald-300 shadow-2xs'
+                    : 'bg-amber-100 text-amber-700 border border-amber-300 shadow-2xs'
+                }`}
+              >
+                {uploadedSession.coincidePeriodo ? (
+                  <CheckCircle2 className="w-6 h-6" />
+                ) : (
+                  <AlertTriangle className="w-6 h-6" />
+                )}
+              </div>
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-extrabold text-xs uppercase tracking-wider">
+                    {uploadedSession.coincidePeriodo
+                      ? 'Período Validado con Éxito'
+                      : 'Alerta: Discrepancia de Período en Documentos'}
+                  </span>
+                  <span
+                    className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                      uploadedSession.coincidePeriodo
+                        ? 'bg-emerald-200 text-emerald-900 border border-emerald-300'
+                        : 'bg-amber-200 text-amber-900 border border-amber-300'
+                    }`}
+                  >
+                    {MESES.find((m) => m.num === uploadedSession.mesDetectado)?.nombre || 'Mes ' + uploadedSession.mesDetectado}{' '}
+                    {uploadedSession.anioDetectado}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-500 bg-white/80 px-2 py-0.5 rounded-md border border-slate-200">
+                    División: {uploadedSession.divisionDetectada}
+                  </span>
+                </div>
+
+                <p className="text-xs font-medium leading-relaxed">
+                  {uploadedSession.mensajePeriodo}
+                </p>
+
+                <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-600 pt-0.5">
+                  {uploadedSession.nombreArchivoEerr && (
+                    <span className="flex items-center gap-1">
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>
+                        EERR: <strong>{uploadedSession.nombreArchivoEerr}</strong> ({eerrItems.length} comprobantes desplegados)
+                      </span>
+                    </span>
+                  )}
+                  {uploadedSession.nombreArchivoSf && (
+                    <span className="flex items-center gap-1">
+                      <Scale className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>
+                        Cuotas: <strong>{uploadedSession.nombreArchivoSf}</strong> ({sfItems.length} cuotas programadas)
+                      </span>
+                    </span>
+                  )}
+                  <span className="font-semibold text-indigo-900">
+                    • Total: {items.length} filas analizadas en comparativa
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+              >
+                Cambiar Archivos
+              </button>
+              <button
+                onClick={handleResetSession}
+                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+              >
+                Restablecer Datos Base
+              </button>
+            </div>
           </div>
         )}
 
@@ -1204,6 +1377,216 @@ export default function ConciliadorPage() {
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
               >
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Carga de Documentos (EERR y Cuotas Salesforce) */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    Carga de Archivos de Conciliación
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Sube hasta 2 archivos: el Estado de Resultados (EERR) y el Informe de Cuotas de Salesforce.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowUploadModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Dos slots de carga */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Slot 1: EERR */}
+              <div
+                className={`p-4 rounded-2xl border-2 border-dashed transition-all flex flex-col justify-between ${
+                  fileEerr
+                    ? 'border-emerald-400 bg-emerald-50/30'
+                    : 'border-slate-200 bg-slate-50/50 hover:border-indigo-300'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
+                      Archivo 1: EERR
+                    </span>
+                    {fileEerr && (
+                      <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
+                        Listo ✓
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs font-bold text-slate-800">
+                    Facturación y Traspasos Internos
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Reporte del Depto. de Gestión (ej: <code>FACTURACIONES DGL.xlsx</code>).
+                  </p>
+
+                  {fileEerr && (
+                    <div className="mt-3 p-2.5 bg-white rounded-xl border border-emerald-200 flex items-center justify-between">
+                      <div className="truncate pr-2">
+                        <p className="text-xs font-bold text-slate-900 truncate">{fileEerr.name}</p>
+                        <p className="text-[10px] text-slate-400">{(fileEerr.size / 1024).toFixed(1)} KB</p>
+                      </div>
+                      <button
+                        onClick={() => setFileEerr(null)}
+                        className="text-slate-400 hover:text-red-600 text-xs font-bold cursor-pointer"
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4">
+                  <input
+                    type="file"
+                    ref={fileInputEerrRef}
+                    accept=".xlsx,.xls"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setFileEerr(f);
+                    }}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputEerrRef.current?.click()}
+                    className="w-full py-2 px-3 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-slate-500" />
+                    <span>{fileEerr ? 'Cambiar EERR' : 'Seleccionar Excel EERR'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Slot 2: Cuotas Salesforce */}
+              <div
+                className={`p-4 rounded-2xl border-2 border-dashed transition-all flex flex-col justify-between ${
+                  fileSf
+                    ? 'border-indigo-400 bg-indigo-50/30'
+                    : 'border-slate-200 bg-slate-50/50 hover:border-indigo-300'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
+                      Archivo 2: Cuotas SF
+                    </span>
+                    {fileSf && (
+                      <span className="text-[10px] font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">
+                        Listo ✓
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs font-bold text-slate-800">
+                    Informe de Cuotas Salesforce
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Reporte de cuotas de facturación del mes (Opcional si el EERR ya incluye cuotas).
+                  </p>
+
+                  {fileSf && (
+                    <div className="mt-3 p-2.5 bg-white rounded-xl border border-indigo-200 flex items-center justify-between">
+                      <div className="truncate pr-2">
+                        <p className="text-xs font-bold text-slate-900 truncate">{fileSf.name}</p>
+                        <p className="text-[10px] text-slate-400">{(fileSf.size / 1024).toFixed(1)} KB</p>
+                      </div>
+                      <button
+                        onClick={() => setFileSf(null)}
+                        className="text-slate-400 hover:text-red-600 text-xs font-bold cursor-pointer"
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4">
+                  <input
+                    type="file"
+                    ref={fileInputSfRef}
+                    accept=".xlsx,.xls"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) setFileSf(f);
+                    }}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputSfRef.current?.click()}
+                    className="w-full py-2 px-3 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Scale className="w-3.5 h-3.5 text-slate-500" />
+                    <span>{fileSf ? 'Cambiar Cuotas' : 'Seleccionar Cuotas SF'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Barra informativa de detección automática */}
+            <div className="p-3 bg-indigo-50/70 rounded-2xl border border-indigo-100 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs text-indigo-950 font-medium">
+                <Info className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span>
+                  <strong>Validación Automática de Mes:</strong> La plataforma detectará el período de los documentos y verificará en pantalla que ambos coincidan.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => fileInputBothRef.current?.click()}
+                className="text-indigo-700 hover:text-indigo-900 text-xs font-bold underline shrink-0 cursor-pointer"
+              >
+                Elegir ambos a la vez
+              </button>
+            </div>
+
+            {errorMsg && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-medium">
+                {errorMsg}
+              </div>
+            )}
+
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setShowUploadModal(false)}
+                disabled={isUploadingFiles}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleProcessUploadedFiles()}
+                disabled={isUploadingFiles || (!fileEerr && !fileSf)}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+              >
+                {isUploadingFiles ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Procesando y Validando Período...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Cargar y Desplegar Conciliación</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

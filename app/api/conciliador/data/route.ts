@@ -5,6 +5,7 @@ import {
   parseLibroEerr,
   fetchLiveSalesforceCuotas,
   conciliarPeriodo,
+  detectPredominantPeriod,
 } from '@/lib/conciliador-service';
 import sampleData from '@/data/conciliador-sample.json';
 import path from 'path';
@@ -132,48 +133,174 @@ export async function POST(req: NextRequest) {
 
   try {
     const formData = await req.formData();
-    const file = formData.get('file') as File | null;
-    const mes = parseInt(String(formData.get('mes') || '1'), 10);
-    const anio = parseInt(String(formData.get('anio') || '2026'), 10);
-    const division = String(formData.get('division') || 'DGL');
 
-    if (!file) {
-      return NextResponse.json({ error: 'No se envió ningún archivo Excel' }, { status: 400 });
+    // Soportar carga de hasta 2 archivos: fileEerr y fileSf (o file / files[])
+    let fileEerr = (formData.get('fileEerr') || formData.get('file')) as File | null;
+    let fileSf = (formData.get('fileSf') || formData.get('fileCuotas')) as File | null;
+    const allFiles = formData.getAll('files') as File[];
+
+    if (!fileEerr && allFiles.length > 0) {
+      fileEerr = allFiles[0];
+      if (allFiles.length > 1) {
+        fileSf = allFiles[1];
+      }
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const { eerrItems, sfItems, consolidadoDivisiones } = await parseLibroEerr(buffer);
-
-    let finalSfItems = sfItems;
-    if (finalSfItems.length === 0 && sampleData && Array.isArray((sampleData as any).sfItems)) {
-      finalSfItems = (sampleData as any).sfItems;
+    if (!fileEerr && !fileSf) {
+      return NextResponse.json(
+        { error: 'No se envió ningún archivo Excel para procesar.' },
+        { status: 400 }
+      );
     }
+
+    let eerrItems: any[] = [];
+    let sfItems: any[] = [];
+    let consolidadoDivisiones: any = undefined;
+    let nombreArchivoEerr: string | undefined = undefined;
+    let nombreArchivoSf: string | undefined = undefined;
+
+    // 1. Procesar primer archivo (EERR o combinado)
+    if (fileEerr) {
+      const buf1 = Buffer.from(await fileEerr.arrayBuffer());
+      const p1 = await parseLibroEerr(buf1);
+
+      if (p1.eerrItems.length > 0) {
+        eerrItems = p1.eerrItems;
+        nombreArchivoEerr = fileEerr.name;
+        if (p1.consolidadoDivisiones) consolidadoDivisiones = p1.consolidadoDivisiones;
+      }
+
+      if (p1.sfItems.length > 0) {
+        sfItems = p1.sfItems;
+        if (!nombreArchivoSf) nombreArchivoSf = fileEerr.name;
+      }
+
+      // Si el archivo 1 sólo traía cuotas de Salesforce sin EERR
+      if (p1.eerrItems.length === 0 && p1.sfItems.length > 0) {
+        sfItems = p1.sfItems;
+        nombreArchivoSf = fileEerr.name;
+        nombreArchivoEerr = undefined;
+      }
+    }
+
+    // 2. Procesar segundo archivo si fue provisto
+    if (fileSf) {
+      const buf2 = Buffer.from(await fileSf.arrayBuffer());
+      const p2 = await parseLibroEerr(buf2);
+
+      if (p2.sfItems.length > 0) {
+        sfItems = p2.sfItems;
+        nombreArchivoSf = fileSf.name;
+      }
+
+      if (p2.eerrItems.length > 0 && eerrItems.length === 0) {
+        eerrItems = p2.eerrItems;
+        nombreArchivoEerr = fileSf.name;
+        if (p2.consolidadoDivisiones) consolidadoDivisiones = p2.consolidadoDivisiones;
+      }
+    }
+
+    // 3. Detección automática del período predominante en los datos
+    const periodoEerr = detectPredominantPeriod(eerrItems);
+    const periodoSf = detectPredominantPeriod(sfItems);
+
+    const MESES_NOMBRES = [
+      '', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ];
+
+    let mesFinal = 1;
+    let anioFinal = 2026;
+    let coincidePeriodo = true;
+    let mensajePeriodo = '';
+
+    if (periodoEerr && periodoSf) {
+      const sfTieneMes = periodoSf.meses.includes(periodoEerr.mes);
+      const sfTieneAnio = periodoSf.anios.includes(periodoEerr.anio);
+
+      if (sfTieneMes && sfTieneAnio) {
+        mesFinal = periodoEerr.mes;
+        anioFinal = periodoEerr.anio;
+        coincidePeriodo = true;
+        mensajePeriodo = `✅ Período detectado: ${MESES_NOMBRES[mesFinal]} ${anioFinal}. Coincide en ambos documentos (${nombreArchivoEerr || 'EERR'} y ${nombreArchivoSf || 'Cuotas'}).`;
+      } else {
+        mesFinal = periodoEerr.mes;
+        anioFinal = periodoEerr.anio;
+        coincidePeriodo = false;
+        mensajePeriodo = `⚠️ Discrepancia de período: El archivo EERR corresponde a ${MESES_NOMBRES[periodoEerr.mes]} ${periodoEerr.anio}, pero el de Cuotas corresponde a ${MESES_NOMBRES[periodoSf.mes]} ${periodoSf.anio}.`;
+      }
+    } else if (periodoEerr) {
+      mesFinal = periodoEerr.mes;
+      anioFinal = periodoEerr.anio;
+      coincidePeriodo = true;
+      mensajePeriodo = `✅ Período detectado en EERR: ${MESES_NOMBRES[mesFinal]} ${anioFinal} (${nombreArchivoEerr}). Cuotas de Salesforce asociadas para el mismo mes.`;
+
+      if (sfItems.length === 0 && sampleData && Array.isArray((sampleData as any).sfItems)) {
+        sfItems = (sampleData as any).sfItems;
+      }
+    } else if (periodoSf) {
+      mesFinal = periodoSf.mes;
+      anioFinal = periodoSf.anio;
+      coincidePeriodo = true;
+      mensajePeriodo = `✅ Período detectado en Cuotas Salesforce: ${MESES_NOMBRES[mesFinal]} ${anioFinal} (${nombreArchivoSf}). EERR asociado para el mismo mes.`;
+
+      if (eerrItems.length === 0 && sampleData && Array.isArray((sampleData as any).eerrItems)) {
+        eerrItems = (sampleData as any).eerrItems;
+      }
+    } else {
+      mesFinal = parseInt(String(formData.get('mes') || '1'), 10);
+      anioFinal = parseInt(String(formData.get('anio') || '2026'), 10);
+      mensajePeriodo = `Período seleccionado: ${MESES_NOMBRES[mesFinal]} ${anioFinal}.`;
+    }
+
+    const divisionParam = String(formData.get('division') || 'DGL');
+    const divisionesEnEerr = Array.from(new Set(eerrItems.map((e) => e.division).filter(Boolean)));
+    const divisionFinal =
+      divisionParam === 'TODAS'
+        ? 'TODAS'
+        : divisionesEnEerr.length === 1
+        ? divisionesEnEerr[0]
+        : divisionParam;
 
     const { items, resumen } = await conciliarPeriodo({
       eerrItems,
-      sfItems: finalSfItems,
-      mes,
-      anio,
-      division,
+      sfItems,
+      mes: mesFinal,
+      anio: anioFinal,
+      division: divisionFinal,
       usarIaGemini: true,
       consolidadoDivisiones: consolidadoDivisiones || (sampleData as any)?.consolidadoDivisiones,
     });
 
+    const mesesConDatos = Array.from(new Set(eerrItems.map((e) => e.mes).filter(Boolean))).sort((a, b) => a - b);
+    const divisionesConDatos = Array.from(new Set(eerrItems.map((e) => e.division).filter(Boolean))).sort();
+
     return NextResponse.json({
+      success: true,
+      mesDetectado: mesFinal,
+      anioDetectado: anioFinal,
+      divisionDetectada: divisionFinal,
+      coincidePeriodo,
+      mensajePeriodo,
+      nombreArchivoEerr,
+      nombreArchivoSf,
       resumen,
       items,
       eerrItems: eerrItems.filter(
-        (e) => e.mes === mes && e.anio === anio && (division === 'TODAS' || e.division === division)
+        (e) => e.mes === mesFinal && e.anio === anioFinal && (divisionFinal === 'TODAS' || e.division === divisionFinal)
       ),
-      sfItems: finalSfItems.filter(
-        (s) => s.mes === mes && s.anio === anio && (division === 'TODAS' || s.division === division)
+      sfItems: sfItems.filter(
+        (s) => s.mes === mesFinal && s.anio === anioFinal && (divisionFinal === 'TODAS' || s.division === divisionFinal)
       ),
-      nombreArchivo: file.name,
+      allEerrItems: eerrItems,
+      allSfItems: sfItems,
+      mesesConDatos,
+      divisionesConDatos,
     });
   } catch (err: any) {
-    console.error('Error subiendo archivo a /api/conciliador/data:', err);
+    console.error('Error subiendo archivos a /api/conciliador/data:', err);
     return NextResponse.json(
-      { error: err?.message || 'Error procesando el archivo Excel subido' },
+      { error: err?.message || 'Error procesando los archivos Excel subidos' },
       { status: 500 }
     );
   }

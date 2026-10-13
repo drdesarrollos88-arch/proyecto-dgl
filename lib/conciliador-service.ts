@@ -71,11 +71,47 @@ export function parseExcelDate(val: any): { fechaIso: string; mes: number; anio:
 export function classifyComprobante(comprobante: any): TipoComprobanteEerr {
   if (!comprobante) return 'facturacion';
   const str = String(comprobante).toUpperCase();
-  if (str.includes('TI') || str.includes('TRASPASO')) return 'traspaso_interno';
+  if (str.includes('TI') || str.includes('TRASPASO') || str.includes('TRAS')) return 'traspaso_interno';
   if (str.includes('PROV') && !str.includes('REV')) return 'provision';
   if (str.includes('REV')) return 'reversion';
   if (str.includes('FACT') || str.includes('BOL') || str.includes('CVI')) return 'facturacion';
   return 'otro';
+}
+
+export function detectPredominantPeriod(items: Array<{ mes: number; anio: number }>): {
+  mes: number;
+  anio: number;
+  meses: number[];
+  anios: number[];
+  distribucion: Record<string, number>;
+} | null {
+  if (!items || items.length === 0) return null;
+
+  const counts: Record<string, number> = {};
+  for (const it of items) {
+    if (!it.mes || !it.anio) continue;
+    const key = `${it.anio}-${it.mes}`;
+    counts[key] = (counts[key] || 0) + 1;
+  }
+
+  const entries = Object.entries(counts);
+  if (entries.length === 0) return null;
+
+  // Ordenar por cantidad de registros descendente
+  entries.sort((a, b) => b[1] - a[1]);
+  const [topKey] = entries[0];
+  const [anioStr, mesStr] = topKey.split('-');
+
+  const allMeses = Array.from(new Set(items.map((i) => i.mes).filter(Boolean))).sort((a, b) => a - b);
+  const allAnios = Array.from(new Set(items.map((i) => i.anio).filter(Boolean))).sort((a, b) => a - b);
+
+  return {
+    mes: parseInt(mesStr, 10),
+    anio: parseInt(anioStr, 10),
+    meses: allMeses,
+    anios: allAnios,
+    distribucion: counts,
+  };
 }
 
 /**
@@ -201,8 +237,11 @@ export async function parseLibroEerr(
       const ingresoRaw = row.getCell(colIngreso).value;
       if (ingresoRaw === null || ingresoRaw === undefined || ingresoRaw === '') continue;
 
-      const montoClp = Number(ingresoRaw) || 0;
-      if (montoClp === 0) continue;
+      const rawMonto = Number(ingresoRaw) || 0;
+      if (rawMonto === 0) continue;
+      // En contabilidad de ERP los ingresos se registran en haber/abono (negativos).
+      // Para efectos comerciales, conciliación con Salesforce y visualización de EERR se representan en valor absoluto positivo.
+      const montoClp = Math.abs(rawMonto);
 
       const divVal = String(row.getCell(colDiv).value || '').trim();
       const secVal = String(row.getCell(colSec).value || '').trim();
@@ -244,27 +283,75 @@ export async function parseLibroEerr(
   }
 
   // 2. Parsear Hoja de Salesforce si está presente en el libro
-  const wsSf = workbook.getWorksheet('Reporte Salesforce');
+  let wsSf = workbook.getWorksheet('Reporte Salesforce');
+  if (!wsSf) {
+    for (const ws of workbook.worksheets) {
+      if (['Selectores', 'Cuadratura', 'Año_reporte', 'Indicaciones SGC', 'BBDD Gráficos'].includes(ws.name)) continue;
+      if (ws === wsFact) continue;
+      for (let r = 1; r <= Math.min(5, ws.rowCount); r++) {
+        const row = ws.getRow(r);
+        let hasOpp = false;
+        row.eachCell((c) => {
+          const s = String(c.value || '').toLowerCase();
+          if (s.includes('oportunidad') || s.includes('cuota') || s.includes('fecha de pago')) {
+            hasOpp = true;
+          }
+        });
+        if (hasOpp) {
+          wsSf = ws;
+          break;
+        }
+      }
+      if (wsSf) break;
+    }
+  }
+
   if (wsSf) {
+    let headerRowIdxSf = 1;
+    for (let r = 1; r <= Math.min(10, wsSf.rowCount); r++) {
+      const row = wsSf.getRow(r);
+      let found = false;
+      row.eachCell((c) => {
+        const val = String(c.value || '').toLowerCase();
+        if (val.includes('oportunidad') || val.includes('cuota') || val.includes('fecha de pago')) {
+          found = true;
+        }
+      });
+      if (found) {
+        headerRowIdxSf = r;
+        break;
+      }
+    }
+
     const colMapSf: Record<string, number> = {};
-    const headerRowSf = wsSf.getRow(1);
+    const headerRowSf = wsSf.getRow(headerRowIdxSf);
     headerRowSf.eachCell((c, col) => {
-      colMapSf[String(c.value || '').trim()] = col;
+      const clean = String(c.value || '').trim();
+      colMapSf[clean] = col;
+      colMapSf[clean.toLowerCase()] = col;
     });
 
-    const colRutSf = colMapSf['Rut Empresa'] || 1;
-    const colCuentaSf = colMapSf['Nombre de la cuenta'] || 2;
-    const colOppSf = colMapSf['Nombre de la oportunidad'] || 3;
-    const colEtapaSf = colMapSf['Etapa'] || 4;
-    const colMontoSf = colMapSf['Monto'] || 5;
-    const colCuotaNumSf = colMapSf['Contador de cuotas'] || 6;
-    const colUnidadSf = colMapSf['Unidad'] || 8;
-    const colDivSf = colMapSf['División'] || 9;
-    const colSecSf = colMapSf['Sección'] || 10;
-    const colFechaPagoSf = colMapSf['Fecha de Pago'] || 12;
-    const colTraspasoSf = colMapSf['Traspaso interno'] || 13;
+    const colRutSf =
+      colMapSf['Rut Empresa'] || colMapSf['rut empresa'] || colMapSf['RUT'] || colMapSf['rut'] || 1;
+    const colCuentaSf =
+      colMapSf['Nombre de la cuenta'] || colMapSf['nombre de la cuenta'] || colMapSf['Cuenta'] || colMapSf['cuenta'] || 2;
+    const colOppSf =
+      colMapSf['Nombre de la oportunidad'] || colMapSf['nombre de la oportunidad'] || colMapSf['Oportunidad'] || colMapSf['oportunidad'] || 3;
+    const colEtapaSf = colMapSf['Etapa'] || colMapSf['etapa'] || 4;
+    const colMontoSf = colMapSf['Monto'] || colMapSf['monto'] || 5;
+    const colCuotaNumSf =
+      colMapSf['Contador de cuotas'] || colMapSf['contador de cuotas'] || colMapSf['Cuota'] || colMapSf['cuota'] || 6;
+    const colUnidadSf = colMapSf['Unidad'] || colMapSf['unidad'] || 8;
+    const colDivSf =
+      colMapSf['División'] || colMapSf['división'] || colMapSf['Division'] || colMapSf['division'] || 9;
+    const colSecSf =
+      colMapSf['Sección'] || colMapSf['sección'] || colMapSf['Seccion'] || colMapSf['seccion'] || 10;
+    const colFechaPagoSf =
+      colMapSf['Fecha de Pago'] || colMapSf['fecha de pago'] || colMapSf['Fecha'] || colMapSf['fecha'] || 12;
+    const colTraspasoSf =
+      colMapSf['Traspaso interno'] || colMapSf['traspaso interno'] || colMapSf['Traspaso'] || colMapSf['traspaso'] || 13;
 
-    for (let r = 2; r <= wsSf.rowCount; r++) {
+    for (let r = headerRowIdxSf + 1; r <= wsSf.rowCount; r++) {
       const row = wsSf.getRow(r);
       const montoraw = row.getCell(colMontoSf).value;
       if (montoraw === null || montoraw === undefined || montoraw === '') continue;

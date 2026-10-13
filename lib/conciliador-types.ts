@@ -77,6 +77,15 @@ export interface ConciliacionItem {
   justificacion?: string;
 }
 
+export interface ConsolidadoDivisionControl {
+  division: string;
+  backlogSalesforceClp: number;
+  facturacionEerrClp: number;
+  traspasosEerrClp: number;
+  totalIngresosEerrClp: number;
+  diferenciaClp: number;
+}
+
 export interface ConciliacionResumen {
   mes: number;
   anio: number;
@@ -94,5 +103,7 @@ export interface ConciliacionResumen {
   conteoNoProyectados: number;
   conteoNoFacturados: number;
   porcentajeCuadratura: number;
+  consolidadoDivisiones?: Record<string, ConsolidadoDivisionControl>;
+  consolidadoDivisionActual?: ConsolidadoDivisionControl;
 }
 

@@ -547,6 +547,63 @@ export default function ConciliadorPage() {
           </div>
         )}
 
+        {/* Control Macroeconómico Oficial de Gestión si está disponible */}
+        {resumen?.consolidadoDivisionActual && (
+          <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-4 rounded-2xl shadow-sm border border-indigo-900/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center shrink-0">
+                <Building2 className="w-5 h-5 text-indigo-300" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-indigo-300">
+                    Control Macroeconómico EERR (BBDD Gestión)
+                  </span>
+                  <span className="bg-indigo-500/30 text-indigo-200 text-[10px] font-bold px-2 py-0.5 rounded-full border border-indigo-400/20">
+                    División {resumen.consolidadoDivisionActual.division}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Cifras oficiales consolidadas de facturación y traspasos entregadas por el área de Gestión.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 text-xs">
+              <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
+                <span className="text-[10px] text-slate-300 block">Facturación EERR</span>
+                <span className="font-black text-xs sm:text-sm text-white">
+                  ${resumen.consolidadoDivisionActual.facturacionEerrClp.toLocaleString('es-CL')}
+                </span>
+              </div>
+              <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
+                <span className="text-[10px] text-slate-300 block">Traspasos EERR</span>
+                <span className="font-black text-xs sm:text-sm text-amber-300">
+                  ${resumen.consolidadoDivisionActual.traspasosEerrClp.toLocaleString('es-CL')}
+                </span>
+              </div>
+              <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
+                <span className="text-[10px] text-slate-300 block">Total EERR (Fact + TI)</span>
+                <span className="font-black text-xs sm:text-sm text-emerald-300">
+                  ${resumen.consolidadoDivisionActual.totalIngresosEerrClp.toLocaleString('es-CL')}
+                </span>
+              </div>
+              <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
+                <span className="text-[10px] text-slate-300 block">Backlog Salesforce</span>
+                <span className="font-black text-xs sm:text-sm text-indigo-200">
+                  ${resumen.consolidadoDivisionActual.backlogSalesforceClp.toLocaleString('es-CL')}
+                </span>
+              </div>
+              <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
+                <span className="text-[10px] text-slate-300 block">Brecha Control</span>
+                <span className="font-black text-xs sm:text-sm text-purple-200">
+                  ${resumen.consolidadoDivisionActual.diferenciaClp.toLocaleString('es-CL')}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Resumen Ejecutivo de Cuadratura (KPI Cards) */}
         {resumen && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -40,16 +40,21 @@ export async function GET(req: NextRequest) {
   try {
     let eerrItems: any[] = [];
     let sfExcelItems: any[] = [];
+    let consolidadoDivisiones: any = (sampleData as any)?.consolidadoDivisiones || {};
 
     if (sampleData && Array.isArray((sampleData as any).eerrItems) && (sampleData as any).eerrItems.length > 0) {
       eerrItems = (sampleData as any).eerrItems;
       sfExcelItems = (sampleData as any).sfItems || [];
     } else {
+      const facturacionesDglPath = path.join(process.cwd(), 'FACTURACIONES DGL.xlsx');
       const defaultExcelPath = path.join(process.cwd(), 'Formato EERR.xlsx');
-      if (fs.existsSync(defaultExcelPath)) {
-        const parsed = await parseLibroEerr(defaultExcelPath);
+      const targetPath = fs.existsSync(facturacionesDglPath) ? facturacionesDglPath : defaultExcelPath;
+
+      if (fs.existsSync(targetPath)) {
+        const parsed = await parseLibroEerr(targetPath);
         eerrItems = parsed.eerrItems;
         sfExcelItems = parsed.sfItems;
+        if (parsed.consolidadoDivisiones) consolidadoDivisiones = parsed.consolidadoDivisiones;
       } else {
         return NextResponse.json(
           { error: 'No se encontraron datos de EERR disponibles.' },
@@ -80,6 +85,7 @@ export async function GET(req: NextRequest) {
       anio,
       division,
       usarIaGemini: true,
+      consolidadoDivisiones,
     });
 
     // Detectar meses disponibles en el dataset
@@ -136,15 +142,21 @@ export async function POST(req: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const { eerrItems, sfItems } = await parseLibroEerr(buffer);
+    const { eerrItems, sfItems, consolidadoDivisiones } = await parseLibroEerr(buffer);
+
+    let finalSfItems = sfItems;
+    if (finalSfItems.length === 0 && sampleData && Array.isArray((sampleData as any).sfItems)) {
+      finalSfItems = (sampleData as any).sfItems;
+    }
 
     const { items, resumen } = await conciliarPeriodo({
       eerrItems,
-      sfItems,
+      sfItems: finalSfItems,
       mes,
       anio,
       division,
       usarIaGemini: true,
+      consolidadoDivisiones: consolidadoDivisiones || (sampleData as any)?.consolidadoDivisiones,
     });
 
     return NextResponse.json({
@@ -153,7 +165,7 @@ export async function POST(req: NextRequest) {
       eerrItems: eerrItems.filter(
         (e) => e.mes === mes && e.anio === anio && (division === 'TODAS' || e.division === division)
       ),
-      sfItems: sfItems.filter(
+      sfItems: finalSfItems.filter(
         (s) => s.mes === mes && s.anio === anio && (division === 'TODAS' || s.division === division)
       ),
       nombreArchivo: file.name,

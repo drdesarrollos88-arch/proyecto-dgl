@@ -7,6 +7,7 @@ import {
   ConciliacionItem,
   ConciliacionResumen,
   TipoComprobanteEerr,
+  ConsolidadoDivisionControl,
 } from './conciliador-types';
 import { getValidSalesforceClient } from './salesforce/salesforce-client';
 import { sfRequest } from './salesforce/salesforce-sync-service';
@@ -82,7 +83,11 @@ export function classifyComprobante(comprobante: any): TipoComprobanteEerr {
  */
 export async function parseLibroEerr(
   input: Buffer | string
-): Promise<{ eerrItems: EerrRegistro[]; sfItems: SalesforceCuotaRegistro[] }> {
+): Promise<{
+  eerrItems: EerrRegistro[];
+  sfItems: SalesforceCuotaRegistro[];
+  consolidadoDivisiones?: Record<string, ConsolidadoDivisionControl>;
+}> {
   const workbook = new ExcelJS.Workbook();
 
   if (Buffer.isBuffer(input)) {
@@ -98,24 +103,51 @@ export async function parseLibroEerr(
   const eerrItems: EerrRegistro[] = [];
   const sfItems: SalesforceCuotaRegistro[] = [];
 
-  // 1. Parsear Hoja de Facturación EERR ('Reporte Facturación sin TI' o búsqueda dinámica)
+  // 1. Parsear Hoja de Facturación EERR ('Reporte Facturación sin TI', 'Hoja1' con Resultado[...], o búsqueda dinámica)
   let wsFact = workbook.getWorksheet('Reporte Facturación sin TI');
   if (!wsFact) {
-    // Buscar hoja que tenga 'facturacion' o 'eerr'
+    // Buscar si alguna hoja de detalle contiene columnas con 'monto' o 'resultado['
+    for (const ws of workbook.worksheets) {
+      if (['Selectores', 'Cuadratura', 'Año_reporte', 'Indicaciones SGC'].includes(ws.name)) continue;
+      for (let r = 1; r <= Math.min(5, ws.rowCount); r++) {
+        const row = ws.getRow(r);
+        let hasCol = false;
+        row.eachCell((c) => {
+          const s = String(c.value || '').toLowerCase();
+          if (s.includes('monto') || s.includes('ingreso') || s.includes('resultado[')) {
+            hasCol = true;
+          }
+        });
+        if (hasCol) {
+          wsFact = ws;
+          break;
+        }
+      }
+      if (wsFact) break;
+    }
+  }
+
+  if (!wsFact) {
     wsFact = workbook.worksheets.find((w) =>
-      /facturaci[oó]n|eerr/i.test(w.name)
+      /facturaci[oó]n|eerr|hoja1/i.test(w.name)
     ) || workbook.worksheets[0];
   }
 
   if (wsFact) {
-    // Localizar fila de encabezados (buscar fila que contenga 'siglaDivision' o 'RUT' o 'Ingreso')
+    // Localizar fila de encabezados (buscar fila que contenga 'siglaDivision' o 'RUT' o 'Ingreso' o 'Monto' o 'Resultado[')
     let headerRowIdx = 1;
     for (let r = 1; r <= Math.min(10, wsFact.rowCount); r++) {
       const row = wsFact.getRow(r);
       let found = false;
       row.eachCell((c) => {
         const val = String(c.value || '').toLowerCase();
-        if (val.includes('ingreso') || val.includes('rut') || val.includes('division')) {
+        if (
+          val.includes('ingreso') ||
+          val.includes('monto') ||
+          val.includes('rut') ||
+          val.includes('division') ||
+          val.includes('resultado[')
+        ) {
           found = true;
         }
       });
@@ -130,23 +162,39 @@ export async function parseLibroEerr(
     headerRow.eachCell((c, col) => {
       const clean = String(c.value || '').trim();
       colMap[clean] = col;
+      colMap[clean.toLowerCase()] = col;
+
+      // Desarmar encabezados formato DAX / Power Pivot ej. Resultado[Monto]
+      const match = clean.match(/Resultado\[(.*)\]/i);
+      if (match) {
+        colMap[match[1].trim()] = col;
+        colMap[match[1].trim().toLowerCase()] = col;
+      }
     });
 
-    // Mapeo flexible de columnas
-    const colDiv = colMap['siglaDivision'] || colMap['Division'] || 1;
-    const colSec = colMap['siglaSeccion'] || colMap['Seccion'] || 2;
-    const colCc = colMap['centroCosto'] || colMap['Centro de Costo'] || 3;
-    const colDate = colMap['Date'] || colMap['Fecha'] || 4;
-    const colComp = colMap['Comprobante'] || colMap['Tipo'] || 5;
-    const colRut = colMap['RUT_Id'] || colMap['RUT'] || colMap['Rut Empresa'] || 6;
-    const colRazon = colMap['Razón Social'] || colMap['Razon Social'] || colMap['Cliente'] || 7;
-    const colRefInt = colMap['Referencia Interna'] || colMap['Proyecto'] || colMap['Glosa'] || 8;
-    const colRefExt = colMap['Referencia Externa'] || colMap['N° Factura'] || colMap['Factura'] || 9;
-    const colGlosa = colMap['Glosa/Detalle'] || colMap['Detalle'] || 10;
-    const colCta = colMap['Cuenta Contable'] || 11;
-    const colClasif = colMap['Clasificación'] || 12;
-    const colServ = colMap['tipoServicio'] || 13;
-    const colIngreso = colMap['Ingreso'] || colMap['Monto'] || colMap['Total'] || 14;
+    // Mapeo flexible y tolerante de columnas
+    const colDiv =
+      colMap['siglaDivision'] || colMap['Division'] || colMap['Div'] || colMap['div'] || 1;
+    const colSec = colMap['siglaSeccion'] || colMap['Seccion'] || colMap['seccion'] || 2;
+    const colCc =
+      colMap['centroCosto'] || colMap['Centro de Costo'] || colMap['centro_costo_id'] || 3;
+    const colDate = colMap['Date'] || colMap['Fecha'] || colMap['fecha'] || 4;
+    const colComp = colMap['Comprobante'] || colMap['Tipo'] || colMap['comprobante'] || 5;
+    const colRut =
+      colMap['RUT_Id'] || colMap['RUT'] || colMap['Rut Empresa'] || colMap['rut_id'] || 6;
+    const colRazon =
+      colMap['Razón Social'] || colMap['Razon Social'] || colMap['Cliente'] || colMap['razón social'] || 7;
+    const colRefInt =
+      colMap['Referencia Interna'] || colMap['Proyecto'] || colMap['Glosa'] || colMap['referencia interna'] || 8;
+    const colRefExt =
+      colMap['Referencia Externa'] || colMap['N° Factura'] || colMap['Factura'] || colMap['referencia externa'] || 9;
+    const colGlosa =
+      colMap['Glosa/Detalle'] || colMap['Detalle'] || colMap['glosa/detalle'] || 10;
+    const colCta = colMap['Cuenta Contable'] || colMap['cuenta contable'] || 11;
+    const colClasif = colMap['Clasificación'] || colMap['clasificación'] || 12;
+    const colServ = colMap['tipoServicio'] || colMap['tipo servicio'] || 13;
+    const colIngreso =
+      colMap['Ingreso'] || colMap['Monto'] || colMap['Total'] || colMap['monto'] || 14;
 
     for (let r = headerRowIdx + 1; r <= wsFact.rowCount; r++) {
       const row = wsFact.getRow(r);
@@ -253,7 +301,41 @@ export async function parseLibroEerr(
     }
   }
 
-  return { eerrItems, sfItems };
+  // 3. Parsear Hoja 'BBDD Gráficos' si está presente (Control macro por división)
+  const consolidadoDivisiones: Record<string, ConsolidadoDivisionControl> = {};
+  const wsGraf = workbook.getWorksheet('BBDD Gráficos');
+  if (wsGraf) {
+    for (let r = 24; r <= Math.min(38, wsGraf.rowCount); r++) {
+      const row = wsGraf.getRow(r);
+      const div = String(row.getCell(1).value || '').trim();
+      if (!div || div === 'Total general' || div === 'Datos para gráficos') continue;
+
+      const getVal = (cell: any) => {
+        if (!cell) return 0;
+        if (cell.result !== undefined && cell.result !== null && typeof cell.result !== 'object') {
+          return Number(cell.result) || 0;
+        }
+        return Number(cell.value) || 0;
+      };
+
+      const backlogSf = getVal(row.getCell(2));
+      const facturacionEerr = getVal(row.getCell(3));
+      const traspasosEerr = getVal(row.getCell(4));
+      const totalIngresosEerr = getVal(row.getCell(5));
+      const diferencia = getVal(row.getCell(6));
+
+      consolidadoDivisiones[div] = {
+        division: div,
+        backlogSalesforceClp: backlogSf,
+        facturacionEerrClp: facturacionEerr,
+        traspasosEerrClp: traspasosEerr,
+        totalIngresosEerrClp: totalIngresosEerr,
+        diferenciaClp: diferencia,
+      };
+    }
+  }
+
+  return { eerrItems, sfItems, consolidadoDivisiones };
 }
 
 /**
@@ -313,8 +395,9 @@ export async function conciliarPeriodo(params: {
   anio: number;
   division?: string;
   usarIaGemini?: boolean;
+  consolidadoDivisiones?: Record<string, ConsolidadoDivisionControl>;
 }): Promise<{ items: ConciliacionItem[]; resumen: ConciliacionResumen }> {
-  const { eerrItems, sfItems, mes, anio, division = 'DGL', usarIaGemini = true } = params;
+  const { eerrItems, sfItems, mes, anio, division = 'DGL', usarIaGemini = true, consolidadoDivisiones } = params;
 
   // 1. Filtrar registros para el mes, año y división seleccionada
   const filteredEerr = eerrItems.filter(
@@ -597,6 +680,11 @@ Responde ÚNICAMENTE en JSON con este formato exacto:
       ? Math.round((conteoConciliados / filteredEerr.length) * 100)
       : 100;
 
+  const consolidadoDivisionActual =
+    consolidadoDivisiones && division && division !== 'TODAS'
+      ? consolidadoDivisiones[division.toUpperCase()]
+      : undefined;
+
   const resumen: ConciliacionResumen = {
     mes,
     anio,
@@ -614,6 +702,8 @@ Responde ÚNICAMENTE en JSON con este formato exacto:
     conteoNoProyectados,
     conteoNoFacturados,
     porcentajeCuadratura: pctCuadratura,
+    consolidadoDivisiones,
+    consolidadoDivisionActual,
   };
 
   return { items: conciliados, resumen };

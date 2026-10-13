@@ -1211,10 +1211,10 @@ function CotizadorContent() {
     });
   };
 
-  // Update item field (quantity, factor, base ufPrice, designation text, or norm)
+  // Update item field (quantity, factor, base ufPrice, designation text, norm, unit, or minWeightKg)
   const handleItemChange = (
     id: string,
-    field: 'quantity' | 'factor' | 'ufPrice' | 'designation' | 'norm' | 'unit',
+    field: 'quantity' | 'factor' | 'ufPrice' | 'designation' | 'norm' | 'unit' | 'minWeightKg',
     val: number | string
   ) => {
     setItems((prev) =>
@@ -1229,6 +1229,14 @@ function CotizadorContent() {
         }
         if (field === 'unit') {
           return { ...it, unit: String(val) };
+        }
+        if (field === 'minWeightKg') {
+          if (val === '' || val === null || val === undefined || val === '-') {
+            return { ...it, minWeightKg: '' };
+          }
+          const raw = String(val).replace(',', '.');
+          const num = parseFloat(raw);
+          return { ...it, minWeightKg: isNaN(num) ? '' : Math.max(0, num) };
         }
 
         const numVal = typeof val === 'number' ? val : parseFloat(val) || 0;
@@ -3387,7 +3395,12 @@ function CotizadorContent() {
                           <span className="text-[9px] font-normal text-slate-400 lowercase">(editable)</span>
                         </div>
                       </th>
-                      <th className="py-3 px-1 w-14 min-w-[50px] text-center">Masa</th>
+                      <th className="py-3 px-1 w-20 min-w-[70px] text-center">
+                        <div className="flex flex-col items-center leading-tight">
+                          <span className="text-[11px] font-bold text-slate-700">Masa</span>
+                          <span className="text-[9px] font-normal text-blue-600 lowercase">(editable)</span>
+                        </div>
+                      </th>
                       <th className="py-3 px-1 w-14 min-w-[50px] text-center">Unidad</th>
                       <th className="py-3 px-2 w-28 min-w-[95px] text-right">
                         <div className="flex flex-col items-end leading-tight">
@@ -3592,6 +3605,16 @@ function CotizadorContent() {
                           originalTarifarioItem &&
                           item.designation.trim() !== originalTarifarioItem.designation.trim()
                         );
+                        const origWeight = originalTarifarioItem
+                          ? typeof originalTarifarioItem.minWeightKg === 'number'
+                            ? originalTarifarioItem.minWeightKg
+                            : parseFloat(String(originalTarifarioItem.minWeightKg)) || 0
+                          : null;
+                        const currentWeight =
+                          typeof item.minWeightKg === 'number'
+                            ? item.minWeightKg
+                            : parseFloat(String(item.minWeightKg)) || 0;
+                        const isWeightCustomized = origWeight !== null && origWeight !== currentWeight;
 
                         // Encontrar la partida activa para este ensayo y verificar si es el último de la partida
                         const hasDividers = items.some((it) => it.isDivider);
@@ -3789,9 +3812,40 @@ function CotizadorContent() {
                               />
                             </td>
 
-                            {/* Masa */}
-                            <td className="py-2.5 px-1 text-center text-xs font-mono text-slate-600 align-top pt-3">
-                              {item.minWeightKg ? `${item.minWeightKg} kg` : '-'}
+                            {/* Masa Editable */}
+                            <td className="py-2.5 px-1 text-center align-top pt-2">
+                              <div className="flex flex-col items-center">
+                                <div className="flex items-center justify-center gap-0.5">
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    min="0"
+                                    value={
+                                      item.minWeightKg === undefined ||
+                                      item.minWeightKg === null ||
+                                      item.minWeightKg === '' ||
+                                      item.minWeightKg === '-'
+                                        ? ''
+                                        : item.minWeightKg
+                                    }
+                                    onChange={(e) => handleItemChange(item.id, 'minWeightKg', e.target.value)}
+                                    placeholder="-"
+                                    className="w-14 text-center text-xs font-mono font-semibold text-slate-700 bg-transparent hover:bg-slate-50 focus:bg-white border border-transparent hover:border-slate-300 focus:border-blue-500 rounded p-1 focus:ring-1 focus:ring-blue-200 focus:outline-none transition [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    title="Editar masa en kg para esta cotización (no modifica el tarifario base)"
+                                  />
+                                  <span className="text-[10px] text-slate-400 font-mono select-none">kg</span>
+                                </div>
+                                {isWeightCustomized && originalTarifarioItem && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleItemChange(item.id, 'minWeightKg', originalTarifarioItem.minWeightKg)}
+                                    className="text-[9px] text-blue-600 hover:text-blue-800 hover:underline cursor-pointer transition select-none mt-0.5"
+                                    title={`Restaurar masa original de catálogo (${originalTarifarioItem.minWeightKg || 0} kg)`}
+                                  >
+                                    orig: {originalTarifarioItem.minWeightKg || 0}
+                                  </button>
+                                )}
+                              </div>
                             </td>
 
                             {/* Unidad Editable */}

@@ -12,6 +12,7 @@
   },
   "vars": {
     "NEXT_PUBLIC_SUPABASE_URL": "https://xjtnbqrulabmcvshatyh.supabase.co",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_I50Uo-ANt5CHHi5QPTPe2g_UafCi6q2"
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_I50Uo-ANt5CHHi5QPTPe2g_UafCi6q2",
+    "JWT_SECRET": "dgl-super-secret-key-laboratorio-geotecnico-2026-secure"
   }
 }

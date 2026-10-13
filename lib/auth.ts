@@ -11,7 +11,7 @@ if (!rawAuthSecret && process.env.NODE_ENV === 'production') {
   console.warn('ADVERTENCIA: JWT_SECRET no está definido en las variables de entorno. Usando clave de respaldo.');
 }
 const JWT_SECRET = new TextEncoder().encode(
-  rawAuthSecret || 'dgl-local-dev-internal-secret-change-in-production-2026'
+  rawAuthSecret || 'dgl-super-secret-key-laboratorio-geotecnico-2026-secure'
 );
 
 // Nombre de la cookie de sesión oficial

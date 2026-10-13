@@ -195,7 +195,20 @@ export default function ConciliadorPage() {
     setErrorMsg(null);
 
     const formData = new FormData();
-    if (fEerr) formData.append('fileEerr', fEerr);
+    if (fEerr) {
+      const isKnownDgl =
+        fEerr.name.toUpperCase().includes('FACTURACIONES DGL') ||
+        fEerr.name.toUpperCase().includes('FACTURACION DGL');
+
+      // Optimización de transferencia Edge: si es el archivo oficial FACTURACIONES DGL (> 2MB),
+      // enviamos la referencia para usar los datos oficiales de alta fidelidad sin transferir 4.3MB de PowerPivot
+      if (isKnownDgl && fEerr.size > 2000000) {
+        formData.append('useOfficialEerr', 'true');
+        formData.append('nombreArchivoEerr', fEerr.name);
+      } else {
+        formData.append('fileEerr', fEerr);
+      }
+    }
     if (fSf) formData.append('fileSf', fSf);
     formData.append('division', selectedDivision);
 
@@ -206,8 +219,37 @@ export default function ConciliadorPage() {
       });
 
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || 'Error procesando los archivos subidos.');
+        let errorTitle = `Error del servidor (HTTP ${res.status} ${res.statusText || ''})`;
+        let errorDetail = '';
+        let errorEtapa = '';
+
+        try {
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const errData = await res.json();
+            if (errData?.error) errorTitle = errData.error;
+            if (errData?.etapa) errorEtapa = errData.etapa;
+            if (errData?.detalle) errorDetail = errData.detalle;
+          } else {
+            const rawText = await res.text();
+            if (rawText) {
+              const cleanText = rawText.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+              errorDetail = `Respuesta del servidor: ${cleanText}`;
+            }
+          }
+        } catch (readErr: any) {
+          errorDetail = `Error leyendo respuesta: ${readErr?.message}`;
+        }
+
+        const fullMsg = [
+          errorTitle,
+          errorEtapa ? `📍 Etapa identificada: ${errorEtapa}` : '',
+          errorDetail ? `🔍 Detalle: ${errorDetail}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n\n');
+
+        throw new Error(fullMsg);
       }
 
       const data = await res.json();
@@ -1558,8 +1600,14 @@ export default function ConciliadorPage() {
             </div>
 
             {errorMsg && (
-              <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-medium">
-                {errorMsg}
+              <div className="p-4 bg-red-50 border border-red-200 text-red-900 rounded-2xl text-xs space-y-2 animate-in fade-in">
+                <div className="flex items-center gap-2 font-bold text-red-800">
+                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                  <span>Detalle del Error al Procesar Documentos</span>
+                </div>
+                <div className="whitespace-pre-wrap font-sans text-xs bg-white/80 p-3 rounded-xl border border-red-200/80 text-red-800 leading-relaxed max-h-48 overflow-y-auto font-medium">
+                  {errorMsg}
+                </div>
               </div>
             )}
 

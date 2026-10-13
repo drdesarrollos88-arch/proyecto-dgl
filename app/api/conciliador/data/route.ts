@@ -117,27 +117,30 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const currentUser = await getCurrentUser();
-  if (!currentUser) {
-    return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
-  }
-
-  const isAuthorized =
-    isSuperAdminRole(currentUser.role) || currentUser.profileId === 'superadmin';
-  if (!isAuthorized) {
-    return NextResponse.json(
-      { error: 'Acceso denegado: Se requieren privilegios de Administrador / Soporte.' },
-      { status: 403 }
-    );
-  }
-
+  let etapaActual = '1. Verificación de autenticación y permisos';
   try {
+    const currentUser = await getCurrentUser();
+    if (!currentUser) {
+      return NextResponse.json({ error: 'No autenticado', etapa: etapaActual }, { status: 401 });
+    }
+
+    const isAuthorized =
+      isSuperAdminRole(currentUser.role) || currentUser.profileId === 'superadmin';
+    if (!isAuthorized) {
+      return NextResponse.json(
+        { error: 'Acceso denegado: Se requieren privilegios de Administrador / Soporte.', etapa: etapaActual },
+        { status: 403 }
+      );
+    }
+
+    etapaActual = '2. Recepción de FormData y archivos';
     const formData = await req.formData();
 
-    // Soportar carga de hasta 2 archivos: fileEerr y fileSf (o file / files[])
     let fileEerr = (formData.get('fileEerr') || formData.get('file')) as File | null;
     let fileSf = (formData.get('fileSf') || formData.get('fileCuotas')) as File | null;
     const allFiles = formData.getAll('files') as File[];
+    const useOfficialEerr = formData.get('useOfficialEerr') === 'true';
+    const nombreOficialParam = (formData.get('nombreArchivoEerr') as string) || undefined;
 
     if (!fileEerr && allFiles.length > 0) {
       fileEerr = allFiles[0];
@@ -146,9 +149,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (!fileEerr && !fileSf) {
+    if (!useOfficialEerr && !fileEerr && !fileSf) {
       return NextResponse.json(
-        { error: 'No se envió ningún archivo Excel para procesar.' },
+        { error: 'No se envió ningún archivo Excel para procesar.', etapa: etapaActual },
         { status: 400 }
       );
     }
@@ -174,59 +177,58 @@ export async function POST(req: NextRequest) {
     let nombreArchivoEerr: string | undefined = undefined;
     let nombreArchivoSf: string | undefined = undefined;
 
-    // 1. Procesar primer archivo (EERR o combinado)
-    if (fileEerr) {
-      const isKnownDglFacturaciones =
-        fileEerr.name.toUpperCase().includes('FACTURACIONES DGL') ||
-        fileEerr.name.toUpperCase().includes('FACTURACION DGL');
+    // 3. Procesamiento de EERR
+    etapaActual = '3. Procesamiento y extracción del archivo EERR';
+    const isKnownDgl =
+      useOfficialEerr ||
+      Boolean(
+        fileEerr &&
+          (fileEerr.name.toUpperCase().includes('FACTURACIONES DGL') ||
+            fileEerr.name.toUpperCase().includes('FACTURACION DGL'))
+      );
 
-      // En Cloudflare Workers Edge, descomprimir un archivo de 4.3 MB con un modelo de PowerPivot interno
-      // de 50 MB en memoria puede exceder el límite de memoria/CPU de 128 MB del worker.
-      // Para 'FACTURACIONES DGL.xlsx' usamos los datos pre-importados de alta fidelidad desde sampleData.
-      if (
-        isKnownDglFacturaciones &&
-        sampleData &&
-        Array.isArray((sampleData as any).eerrItems) &&
-        (sampleData as any).eerrItems.length > 0
-      ) {
+    if (isKnownDgl) {
+      nombreArchivoEerr = nombreOficialParam || fileEerr?.name || 'FACTURACIONES DGL.xlsx';
+      if (sampleData && Array.isArray((sampleData as any).eerrItems) && (sampleData as any).eerrItems.length > 0) {
         eerrItems = (sampleData as any).eerrItems;
         consolidadoDivisiones = (sampleData as any).consolidadoDivisiones;
-        nombreArchivoEerr = fileEerr.name;
       } else {
-        try {
-          const buf1 = Buffer.from(await fileEerr.arrayBuffer());
-          const p1 = await parseLibroEerr(buf1);
-
-          if (p1.eerrItems.length > 0) {
-            eerrItems = p1.eerrItems;
-            nombreArchivoEerr = fileEerr.name;
-            if (p1.consolidadoDivisiones) consolidadoDivisiones = p1.consolidadoDivisiones;
-          }
-
-          if (p1.sfItems.length > 0) {
-            sfItems = p1.sfItems;
-            if (!nombreArchivoSf) nombreArchivoSf = fileEerr.name;
-          }
-
-          if (p1.eerrItems.length === 0 && p1.sfItems.length > 0) {
-            sfItems = p1.sfItems;
-            nombreArchivoSf = fileEerr.name;
-            nombreArchivoEerr = undefined;
-          }
-        } catch (parseErr: any) {
-          console.warn('Fallo parseando fileEerr con exceljs:', parseErr);
-          if (isKnownDglFacturaciones && (sampleData as any)?.eerrItems) {
-            eerrItems = (sampleData as any).eerrItems;
-            consolidadoDivisiones = (sampleData as any).consolidadoDivisiones;
-            nombreArchivoEerr = fileEerr.name;
-          } else {
-            throw new Error(`Error procesando archivo EERR (${fileEerr.name}): ${parseErr?.message || 'Formato no soportado'}`);
-          }
+        const localPath = path.join(process.cwd(), 'FACTURACIONES DGL.xlsx');
+        if (fs.existsSync(localPath)) {
+          const parsedLocal = await parseLibroEerr(localPath);
+          eerrItems = parsedLocal.eerrItems;
+          consolidadoDivisiones = parsedLocal.consolidadoDivisiones;
         }
+      }
+    } else if (fileEerr) {
+      try {
+        const buf1 = Buffer.from(await fileEerr.arrayBuffer());
+        const p1 = await parseLibroEerr(buf1);
+
+        if (p1.eerrItems.length > 0) {
+          eerrItems = p1.eerrItems;
+          nombreArchivoEerr = fileEerr.name;
+          if (p1.consolidadoDivisiones) consolidadoDivisiones = p1.consolidadoDivisiones;
+        }
+
+        if (p1.sfItems.length > 0) {
+          sfItems = p1.sfItems;
+          if (!nombreArchivoSf) nombreArchivoSf = fileEerr.name;
+        }
+
+        if (p1.eerrItems.length === 0 && p1.sfItems.length > 0) {
+          sfItems = p1.sfItems;
+          nombreArchivoSf = fileEerr.name;
+          nombreArchivoEerr = undefined;
+        }
+      } catch (parseErr: any) {
+        console.warn('Fallo parseando fileEerr con exceljs:', parseErr);
+        throw new Error(`Error en el formato o lectura del archivo EERR (${fileEerr.name}): ${parseErr?.message || 'Formato no soportado'}`);
       }
     }
 
-    // 2. Procesar segundo archivo si fue provisto (Cuotas Salesforce)
+    // 4. Procesamiento de Cuotas Salesforce
+    etapaActual = '4. Procesamiento y extracción del archivo de Cuotas Salesforce';
     if (fileSf) {
       try {
         const buf2 = Buffer.from(await fileSf.arrayBuffer());
@@ -244,11 +246,12 @@ export async function POST(req: NextRequest) {
         }
       } catch (parseErr: any) {
         console.warn('Fallo parseando fileSf:', parseErr);
-        throw new Error(`Error procesando archivo de Cuotas Salesforce (${fileSf.name}): ${parseErr?.message || 'Formato no soportado'}`);
+        throw new Error(`Error en el formato o lectura del archivo de Cuotas (${fileSf.name}): ${parseErr?.message || 'Formato no soportado'}`);
       }
     }
 
-    // 3. Detección automática del período predominante en los datos
+    // 5. Detección automática del período predominante en los datos
+    etapaActual = '5. Detección automática del período predominante';
     const periodoEerr = detectPredominantPeriod(eerrItems);
     const periodoSf = detectPredominantPeriod(sfItems);
 
@@ -310,6 +313,8 @@ export async function POST(req: NextRequest) {
         ? divisionesEnEerr[0]
         : divisionParam;
 
+    // 6. Ejecución del algoritmo de conciliación
+    etapaActual = '6. Ejecución del algoritmo de conciliación uno a uno';
     const { items, resumen } = await conciliarPeriodo({
       eerrItems,
       sfItems,
@@ -319,6 +324,15 @@ export async function POST(req: NextRequest) {
       usarIaGemini: true,
       consolidadoDivisiones: consolidadoDivisiones || (sampleData as any)?.consolidadoDivisiones,
     });
+
+    // 7. Preparación de respuesta JSON ligera
+    etapaActual = '7. Serialización y retorno de datos JSON';
+    const filteredEerr = eerrItems.filter(
+      (e) => e.mes === mesFinal && e.anio === anioFinal && (divisionFinal === 'TODAS' || (e.division || 'DGL') === divisionFinal)
+    );
+    const filteredSf = sfItems.filter(
+      (s) => s.mes === mesFinal && s.anio === anioFinal && (divisionFinal === 'TODAS' || (s.division || 'DGL') === divisionFinal)
+    );
 
     const mesesConDatos = Array.from(new Set(eerrItems.map((e) => e.mes).filter(Boolean))).sort((a, b) => a - b);
     const divisionesConDatos = Array.from(new Set(eerrItems.map((e) => e.division).filter(Boolean))).sort();
@@ -334,21 +348,21 @@ export async function POST(req: NextRequest) {
       nombreArchivoSf,
       resumen,
       items,
-      eerrItems: eerrItems.filter(
-        (e) => e.mes === mesFinal && e.anio === anioFinal && (divisionFinal === 'TODAS' || e.division === divisionFinal)
-      ),
-      sfItems: sfItems.filter(
-        (s) => s.mes === mesFinal && s.anio === anioFinal && (divisionFinal === 'TODAS' || s.division === divisionFinal)
-      ),
-      allEerrItems: eerrItems,
-      allSfItems: sfItems,
+      eerrItems: filteredEerr,
+      sfItems: filteredSf,
+      allEerrItems: filteredEerr,
+      allSfItems: filteredSf,
       mesesConDatos,
       divisionesConDatos,
     });
   } catch (err: any) {
-    console.error('Error subiendo archivos a /api/conciliador/data:', err);
+    console.error(`Error en POST /api/conciliador/data [${etapaActual}]:`, err);
     return NextResponse.json(
-      { error: err?.message || 'Error procesando los archivos Excel subidos' },
+      {
+        error: `Error en ${etapaActual}: ${err?.message || 'Error no especificado'}`,
+        etapa: etapaActual,
+        detalle: err?.message || String(err),
+      },
       { status: 500 }
     );
   }

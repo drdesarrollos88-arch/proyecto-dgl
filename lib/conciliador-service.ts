@@ -47,18 +47,51 @@ export function parseExcelDate(val: any): { fechaIso: string; mes: number; anio:
     };
   }
 
-  let d: Date;
+  let d: Date | null = null;
   if (val instanceof Date) {
     d = val;
   } else if (typeof val === 'number') {
     // Excel serial date format
     d = new Date((val - 25569) * 86400 * 1000);
-  } else {
-    d = new Date(String(val));
+  } else if (typeof val === 'string') {
+    const str = val.trim();
+    // 1. Formato latinoamericano: D/M/YYYY o DD/MM/YYYY o DD-MM-YYYY
+    const latamMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (latamMatch) {
+      const day = parseInt(latamMatch[1], 10);
+      const month = parseInt(latamMatch[2], 10);
+      const year = parseInt(latamMatch[3], 10);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        d = new Date(Date.UTC(year, month - 1, day));
+      }
+    }
+    // 2. Formato ISO: YYYY-MM-DD o YYYY/MM/DD
+    if (!d) {
+      const isoMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+      if (isoMatch) {
+        const year = parseInt(isoMatch[1], 10);
+        const month = parseInt(isoMatch[2], 10);
+        const day = parseInt(isoMatch[3], 10);
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          d = new Date(Date.UTC(year, month - 1, day));
+        }
+      }
+    }
+    if (!d) {
+      const parsed = new Date(str);
+      if (!isNaN(parsed.getTime())) {
+        d = parsed;
+      }
+    }
   }
 
-  if (isNaN(d.getTime())) {
-    d = new Date();
+  if (!d || isNaN(d.getTime())) {
+    const now = new Date();
+    return {
+      fechaIso: now.toISOString().slice(0, 10),
+      mes: now.getMonth() + 1,
+      anio: now.getFullYear(),
+    };
   }
 
   return {
@@ -138,39 +171,65 @@ export async function parseLibroEerr(
 
   const eerrItems: EerrRegistro[] = [];
   const sfItems: SalesforceCuotaRegistro[] = [];
+  const consolidadoDivisiones: Record<string, ConsolidadoDivisionControl> = {};
 
-  // 1. Parsear Hoja de Facturación EERR ('Reporte Facturación sin TI', 'Hoja1' con Resultado[...], o búsqueda dinámica)
-  let wsFact = workbook.getWorksheet('Reporte Facturación sin TI');
-  if (!wsFact) {
-    // Buscar si alguna hoja de detalle contiene columnas con 'monto' o 'resultado['
-    for (const ws of workbook.worksheets) {
-      if (['Selectores', 'Cuadratura', 'Año_reporte', 'Indicaciones SGC'].includes(ws.name)) continue;
-      for (let r = 1; r <= Math.min(5, ws.rowCount); r++) {
-        const row = ws.getRow(r);
-        let hasCol = false;
-        row.eachCell((c) => {
-          const s = String(c.value || '').toLowerCase();
-          if (s.includes('monto') || s.includes('ingreso') || s.includes('resultado[')) {
-            hasCol = true;
-          }
-        });
-        if (hasCol) {
-          wsFact = ws;
-          break;
-        }
-      }
-      if (wsFact) break;
+  // Funciones de identificación precisa de hojas de trabajo
+  const isSalesforceWs = (ws: ExcelJS.Worksheet): boolean => {
+    const name = ws.name.toLowerCase();
+    if (name.includes('cuota') || name.includes('vta') || name.includes('salesforce') || name.includes('sf')) {
+      return true;
     }
-  }
+    for (let r = 1; r <= Math.min(5, ws.rowCount); r++) {
+      const row = ws.getRow(r);
+      let hasOpp = false;
+      let hasCuotaMarker = false;
+      row.eachCell((c) => {
+        const s = String(c.value || '').toLowerCase();
+        if (s.includes('oportunidad')) hasOpp = true;
+        if (s.includes('cuota') || s.includes('fecha de pago') || s.includes('etapa') || s.includes('presupuesto')) {
+          hasCuotaMarker = true;
+        }
+      });
+      if (hasOpp && hasCuotaMarker) return true;
+    }
+    return false;
+  };
 
-  if (!wsFact) {
-    wsFact = workbook.worksheets.find((w) =>
-      /facturaci[oó]n|eerr|hoja1/i.test(w.name)
-    ) || workbook.worksheets[0];
-  }
+  const isEerrWs = (ws: ExcelJS.Worksheet): boolean => {
+    if (['Selectores', 'Cuadratura', 'Año_reporte', 'Indicaciones SGC', 'BBDD Gráficos'].includes(ws.name)) {
+      return false;
+    }
+    if (isSalesforceWs(ws)) return false;
 
+    const name = ws.name.toLowerCase();
+    if (name.includes('facturaci') || name.includes('eerr') || name.includes('sin ti') || name === 'hoja1') {
+      return true;
+    }
+
+    for (let r = 1; r <= Math.min(5, ws.rowCount); r++) {
+      const row = ws.getRow(r);
+      let hasEerrMarker = false;
+      row.eachCell((c) => {
+        const s = String(c.value || '').toLowerCase();
+        if (
+          s.includes('resultado[') ||
+          s.includes('glosa') ||
+          s.includes('comprobante') ||
+          s.includes('referencia interna')
+        ) {
+          hasEerrMarker = true;
+        }
+      });
+      if (hasEerrMarker) return true;
+    }
+    return false;
+  };
+
+  const wsSf = workbook.worksheets.find(isSalesforceWs);
+  const wsFact = workbook.worksheets.find(isEerrWs);
+
+  // 1. Parsear Hoja de Facturación EERR si está presente
   if (wsFact) {
-    // Localizar fila de encabezados (buscar fila que contenga 'siglaDivision' o 'RUT' o 'Ingreso' o 'Monto' o 'Resultado[')
     let headerRowIdx = 1;
     for (let r = 1; r <= Math.min(10, wsFact.rowCount); r++) {
       const row = wsFact.getRow(r);
@@ -208,29 +267,28 @@ export async function parseLibroEerr(
       }
     });
 
-    // Mapeo flexible y tolerante de columnas
     const colDiv =
-      colMap['siglaDivision'] || colMap['Division'] || colMap['Div'] || colMap['div'] || 1;
-    const colSec = colMap['siglaSeccion'] || colMap['Seccion'] || colMap['seccion'] || 2;
+      colMap['div'] || colMap['sigladivision'] || colMap['division'] || 20;
+    const colSec = colMap['siglaseccion'] || colMap['seccion'] || 2;
     const colCc =
-      colMap['centroCosto'] || colMap['Centro de Costo'] || colMap['centro_costo_id'] || 3;
-    const colDate = colMap['Date'] || colMap['Fecha'] || colMap['fecha'] || 4;
-    const colComp = colMap['Comprobante'] || colMap['Tipo'] || colMap['comprobante'] || 5;
+      colMap['centro de costo'] || colMap['centro_costo_id'] || colMap['centrocosto'] || 6;
+    const colDate = colMap['fecha'] || colMap['date'] || 3;
+    const colComp = colMap['comprobante'] || colMap['tipo'] || 23;
     const colRut =
-      colMap['RUT_Id'] || colMap['RUT'] || colMap['Rut Empresa'] || colMap['rut_id'] || 6;
+      colMap['rut_id'] || colMap['rut'] || colMap['rut empresa'] || 14;
     const colRazon =
-      colMap['Razón Social'] || colMap['Razon Social'] || colMap['Cliente'] || colMap['razón social'] || 7;
+      colMap['razón social'] || colMap['razon social'] || colMap['cliente'] || colMap['nombre de la cuenta'] || 22;
     const colRefInt =
-      colMap['Referencia Interna'] || colMap['Proyecto'] || colMap['Glosa'] || colMap['referencia interna'] || 8;
+      colMap['referencia interna'] || colMap['proyecto'] || colMap['glosa'] || 8;
     const colRefExt =
-      colMap['Referencia Externa'] || colMap['N° Factura'] || colMap['Factura'] || colMap['referencia externa'] || 9;
+      colMap['referencia externa'] || colMap['n° factura'] || colMap['factura'] || 7;
     const colGlosa =
-      colMap['Glosa/Detalle'] || colMap['Detalle'] || colMap['glosa/detalle'] || 10;
-    const colCta = colMap['Cuenta Contable'] || colMap['cuenta contable'] || 11;
-    const colClasif = colMap['Clasificación'] || colMap['clasificación'] || 12;
-    const colServ = colMap['tipoServicio'] || colMap['tipo servicio'] || 13;
+      colMap['glosa/detalle'] || colMap['detalle'] || colMap['glosa'] || 12;
+    const colCta = colMap['cuenta contable'] || colMap['cuenta_contable_id'] || 15;
+    const colClasif = colMap['clasificación'] || colMap['clasificacion'] || 9;
+    const colServ = colMap['tiposervicio'] || colMap['tipo servicio'] || 10;
     const colIngreso =
-      colMap['Ingreso'] || colMap['Monto'] || colMap['Total'] || colMap['monto'] || 14;
+      colMap['monto'] || colMap['ingreso'] || colMap['total'] || 13;
 
     for (let r = headerRowIdx + 1; r <= wsFact.rowCount; r++) {
       const row = wsFact.getRow(r);
@@ -243,7 +301,7 @@ export async function parseLibroEerr(
       // Para efectos comerciales, conciliación con Salesforce y visualización de EERR se representan en valor absoluto positivo.
       const montoClp = Math.abs(rawMonto);
 
-      const divVal = String(row.getCell(colDiv).value || '').trim();
+      const divVal = String(row.getCell(colDiv).value || 'DGL').trim();
       const secVal = String(row.getCell(colSec).value || '').trim();
       const ccVal = String(row.getCell(colCc).value || '').trim();
       const rawDate = row.getCell(colDate).value;
@@ -283,29 +341,6 @@ export async function parseLibroEerr(
   }
 
   // 2. Parsear Hoja de Salesforce si está presente en el libro
-  let wsSf = workbook.getWorksheet('Reporte Salesforce');
-  if (!wsSf) {
-    for (const ws of workbook.worksheets) {
-      if (['Selectores', 'Cuadratura', 'Año_reporte', 'Indicaciones SGC', 'BBDD Gráficos'].includes(ws.name)) continue;
-      if (ws === wsFact) continue;
-      for (let r = 1; r <= Math.min(5, ws.rowCount); r++) {
-        const row = ws.getRow(r);
-        let hasOpp = false;
-        row.eachCell((c) => {
-          const s = String(c.value || '').toLowerCase();
-          if (s.includes('oportunidad') || s.includes('cuota') || s.includes('fecha de pago')) {
-            hasOpp = true;
-          }
-        });
-        if (hasOpp) {
-          wsSf = ws;
-          break;
-        }
-      }
-      if (wsSf) break;
-    }
-  }
-
   if (wsSf) {
     let headerRowIdxSf = 1;
     for (let r = 1; r <= Math.min(10, wsSf.rowCount); r++) {
@@ -332,24 +367,27 @@ export async function parseLibroEerr(
     });
 
     const colRutSf =
-      colMapSf['Rut Empresa'] || colMapSf['rut empresa'] || colMapSf['RUT'] || colMapSf['rut'] || 1;
+      colMapSf['rut empresa'] || colMapSf['rut'] || colMapSf['rut_id'] || 1;
     const colCuentaSf =
-      colMapSf['Nombre de la cuenta'] || colMapSf['nombre de la cuenta'] || colMapSf['Cuenta'] || colMapSf['cuenta'] || 2;
+      colMapSf['nombre de la cuenta'] || colMapSf['cuenta'] || colMapSf['cliente'] || 2;
     const colOppSf =
-      colMapSf['Nombre de la oportunidad'] || colMapSf['nombre de la oportunidad'] || colMapSf['Oportunidad'] || colMapSf['oportunidad'] || 3;
-    const colEtapaSf = colMapSf['Etapa'] || colMapSf['etapa'] || 4;
-    const colMontoSf = colMapSf['Monto'] || colMapSf['monto'] || 5;
+      colMapSf['nombre de la oportunidad'] || colMapSf['oportunidad'] || 3;
+    const colEtapaSf = colMapSf['etapa'] || 4;
+    const colMontoSf = colMapSf['monto'] || colMapSf['ingreso'] || 5;
     const colCuotaNumSf =
-      colMapSf['Contador de cuotas'] || colMapSf['contador de cuotas'] || colMapSf['Cuota'] || colMapSf['cuota'] || 6;
-    const colUnidadSf = colMapSf['Unidad'] || colMapSf['unidad'] || 8;
-    const colDivSf =
-      colMapSf['División'] || colMapSf['división'] || colMapSf['Division'] || colMapSf['division'] || 9;
+      colMapSf['número de cuota'] || colMapSf['numero de cuota'] || colMapSf['contador de cuotas'] || colMapSf['cuota'] || 6;
     const colSecSf =
-      colMapSf['Sección'] || colMapSf['sección'] || colMapSf['Seccion'] || colMapSf['seccion'] || 10;
+      colMapSf['sección'] || colMapSf['seccion'] || 8;
+    const colPresupuestoSf =
+      colMapSf['presupuesto sincronizado'] || colMapSf['presupuesto'] || 9;
+    const colDivSf =
+      colMapSf['división'] || colMapSf['division'] || colMapSf['div'] || 10;
     const colFechaPagoSf =
-      colMapSf['Fecha de Pago'] || colMapSf['fecha de pago'] || colMapSf['Fecha'] || colMapSf['fecha'] || 12;
+      colMapSf['fecha de pago'] || colMapSf['fecha'] || 11;
+    const colUnidadSf =
+      colMapSf['unidad'] || 12;
     const colTraspasoSf =
-      colMapSf['Traspaso interno'] || colMapSf['traspaso interno'] || colMapSf['Traspaso'] || colMapSf['traspaso'] || 13;
+      colMapSf['interno/externo'] || colMapSf['traspaso interno'] || colMapSf['traspaso'] || 13;
 
     for (let r = headerRowIdxSf + 1; r <= wsSf.rowCount; r++) {
       const row = wsSf.getRow(r);
@@ -360,12 +398,14 @@ export async function parseLibroEerr(
       const rawDate = row.getCell(colFechaPagoSf).value;
       const { fechaIso, mes, anio } = parseExcelDate(rawDate);
       const oppName = String(row.getCell(colOppSf).value || '').trim();
-      const divVal = String(row.getCell(colDivSf).value || '').trim();
+      const prespSinc = String(row.getCell(colPresupuestoSf).value || '').trim();
+      const divVal = String(row.getCell(colDivSf).value || 'DGL').trim();
       const rutVal = normalizeRut(row.getCell(colRutSf).value);
       const cuentaVal = String(row.getCell(colCuentaSf).value || '').trim();
-      const traspasoVal = String(row.getCell(colTraspasoSf).value || '').toUpperCase();
+      const traspasoRaw = String(row.getCell(colTraspasoSf).value || '').toLowerCase();
+      const isTraspaso = traspasoRaw.includes('interno') || traspasoRaw === 'verdadero' || traspasoRaw === 'true';
 
-      const codExtracted = extractCodigoOportunidad(oppName);
+      const codExtracted = extractCodigoOportunidad(prespSinc) || extractCodigoOportunidad(oppName);
 
       sfItems.push({
         id: `sf-${r}-${Date.now()}`,
@@ -383,13 +423,12 @@ export async function parseLibroEerr(
         division: divVal || 'DGL',
         seccion: String(row.getCell(colSecSf).value || ''),
         unidad: String(row.getCell(colUnidadSf).value || ''),
-        traspasoInterno: traspasoVal === 'VERDADERO' || traspasoVal === 'TRUE',
+        traspasoInterno: isTraspaso,
       });
     }
   }
 
   // 3. Parsear Hoja 'BBDD Gráficos' si está presente (Control macro por división)
-  const consolidadoDivisiones: Record<string, ConsolidadoDivisionControl> = {};
   const wsGraf = workbook.getWorksheet('BBDD Gráficos');
   if (wsGraf) {
     for (let r = 24; r <= Math.min(38, wsGraf.rowCount); r++) {

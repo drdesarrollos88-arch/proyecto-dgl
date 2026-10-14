@@ -152,15 +152,17 @@ function recalculateItemNumbers(itemList: CotizacionItem[]): CotizacionItem[] {
 // Separar título principal y especificaciones/notas del detalle del ensayo
 function parseDesignation(raw: string): { title: string; detail: string } {
   if (!raw) return { title: '', detail: '' };
-  const clean = raw.trim();
 
-  // Caso 1: Tiene saltos de línea explícitos (muy común en tarifario IDIEM: Título \n Especificaciones / Notas)
-  if (clean.includes('\n')) {
-    const lines = clean.split('\n').map((l) => l.trim()).filter(Boolean);
-    const title = lines[0] || '';
-    const detail = lines.slice(1).join('\n');
+  // Caso 1: Tiene saltos de línea explícitos (Título \n Especificaciones / Notas)
+  // Dividimos únicamente por el primer salto de línea para preservar todos los saltos y espacios del detalle
+  const firstNewlineIdx = raw.indexOf('\n');
+  if (firstNewlineIdx !== -1) {
+    const title = raw.slice(0, firstNewlineIdx);
+    const detail = raw.slice(firstNewlineIdx + 1);
     return { title, detail };
   }
+
+  const clean = raw.trim();
 
   // Caso 2: Bloques separados por múltiples espacios consecutivos (como en código 319)
   if (/\s{3,}/.test(clean)) {
@@ -176,7 +178,7 @@ function parseDesignation(raw: string): { title: string; detail: string } {
     return { title: match[1] + '.', detail: match[2] };
   }
 
-  return { title: clean, detail: '' };
+  return { title: raw, detail: '' };
 }
 
 // Componente para ingresar descuentos o aumentos en formato porcentaje (+20% o -20%)
@@ -3800,24 +3802,54 @@ function CotizadorContent() {
                                           <span className="flex items-center gap-1 text-slate-700">
                                             <Info className="w-3 h-3 text-blue-600" /> Especificaciones / Detalle (editable):
                                           </span>
-                                          <button
-                                            type="button"
-                                            onClick={() => toggleExpandDetail(item.id)}
-                                            className="text-slate-400 hover:text-slate-700 flex items-center gap-0.5 cursor-pointer text-[10px] font-medium hover:underline"
-                                          >
-                                            <ChevronUp className="w-3 h-3" /> Ocultar detalle
-                                          </button>
+                                          <div className="flex items-center gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                handleItemChange(item.id, 'designation', title);
+                                                setExpandedDetails((prev) => ({ ...prev, [item.id]: false }));
+                                              }}
+                                              className="text-red-500 hover:text-red-700 flex items-center gap-0.5 cursor-pointer text-[10px] font-medium hover:underline"
+                                              title="Eliminar la nota técnica de este ensayo"
+                                            >
+                                              <Trash2 className="w-3 h-3" /> Quitar nota
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => toggleExpandDetail(item.id)}
+                                              className="text-slate-400 hover:text-slate-700 flex items-center gap-0.5 cursor-pointer text-[10px] font-medium hover:underline"
+                                            >
+                                              <ChevronUp className="w-3 h-3" /> Ocultar detalle
+                                            </button>
+                                          </div>
                                         </div>
                                         <textarea
                                           value={detail}
-                                          rows={Math.max(2, Math.min(5, detail.split('\n').length))}
+                                          rows={Math.max(2, Math.min(8, detail.split('\n').length + 1))}
                                           onChange={(e) => {
                                             const newDetail = e.target.value;
                                             const newFull = `${title}\n${newDetail}`;
                                             handleItemChange(item.id, 'designation', newFull);
                                           }}
+                                          onKeyDown={(e) => {
+                                            e.stopPropagation();
+                                            // Soporte explícito para Alt+Enter o Shift+Enter además de Enter normal
+                                            if (e.key === 'Enter' && e.altKey) {
+                                              e.preventDefault();
+                                              const target = e.currentTarget;
+                                              const start = target.selectionStart;
+                                              const end = target.selectionEnd;
+                                              const val = target.value;
+                                              const nextVal = val.substring(0, start) + '\n' + val.substring(end);
+                                              const newFull = `${title}\n${nextVal}`;
+                                              handleItemChange(item.id, 'designation', newFull);
+                                              setTimeout(() => {
+                                                target.selectionStart = target.selectionEnd = start + 1;
+                                              }, 0);
+                                            }
+                                          }}
                                           className="w-full text-xs text-slate-700 bg-white border border-slate-300 rounded p-1.5 focus:ring-2 focus:ring-blue-500 focus:outline-none leading-relaxed resize-y font-normal"
-                                          placeholder="Especificaciones técnicas y notas particulares..."
+                                          placeholder="Especificaciones técnicas y notas particulares... (usa Enter o Shift+Enter para agregar líneas)"
                                           title="Editar las notas o especificaciones de este ensayo para esta cotización"
                                         />
                                       </div>

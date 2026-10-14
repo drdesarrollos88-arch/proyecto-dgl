@@ -1065,16 +1065,21 @@ function CotizacionesContent() {
 
         {/* Modal de Vista Previa de PDF Embebido Ampliado */}
         {previewCotizacion && (
-          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150">
+          <div
+            className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-150"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setPreviewCotizacion(null);
+            }}
+          >
             <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-6xl h-[94vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
               {/* Modal Header */}
-              <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between flex-shrink-0">
-                <div className="flex items-center gap-3">
-                  <span className="font-mono text-sm font-bold text-blue-400">
+              <div className="px-3 sm:px-5 py-3 bg-slate-900 text-white flex items-center justify-between flex-shrink-0 gap-2 sm:gap-4 border-b border-slate-800">
+                <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                  <span className="font-mono text-xs sm:text-sm font-bold text-blue-400 whitespace-nowrap">
                     {previewCotizacion.code}
                   </span>
                   <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${
                       previewCotizacion.status === 'Finalizada' || previewCotizacion.status === 'Aprobada'
                         ? 'bg-emerald-950 text-emerald-300 border border-emerald-700'
                         : previewCotizacion.status === 'Borrador'
@@ -1084,112 +1089,118 @@ function CotizacionesContent() {
                   >
                     {previewCotizacion.status || 'Borrador'}
                   </span>
-                  <span className="text-slate-400 text-xs hidden sm:inline">|</span>
-                  <span className="text-xs text-slate-300 font-medium truncate max-w-xs sm:max-w-md">
+                  <span className="text-slate-500 text-xs hidden md:inline">|</span>
+                  <span className="text-xs text-slate-300 font-medium truncate max-w-[130px] sm:max-w-xs hidden sm:inline" title={previewCotizacion.clientName}>
                     {previewCotizacion.clientName}
                   </span>
                   {previewCotizacion.projectId && (
-                    <span className="font-mono text-[10px] bg-blue-900/80 text-blue-200 px-2 py-0.5 rounded border border-blue-700 flex items-center gap-1">
+                    <span className="font-mono text-[10px] bg-blue-900/80 text-blue-200 px-2 py-0.5 rounded border border-blue-700 items-center gap-1 hidden lg:flex whitespace-nowrap">
                       <Lock className="w-2.5 h-2.5" />
                       {previewCotizacion.projectId}
                     </span>
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {/* Descarga según estado: Borrador vs Oficial */}
-                  {previewCotizacion.status === 'Borrador' ? (
-                    <>
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-1.5 overflow-x-auto py-0.5 max-w-[calc(100vw-200px)] sm:max-w-none">
+                    {/* Descarga según estado: Borrador vs Oficial */}
+                    {previewCotizacion.status === 'Borrador' ? (
+                      <>
+                        <a
+                          href={`/api/cotizaciones/${previewCotizacion.id}/pdf?draft=true`}
+                          download={`Borrador_${previewCotizacion.code}.pdf`}
+                          className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-2.5 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer whitespace-nowrap"
+                          title="Descargar documento preliminar con marca de agua BORRADOR"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span className="hidden md:inline">Descargar Borrador (PDF)</span>
+                          <span className="md:hidden">Borrador</span>
+                        </a>
+
+                        {hasPermission(user, 'cotizador.descargar_definitivo') && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!confirm(`¿Desea cambiar el estado de ${previewCotizacion.code} a Finalizada y descargar el PDF oficial definitivo?`)) return;
+                              await handleStatusChange(previewCotizacion.id, 'Finalizada');
+                              setPreviewCotizacion((prev) => (prev ? { ...prev, status: 'Finalizada' } : null));
+                              window.open(`/api/cotizaciones/${previewCotizacion.id}/pdf?draft=false`, '_blank');
+                            }}
+                            disabled={updatingStatusId === previewCotizacion.id}
+                            className="flex items-center gap-1.5 bg-[#E20000] hover:bg-[#C20000] text-white px-2.5 py-1.5 rounded-lg text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                            title="Cambia el estado a Finalizada y emite el documento oficial definitivo"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span className="hidden md:inline">Finalizar y Descargar Oficial</span>
+                            <span className="md:hidden">Finalizar</span>
+                          </button>
+                        )}
+                      </>
+                    ) : (
                       <a
-                        href={`/api/cotizaciones/${previewCotizacion.id}/pdf?draft=true`}
-                        download={`Borrador_${previewCotizacion.code}.pdf`}
-                        className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-                        title="Descargar documento preliminar con marca de agua BORRADOR"
+                        href={`/api/cotizaciones/${previewCotizacion.id}/pdf?draft=false${
+                          selectedPreviewVersion ? `&version=${selectedPreviewVersion}` : ''
+                        }`}
+                        download={`Cotizacion_${
+                          selectedPreviewVersion
+                            ? previewCotizacion.versionHistory?.find((v) => String(v.versionNumber) === selectedPreviewVersion)?.versionCode || previewCotizacion.code
+                            : previewCotizacion.code
+                        }.pdf`}
+                        className="flex items-center gap-1.5 bg-[#E20000] hover:bg-[#C20000] text-white px-2.5 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer whitespace-nowrap"
+                        title="Descargar documento PDF oficial definitivo"
                       >
                         <FileText className="w-3.5 h-3.5" />
-                        <span>Descargar Borrador (PDF)</span>
+                        <span>
+                          {selectedPreviewVersion
+                            ? `Descargar ${
+                                previewCotizacion.versionHistory?.find((v) => String(v.versionNumber) === selectedPreviewVersion)?.versionCode.split('-').pop() || 'V'
+                              } (PDF)`
+                            : 'Descargar PDF'}
+                        </span>
                       </a>
+                    )}
 
-                      {hasPermission(user, 'cotizador.descargar_definitivo') && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            if (!confirm(`¿Desea cambiar el estado de ${previewCotizacion.code} a Finalizada y descargar el PDF oficial definitivo?`)) return;
-                            await handleStatusChange(previewCotizacion.id, 'Finalizada');
-                            setPreviewCotizacion((prev) => (prev ? { ...prev, status: 'Finalizada' } : null));
-                            window.open(`/api/cotizaciones/${previewCotizacion.id}/pdf?draft=false`, '_blank');
-                          }}
-                          disabled={updatingStatusId === previewCotizacion.id}
-                          className="flex items-center gap-1.5 bg-[#E20000] hover:bg-[#C20000] text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-50"
-                          title="Cambia el estado a Finalizada y emite el documento oficial definitivo"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Finalizar y Descargar Oficial</span>
-                        </button>
-                      )}
-                    </>
-                  ) : (
+                    {/* Descargar Excel */}
                     <a
-                      href={`/api/cotizaciones/${previewCotizacion.id}/pdf?draft=false${
-                        selectedPreviewVersion ? `&version=${selectedPreviewVersion}` : ''
-                      }`}
-                      download={`Cotizacion_${
-                        selectedPreviewVersion
-                          ? previewCotizacion.versionHistory?.find((v) => String(v.versionNumber) === selectedPreviewVersion)?.versionCode || previewCotizacion.code
-                          : previewCotizacion.code
-                      }.pdf`}
-                      className="flex items-center gap-1.5 bg-[#E20000] hover:bg-[#C20000] text-white px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-                      title="Descargar documento PDF oficial definitivo"
+                      href={`/api/cotizaciones/${previewCotizacion.id}/excel`}
+                      download={`Cotizacion_${previewCotizacion.code}.xlsx`}
+                      className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-600 text-white px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap"
+                      title="Descargar Excel"
                     >
-                      <FileText className="w-3.5 h-3.5" />
-                      <span>
-                        {selectedPreviewVersion
-                          ? `Descargar ${
-                              previewCotizacion.versionHistory?.find((v) => String(v.versionNumber) === selectedPreviewVersion)?.versionCode.split('-').pop() || 'V'
-                            } (PDF)`
-                          : 'Descargar PDF Oficial'}
-                      </span>
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Excel</span>
                     </a>
-                  )}
 
-                  {/* Descargar Excel */}
-                  <a
-                    href={`/api/cotizaciones/${previewCotizacion.id}/excel`}
-                    download={`Cotizacion_${previewCotizacion.code}.xlsx`}
-                    className="flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                    title="Descargar Excel"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5" />
-                    <span>Excel</span>
-                  </a>
+                    {/* Sincronización con Salesforce */}
+                    <SalesforceSyncButton
+                      cotizacion={previewCotizacion}
+                      variant="button"
+                      onSynced={(updated) => {
+                        setPreviewCotizacion(updated);
+                        setCotizaciones((prev) =>
+                          prev.map((item) => (item.id === updated.id ? updated : item))
+                        );
+                      }}
+                    />
 
-                  {/* Sincronización con Salesforce */}
-                  <SalesforceSyncButton
-                    cotizacion={previewCotizacion}
-                    variant="button"
-                    onSynced={(updated) => {
-                      setPreviewCotizacion(updated);
-                      setCotizaciones((prev) =>
-                        prev.map((item) => (item.id === updated.id ? updated : item))
-                      );
-                    }}
-                  />
+                    <Link
+                      href={`/cotizador?edit=${previewCotizacion.id}`}
+                      className="hidden sm:flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Editar</span>
+                    </Link>
+                  </div>
 
-                  <Link
-                    href={`/cotizador?edit=${previewCotizacion.id}`}
-                    className="hidden sm:flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                    <span>Editar</span>
-                  </Link>
-
+                  {/* Botón X de Cierre destacado e inamovible */}
                   <button
                     type="button"
                     onClick={() => setPreviewCotizacion(null)}
-                    className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-                    title="Cerrar (Esc)"
+                    className="flex-shrink-0 ml-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl border border-red-500 font-bold text-xs flex items-center gap-1.5 transition-all shadow-md cursor-pointer hover:scale-105 active:scale-95"
+                    title="Cerrar ventana de visualización (Esc)"
                   >
-                    <X className="w-5 h-5" />
+                    <span>Cerrar</span>
+                    <X className="w-4 h-4 stroke-[3]" />
                   </button>
                 </div>
               </div>
@@ -1260,11 +1271,22 @@ function CotizacionesContent() {
                     </div>
                   )}
                 </div>
-                <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
-                  <span>Salesforce:</span>
-                  <span className={previewCotizacion.salesforceOpportunityId ? 'text-emerald-400 font-semibold' : 'text-slate-400'}>
-                    {previewCotizacion.salesforceOpportunityId ? `Enlazada (${previewCotizacion.salesforceOpportunityId})` : 'Pendiente de sincronizar'}
-                  </span>
+                <div className="flex items-center gap-3">
+                  <div className="text-[10px] text-slate-400 flex items-center gap-1.5">
+                    <span>Salesforce:</span>
+                    <span className={previewCotizacion.salesforceOpportunityId ? 'text-emerald-400 font-semibold' : 'text-slate-400'}>
+                      {previewCotizacion.salesforceOpportunityId ? `Enlazada (${previewCotizacion.salesforceOpportunityId})` : 'Pendiente de sincronizar'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewCotizacion(null)}
+                    className="flex items-center gap-1 px-2.5 py-0.5 rounded bg-slate-700 hover:bg-red-600 text-white text-[10px] font-bold transition-colors cursor-pointer"
+                    title="Cerrar vista previa"
+                  >
+                    <X className="w-3 h-3 stroke-[2.5]" />
+                    <span>Cerrar</span>
+                  </button>
                 </div>
               </div>
 

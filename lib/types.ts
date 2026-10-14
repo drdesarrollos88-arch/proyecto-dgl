@@ -368,10 +368,14 @@ export interface CotizacionCondicionesComerciales {
 }
 
 export interface Contacto {
+  id?: string;
   email: string;
   name: string;
   phone: string;
   company?: string;
+  accountId?: string;
+  cargo?: string;
+  source?: 'salesforce' | 'local';
   createdAt: string;
   updatedAt: string;
 }
@@ -404,6 +408,8 @@ export interface Cliente {
   paymentCondition: string;
   email: string;
   contactPerson: string;
+  source?: 'salesforce' | 'local';
+  salesforceAccountId?: string;
   createdAt: string;
   updatedAt: string;
 }

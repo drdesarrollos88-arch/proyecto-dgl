@@ -37,6 +37,7 @@ function ClientesContent() {
 
   // ================= EMPRESAS (CLIENTES) STATE =================
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [clientesSource, setClientesSource] = useState<'salesforce' | 'local'>('local');
   const [clientesLoading, setClientesLoading] = useState(true);
   const [clientesSearch, setClientesSearch] = useState('');
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
@@ -56,6 +57,7 @@ function ClientesContent() {
 
   // ================= CONTACTOS STATE =================
   const [contactos, setContactos] = useState<Contacto[]>([]);
+  const [contactosSource, setContactosSource] = useState<'salesforce' | 'local'>('local');
   const [contactosLoading, setContactosLoading] = useState(false);
   const [contactosSearch, setContactosSearch] = useState('');
   const [editingContacto, setEditingContacto] = useState<Contacto | null>(null);
@@ -104,7 +106,10 @@ function ClientesContent() {
       fetch(`/api/clientes?q=${encodeURIComponent(clientesSearch)}&limit=50`)
         .then((res) => res.json())
         .then((data) => {
-          if (data.clientes) setClientes(data.clientes);
+          if (data.clientes) {
+            setClientes(data.clientes);
+            if (data.source) setClientesSource(data.source);
+          }
         })
         .catch((err) => console.error('Error fetching clientes:', err))
         .finally(() => setClientesLoading(false));
@@ -120,7 +125,10 @@ function ClientesContent() {
       fetch(`/api/contactos?q=${encodeURIComponent(contactosSearch)}&limit=50`)
         .then((res) => res.json())
         .then((data) => {
-          if (data.contactos) setContactos(data.contactos);
+          if (data.contactos) {
+            setContactos(data.contactos);
+            if (data.source) setContactosSource(data.source);
+          }
         })
         .catch((err) => console.error('Error fetching contactos:', err))
         .finally(() => setContactosLoading(false));
@@ -673,7 +681,9 @@ function ClientesContent() {
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
               <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between text-xs text-slate-500">
                 <span>{clientesLoading ? 'Buscando empresas...' : `Mostrando ${clientes.length} resultados`}</span>
-                <span className="text-[11px] text-slate-400">* Base SQLite local optimizada</span>
+                <span className={`text-[11px] font-semibold flex items-center gap-1.5 ${clientesSource === 'salesforce' ? 'text-sky-700 bg-sky-50 px-2.5 py-0.5 rounded-full border border-sky-200' : 'text-slate-400'}`}>
+                  {clientesSource === 'salesforce' ? '☁️ Salesforce CRM en tiempo real' : '💾 Base de datos local'}
+                </span>
               </div>
 
               <div className="max-h-[600px] overflow-y-auto relative">
@@ -694,9 +704,16 @@ function ClientesContent() {
                       clientes.map((c) => (
                         <tr key={c.id} className="hover:bg-blue-50/50 transition-colors">
                           <td className="py-3 px-4 font-semibold text-slate-900">
-                            {c.name}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span>{c.name}</span>
+                              {c.source === 'salesforce' && (
+                                <span className="text-[9px] font-bold bg-sky-50 text-sky-700 border border-sky-200 px-1.5 py-0.2 rounded">
+                                  Salesforce
+                                </span>
+                              )}
+                            </div>
                             {c.contactPerson && (
-                              <span className="block text-[11px] font-normal text-slate-500">
+                              <span className="block text-[11px] font-normal text-slate-500 mt-0.5">
                                 Contacto: {c.contactPerson}
                               </span>
                             )}
@@ -804,7 +821,9 @@ function ClientesContent() {
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
               <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between text-xs text-slate-500">
                 <span>{contactosLoading ? 'Buscando contactos...' : `Mostrando ${contactos.length} contactos registrados`}</span>
-                <span className="text-[11px] text-blue-600 font-medium">* El correo actúa como identificador único</span>
+                <span className={`text-[11px] font-semibold flex items-center gap-1.5 ${contactosSource === 'salesforce' ? 'text-sky-700 bg-sky-50 px-2.5 py-0.5 rounded-full border border-sky-200' : 'text-slate-400'}`}>
+                  {contactosSource === 'salesforce' ? '☁️ Salesforce CRM en tiempo real' : '💾 Base de datos local'}
+                </span>
               </div>
 
               <div className="max-h-[600px] overflow-y-auto relative">
@@ -822,12 +841,28 @@ function ClientesContent() {
                   <tbody className="divide-y divide-slate-100">
                     {contactos.length > 0 ? (
                       contactos.map((c) => (
-                        <tr key={c.email} className="hover:bg-blue-50/50 transition-colors">
-                          <td className="py-3 px-4 font-bold text-slate-900 flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px] flex-shrink-0">
-                              {c.name.slice(0, 2).toUpperCase()}
+                        <tr key={c.id || c.email} className="hover:bg-blue-50/50 transition-colors">
+                          <td className="py-3 px-4 font-bold text-slate-900">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-[10px] flex-shrink-0">
+                                {c.name.slice(0, 2).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span>{c.name}</span>
+                                  {c.source === 'salesforce' && (
+                                    <span className="text-[9px] font-bold bg-sky-50 text-sky-700 border border-sky-200 px-1.5 py-0.2 rounded">
+                                      Salesforce
+                                    </span>
+                                  )}
+                                </div>
+                                {c.cargo && (
+                                  <span className="block text-[10px] text-slate-500 font-normal">
+                                    💼 {c.cargo}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <span>{c.name}</span>
                           </td>
                           <td className="py-3 px-4 font-mono font-medium text-blue-900">
                             <span className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-800 px-2 py-0.5 rounded border border-blue-200 text-[11px]">

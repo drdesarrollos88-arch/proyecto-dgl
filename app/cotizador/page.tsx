@@ -799,22 +799,44 @@ function CotizadorContent() {
     if (c.paymentCondition) setPaymentCondition(c.paymentCondition);
     setClientSearchQuery('');
     setClientDropdownOpen(false);
+
+    // Precargar contactos de la empresa en Salesforce CRM
+    const sfAccId = c.salesforceAccountId || (c.id?.startsWith('001') ? c.id : undefined);
+    if (sfAccId) {
+      setContactSearching(true);
+      fetch(`/api/contactos?accountId=${encodeURIComponent(sfAccId)}&limit=10`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.contactos && data.contactos.length > 0) {
+            setContactSuggestions(data.contactos);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setContactSearching(false));
+    }
+
     setStatusMessage({
       type: 'success',
-      text: `Empresa "${c.name}" asignada a la cotización.`,
+      text: `Empresa "${c.name}" asignada a la cotización ${c.source === 'salesforce' ? '(desde Salesforce CRM)' : ''}.`,
     });
   };
 
-  // Predictive search for contacts
+  // Predictive search for contacts (prioriza contactos vinculados a la empresa o busca globalmente en Salesforce)
   useEffect(() => {
-    if (!contactSearchQuery.trim() || contactSearchQuery.trim().length < 2) {
-      setContactSuggestions([]);
+    const trimmed = contactSearchQuery.trim();
+    const sfAccId = selectedClient?.salesforceAccountId || (selectedClient?.id?.startsWith('001') ? selectedClient.id : undefined);
+
+    if (!trimmed || trimmed.length < 2) {
+      if (!sfAccId) {
+        setContactSuggestions([]);
+      }
       return;
     }
 
     setContactSearching(true);
     const timer = setTimeout(() => {
-      fetch(`/api/contactos?q=${encodeURIComponent(contactSearchQuery.trim())}&limit=8`)
+      const url = `/api/contactos?q=${encodeURIComponent(trimmed)}&limit=8${sfAccId ? `&accountId=${encodeURIComponent(sfAccId)}` : ''}`;
+      fetch(url)
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
           if (data?.contactos) {
@@ -827,7 +849,7 @@ function CotizadorContent() {
     }, 200);
 
     return () => clearTimeout(timer);
-  }, [contactSearchQuery]);
+  }, [contactSearchQuery, selectedClient]);
 
   // Predictive search for projects
   useEffect(() => {
@@ -2366,14 +2388,21 @@ function CotizadorContent() {
                         className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-start justify-between gap-2 transition-colors cursor-pointer"
                       >
                         <div className="min-w-0">
-                          <div className="font-bold text-xs text-slate-900 truncate">{c.name}</div>
+                          <div className="font-bold text-xs text-slate-900 truncate flex items-center gap-1.5">
+                            <span>{c.name}</span>
+                            {c.source === 'salesforce' && (
+                              <span className="text-[9px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200 flex-shrink-0">
+                                Salesforce
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[10px] text-slate-500 truncate flex items-center gap-1.5 mt-0.5">
                             {c.comuna && <span>📍 {c.comuna}</span>}
                             {c.paymentCondition && <span>💳 {c.paymentCondition}</span>}
                           </div>
                         </div>
                         <span className="font-mono text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200 flex-shrink-0">
-                          {c.rut}
+                          {c.rut || 'S/RUT'}
                         </span>
                       </button>
                     ))}
@@ -2386,9 +2415,16 @@ function CotizadorContent() {
                 <div className="bg-slate-50 border border-blue-200 rounded-xl p-3 text-xs space-y-2 relative">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <span className="text-[9px] font-bold text-blue-600 uppercase tracking-wider block">
-                        Empresa Asignada
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] font-bold text-blue-600 uppercase tracking-wider block">
+                          Empresa Asignada
+                        </span>
+                        {selectedClient?.source === 'salesforce' && (
+                          <span className="text-[8px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200">
+                            Salesforce CRM
+                          </span>
+                        )}
+                      </div>
                       <div className="font-bold text-slate-900 text-sm leading-snug">
                         {clientName}
                       </div>
@@ -2599,7 +2635,7 @@ function CotizadorContent() {
                     </div>
                     {contactSuggestions.map((c) => (
                       <button
-                        key={c.email}
+                        key={c.id || c.email}
                         type="button"
                         onClick={() => handleSelectContact(c)}
                         className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-start justify-between gap-2 transition-colors cursor-pointer"
@@ -2608,6 +2644,11 @@ function CotizadorContent() {
                           <div className="font-bold text-xs text-slate-900 truncate flex items-center gap-1.5">
                             <User className="w-3 h-3 text-blue-600 flex-shrink-0" />
                             <span>{c.name}</span>
+                            {c.source === 'salesforce' && (
+                              <span className="text-[9px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200 flex-shrink-0">
+                                Salesforce
+                              </span>
+                            )}
                           </div>
                           <div className="text-[11px] text-slate-600 truncate flex items-center gap-2 mt-0.5">
                             <span className="flex items-center gap-1 text-slate-600 font-mono text-[10px]">
@@ -2621,11 +2662,10 @@ function CotizadorContent() {
                               </span>
                             )}
                           </div>
-                          {c.company && (
-                            <div className="text-[10px] text-slate-400 truncate mt-0.5">
-                              🏢 {c.company}
-                            </div>
-                          )}
+                          <div className="text-[10px] text-slate-400 truncate mt-0.5 flex items-center gap-2">
+                            {c.company && <span>🏢 {c.company}</span>}
+                            {c.cargo && <span>💼 {c.cargo}</span>}
+                          </div>
                         </div>
                         <span className="font-mono text-[9px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200 flex-shrink-0 font-medium">
                           ✓ En Base

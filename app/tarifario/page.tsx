@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import TarifarioExportModal from '@/components/TarifarioExportModal';
+import MassPriceAdjustModal from '@/components/MassPriceAdjustModal';
 import { TarifarioItem, SessionUser, CENTROS_DE_COSTO, TarifarioCategoryStructure, SubcategoryItem } from '@/lib/types';
 import { hasPermission } from '@/lib/permissions';
 import {
@@ -34,6 +35,7 @@ import {
   Lock,
   Check,
   Save,
+  Percent,
 } from 'lucide-react';
 
 const romanMap: Record<string, number> = {
@@ -157,6 +159,10 @@ function TarifarioContent() {
   const [editedPrices, setEditedPrices] = useState<Record<string, string>>({});
   const [savingPrices, setSavingPrices] = useState(false);
   const [priceToast, setPriceToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Estados para selección masiva de ítems y ajuste por porcentaje
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  const [showMassAdjustModal, setShowMassAdjustModal] = useState(false);
 
   // Edición rápida individual (clic directo en celda de precio)
   const [singleInlineEditId, setSingleInlineEditId] = useState<string | null>(null);
@@ -579,6 +585,117 @@ function TarifarioContent() {
     return result;
   }, [items, search, selectedCategory, selectedCC, selectedSubcategory, selectedSubSubcategory, sortColumn, sortDirection]);
 
+  // Selección y ajuste masivo de precios por porcentaje
+  const toggleSelectItem = (id: string) => {
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllFiltered = () => {
+    const filteredIds = filteredItems.map((it) => it.id);
+    const allFilteredSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedItemIds.has(id));
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        filteredIds.forEach((id) => next.delete(id));
+      } else {
+        filteredIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const deselectAll = () => {
+    setSelectedItemIds(new Set());
+  };
+
+  const isAllFilteredSelected = useMemo(() => {
+    return filteredItems.length > 0 && filteredItems.every((it) => selectedItemIds.has(it.id));
+  }, [filteredItems, selectedItemIds]);
+
+  const isSomeFilteredSelected = useMemo(() => {
+    return filteredItems.some((it) => selectedItemIds.has(it.id));
+  }, [filteredItems, selectedItemIds]);
+
+  const itemsToAdjust = useMemo(() => {
+    if (selectedItemIds.size === 0) return filteredItems;
+    return items.filter((it) => selectedItemIds.has(it.id));
+  }, [items, selectedItemIds, filteredItems]);
+
+  const handleOpenMassAdjust = () => {
+    if (selectedItemIds.size === 0) {
+      if (filteredItems.length === 0) {
+        alert('No hay ensayos visibles con los filtros actuales para modificar.');
+        return;
+      }
+      const next = new Set(filteredItems.map((it) => it.id));
+      setSelectedItemIds(next);
+    }
+    setShowMassAdjustModal(true);
+  };
+
+  const handleApplyDraftPrices = (updates: Record<string, string>) => {
+    setEditedPrices((prev) => ({
+      ...prev,
+      ...updates,
+    }));
+    setQuickPriceEditMode(true);
+    setPriceToast({
+      type: 'success',
+      message: `Se cargaron ${Object.keys(updates).length} precios en modo edición. Revisa los valores en la tabla y pulsa "Guardar Precios".`,
+    });
+    setTimeout(() => setPriceToast(null), 6000);
+  };
+
+  const handleSaveDirectlyPrices = async (
+    updates: Array<{ id: string; ufPrice: number }>,
+    percentSummary: string
+  ): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/tarifario', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'batchUpdatePrices',
+          updates,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        const updateMap = new Map(updates.map((u) => [u.id, u.ufPrice]));
+        setItems((prev) =>
+          prev.map((it) => {
+            const newP = updateMap.get(it.id);
+            return newP !== undefined ? { ...it, ufPrice: newP } : it;
+          })
+        );
+        setEditedPrices((prev) => {
+          const next = { ...prev };
+          updates.forEach((u) => delete next[u.id]);
+          return next;
+        });
+        setSelectedItemIds(new Set());
+        setPriceToast({
+          type: 'success',
+          message: `¡${updates.length} precios actualizados exitosamente con un reajuste de ${percentSummary}!`,
+        });
+        setTimeout(() => setPriceToast(null), 5000);
+        return true;
+      } else {
+        alert(data.error || 'Error al guardar los precios masivamente.');
+        return false;
+      }
+    } catch {
+      alert('Error de conexión al guardar los precios.');
+      return false;
+    }
+  };
+
   const handleStartEdit = (item: TarifarioItem) => {
     setEditingItem(item);
     setEditPrice(item.ufPrice.toString());
@@ -832,6 +949,27 @@ function TarifarioContent() {
               </button>
             )}
 
+            {/* Botón de Ajuste Masivo de Precios por Porcentaje (Permiso tarifario.editar) */}
+            {hasPermission(user, 'tarifario.editar') && (
+              <button
+                onClick={handleOpenMassAdjust}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-2xs transition-all cursor-pointer border ${
+                  selectedItemIds.size > 0
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white font-bold border-blue-700 ring-2 ring-blue-300'
+                    : 'bg-blue-50 hover:bg-blue-100 text-blue-900 border-blue-300 hover:border-blue-400'
+                }`}
+                title="Ajuste masivo de precios por porcentaje (% incremento o descuento)"
+              >
+                <Percent className="w-3.5 h-3.5" />
+                <span>Modificar % Precios</span>
+                {selectedItemIds.size > 0 && (
+                  <span className="bg-white text-blue-900 text-[10px] font-extrabold px-1.5 py-0.2 rounded-full">
+                    {selectedItemIds.size}
+                  </span>
+                )}
+              </button>
+            )}
+
             {/* Botón de Edición Rápida de Precios en Lista (Permiso tarifario.editar) */}
             {hasPermission(user, 'tarifario.editar') && (
               <button
@@ -878,7 +1016,24 @@ function TarifarioContent() {
                 </button>
 
                 {actionsDropdownOpen && (
-                  <div className="absolute right-0 mt-1 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 divide-y divide-slate-100">
+                  <div className="absolute right-0 mt-1 w-52 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-50 divide-y divide-slate-100">
+                    <button
+                      onClick={() => {
+                        setActionsDropdownOpen(false);
+                        handleOpenMassAdjust();
+                      }}
+                      className="w-full text-left flex items-center justify-between px-3 py-2 text-xs font-medium text-blue-800 hover:bg-blue-50 cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Percent className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Modificar Precios por %</span>
+                      </div>
+                      {selectedItemIds.size > 0 && (
+                        <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+                          {selectedItemIds.size}
+                        </span>
+                      )}
+                    </button>
                     <button
                       onClick={() => {
                         setActionsDropdownOpen(false);
@@ -1198,6 +1353,19 @@ function TarifarioContent() {
                   </button>
                 </span>
               )}
+
+              {selectedItemIds.size > 0 && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-blue-100 text-blue-900 border border-blue-300 font-bold">
+                  <span>{selectedItemIds.size} seleccionados</span>
+                  <button
+                    onClick={deselectAll}
+                    className="hover:text-blue-950 cursor-pointer font-bold ml-0.5 text-xs"
+                    title="Deseleccionar todos"
+                  >
+                    ✕
+                  </button>
+                </span>
+              )}
             </div>
 
             <div className="text-[10px] text-slate-400 hidden sm:block">
@@ -1213,6 +1381,29 @@ function TarifarioContent() {
               {/* Sticky Table Header with interactive sorting */}
               <thead className="sticky top-0 z-20 bg-slate-100 text-slate-700 font-bold border-b-2 border-slate-200 text-[11px] uppercase tracking-wider shadow-2xs select-none">
                 <tr>
+                  {hasPermission(user, 'tarifario.editar') && (
+                    <th className="py-2.5 px-2.5 w-10 text-center bg-slate-100 border-r border-slate-200">
+                      <div className="flex items-center justify-center">
+                        <input
+                          type="checkbox"
+                          checked={isAllFilteredSelected}
+                          ref={(el) => {
+                            if (el) {
+                              el.indeterminate = isSomeFilteredSelected && !isAllFilteredSelected;
+                            }
+                          }}
+                          onChange={toggleSelectAllFiltered}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          title={
+                            isAllFilteredSelected
+                              ? 'Deseleccionar todos los filtrados'
+                              : 'Seleccionar todos los filtrados'
+                          }
+                        />
+                      </div>
+                    </th>
+                  )}
+
                   <th
                     onClick={() => handleSort('code')}
                     className="py-2.5 px-3 w-16 text-center bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
@@ -1349,7 +1540,7 @@ function TarifarioContent() {
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-slate-400">
+                    <td colSpan={hasPermission(user, 'tarifario.editar') ? 11 : 10} className="py-12 text-center text-slate-400">
                       <div className="flex flex-col items-center gap-2">
                         <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                         <span>Cargando tarifario oficial...</span>
@@ -1358,13 +1549,33 @@ function TarifarioContent() {
                   </tr>
                 ) : filteredItems.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="py-12 text-center text-slate-500">
+                    <td colSpan={hasPermission(user, 'tarifario.editar') ? 11 : 10} className="py-12 text-center text-slate-500">
                       No se encontraron ensayos con los criterios de búsqueda.
                     </td>
                   </tr>
                 ) : (
                   filteredItems.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors group">
+                    <tr
+                      key={item.id}
+                      className={`hover:bg-slate-50/80 transition-colors group ${
+                        selectedItemIds.has(item.id) ? 'bg-blue-50/50' : ''
+                      }`}
+                    >
+                      {/* Checkbox de selección masiva */}
+                      {hasPermission(user, 'tarifario.editar') && (
+                        <td className="py-2 px-2.5 text-center border-r border-slate-100 bg-slate-50/30">
+                          <div className="flex items-center justify-center">
+                            <input
+                              type="checkbox"
+                              checked={selectedItemIds.has(item.id)}
+                              onChange={() => toggleSelectItem(item.id)}
+                              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                              title={`Seleccionar ${item.code || item.designation}`}
+                            />
+                          </div>
+                        </td>
+                      )}
+
                       {/* Code */}
                       <td className="py-2 px-3 font-mono font-semibold text-center text-slate-500 bg-slate-50/50">
                         {item.code || '-'}
@@ -1556,6 +1767,54 @@ function TarifarioContent() {
           </div>
         </div>
 
+        {/* Barra flotante para selección de ensayos y ajuste masivo por porcentaje */}
+        {selectedItemIds.size > 0 && hasPermission(user, 'tarifario.editar') && (
+          <div
+            className={`fixed ${
+              pendingPriceChanges.length > 0 ? 'bottom-20' : 'bottom-6'
+            } left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white px-5 py-3 rounded-2xl shadow-2xl border border-blue-500/50 backdrop-blur-md flex items-center gap-3.5 animate-in fade-in slide-in-from-bottom-4 duration-200`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="flex h-2.5 w-2.5 relative">
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500"></span>
+              </span>
+              <span className="text-xs font-semibold text-slate-100">
+                <strong className="text-blue-400 font-bold">{selectedItemIds.size}</strong>{' '}
+                {selectedItemIds.size === 1 ? 'ensayo seleccionado' : 'ensayos seleccionados'}
+              </span>
+            </div>
+
+            <div className="h-4 w-[1px] bg-slate-700"></div>
+
+            <div className="flex items-center gap-2">
+              {!isAllFilteredSelected && filteredItems.length > selectedItemIds.size && (
+                <button
+                  onClick={toggleSelectAllFiltered}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer hidden sm:block"
+                  title="Seleccionar todos los ensayos visibles en la tabla"
+                >
+                  Seleccionar visibles ({filteredItems.length})
+                </button>
+              )}
+
+              <button
+                onClick={deselectAll}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Deseleccionar
+              </button>
+
+              <button
+                onClick={handleOpenMassAdjust}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-500 active:scale-95 text-white transition-all shadow-md shadow-blue-600/30 cursor-pointer"
+              >
+                <Percent className="w-3.5 h-3.5" />
+                <span>Modificar Precios por %</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Barra flotante para guardar cambios masivos de precio */}
         {pendingPriceChanges.length > 0 && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700/80 backdrop-blur-md flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-200">
@@ -1611,6 +1870,15 @@ function TarifarioContent() {
         isOpen={showExportModal}
         onClose={() => setShowExportModal(false)}
         initialItems={items}
+      />
+
+      {/* Modal Ajuste Masivo de Precios por Porcentaje */}
+      <MassPriceAdjustModal
+        isOpen={showMassAdjustModal}
+        onClose={() => setShowMassAdjustModal(false)}
+        selectedItems={itemsToAdjust}
+        onApplyDraft={handleApplyDraftPrices}
+        onSaveDirectly={handleSaveDirectlyPrices}
       />
 
       {/* Modal Edit Item (Con Lápiz: Categoría, Subcategoría y CC por lista desplegable con opción de crear) */}

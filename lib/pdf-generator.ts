@@ -538,6 +538,8 @@ export function generateCotizacionPdf(
     head: tableHead,
     body: tableRows,
     theme: 'grid',
+    showHead: 'everyPage',
+    showFoot: 'lastPage',
     headStyles: {
       fillColor: [0, 68, 124], // Deep navy blue matching reference Image 1
       textColor: [255, 255, 255],

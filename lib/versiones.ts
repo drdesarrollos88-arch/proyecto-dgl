@@ -28,6 +28,7 @@ export const HISTORIAL_VERSIONES: VersionRegistro[] = [
       'Indicador de cantidad total estimada de muestra (masa acumulada total a entregar en laboratorio) en el resumen inferior y notas oficiales.',
       'Gatillante independiente para cifras en pie de tabla: control para mostrar u ocultar los kilos en la fila de cierre "Total Ensayos" del PDF.',
       'Gatillante independiente para observaciones técnicas (Sección 1.2): control para mostrar u omitir las líneas de notas de masa bajo la tabla.',
+      'Control de paginación de tabla (showFoot: lastPage): el Total General de Ensayos solo se imprime al final de todo el presupuesto en la última página, evitando repeticiones prematuras en páginas intermedias y garantizando que cada sección o partida presente su subtotal correspondiente.',
       'Nota técnica aclaratoria institucional ("Cantidad de material indicado es estimativo y se deberá confirmar con laboratorio la cantidad por enviar") integrada directamente en la tarjeta de Masa de Muestras del Cotizador y en la Sección 1.2 del PDF Oficial.',
       'Panel interactivo de 5 selectores en el Cotizador organizados en cálculos y ubicaciones independientes.',
       'Persistencia de la configuración de visualización de muestras en base de datos y versionado histórico de cotizaciones.',

@@ -296,6 +296,10 @@ export interface Cotizacion {
   totalClp: number;
   totalUsd?: number;
   totalWeightKg: number;
+  totalUnitWeightKg?: number; // Cantidad de muestra unitaria total (1 solo ensayo de cada tipo listado)
+  showTotalWeightPerItem?: boolean; // Opción 1: Kilos totales por ensayo (masa unitaria * cantidad)
+  showSummaryUnitWeight?: boolean;  // Opción 2: Resumen inferior de muestra unitaria
+  showSummaryTotalWeight?: boolean; // Opción 3: Resumen inferior de muestra total
   observations: string[];
   condicionesComerciales?: CotizacionCondicionesComerciales;
   showEconomicIndicators?: boolean; // Determina si se imprimen los valores UF/Dólar en el documento PDF
@@ -387,6 +391,10 @@ export interface CotizacionVersionSnapshot {
   totalClp: number;
   totalUsd?: number;
   totalWeightKg: number;
+  totalUnitWeightKg?: number;
+  showTotalWeightPerItem?: boolean;
+  showSummaryUnitWeight?: boolean;
+  showSummaryTotalWeight?: boolean;
   ufValue: number;
   dollarValue?: number;
   items: CotizacionItem[];

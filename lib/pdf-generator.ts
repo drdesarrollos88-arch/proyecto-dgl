@@ -50,7 +50,13 @@ export function generateCotizacionPdf(
   cotizacion: Cotizacion,
   logoBase64?: string,
   formatoConfig?: Partial<FormatoSettings>,
-  options?: { isDraft?: boolean; showEconomicIndicators?: boolean }
+  options?: {
+    isDraft?: boolean;
+    showEconomicIndicators?: boolean;
+    showTotalWeightPerItem?: boolean;
+    showSummaryUnitWeight?: boolean;
+    showSummaryTotalWeight?: boolean;
+  }
 ): jsPDF {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -66,6 +72,12 @@ export function generateCotizacionPdf(
   const isDraft = options?.isDraft ?? (cotizacion.status === 'Borrador');
   const showIndicators =
     options?.showEconomicIndicators ?? (cotizacion.showEconomicIndicators !== false);
+  const showTotalWeightPerItem =
+    options?.showTotalWeightPerItem ?? (cotizacion.showTotalWeightPerItem !== false);
+  const showSummaryUnitWeight =
+    options?.showSummaryUnitWeight ?? (cotizacion.showSummaryUnitWeight !== false);
+  const showSummaryTotalWeight =
+    options?.showSummaryTotalWeight ?? (cotizacion.showSummaryTotalWeight !== false);
 
   const pageWidth = doc.internal.pageSize.getWidth(); // 215.9 mm
   const pageHeight = doc.internal.pageSize.getHeight(); // 279.4 mm
@@ -192,11 +204,25 @@ export function generateCotizacionPdf(
   doc.text(displayBudgetTitle, marginX, currentY);
   currentY += 4.5;
 
-  // 5. Tabla de Ensayos según formato oficial (8 columnas en UF, USD o CLP)
+  // 5. Tabla de Ensayos según formato oficial (8 o 9 columnas en UF, USD o CLP)
   const isUsd = cotizacion.currency === 'USD';
   const isClp = cotizacion.currency === 'CLP';
   const ufVal = cotizacion.ufValue || 40879.04;
   const usdVal = cotizacion.dollarValue || 933.47;
+
+  // Cálculo de pesos de muestras: Total acumulado y Muestra unitaria (1 de cada ensayo listado)
+  let calcWeightTotal = 0;
+  let calcWeightUnit = 0;
+  (cotizacion.items || []).forEach((it) => {
+    if (it.isDivider) return;
+    const w = typeof it.minWeightKg === 'number' ? it.minWeightKg : parseFloat(String(it.minWeightKg || 0));
+    if (!isNaN(w) && w > 0) {
+      calcWeightTotal += w * (Number(it.quantity) || 1);
+      calcWeightUnit += w;
+    }
+  });
+  const totalWeightKg = cotizacion.totalWeightKg !== undefined && cotizacion.totalWeightKg > 0 ? cotizacion.totalWeightKg : calcWeightTotal;
+  const totalUnitWeightKg = cotizacion.totalUnitWeightKg !== undefined && cotizacion.totalUnitWeightKg > 0 ? cotizacion.totalUnitWeightKg : calcWeightUnit;
 
   const hasDividers = cotizacion.items.some((it) => it.isDivider);
   const tableRows: any[] = [];
@@ -230,16 +256,35 @@ export function generateCotizacionPdf(
         ? `$${Math.round(subtotal).toLocaleString('es-CL')}`
         : subtotal.toFixed(2);
 
-      tableRows.push([
-        itemNum,
-        item.designation,
-        item.norm || '---',
-        item.minWeightKg ? `${item.minWeightKg} kg` : '-',
-        item.unit || 'c/u',
-        formattedUnitPrice,
-        qty.toString(),
-        formattedSubtotal,
-      ]);
+      const w = typeof item.minWeightKg === 'number' ? item.minWeightKg : parseFloat(String(item.minWeightKg || 0));
+      const minWeightStr = item.minWeightKg && !isNaN(w) && w > 0 ? `${w} kg` : '-';
+      const itemTotalWeight = !isNaN(w) && w > 0 ? w * qty : 0;
+      const totalWeightStr = itemTotalWeight > 0 ? `${itemTotalWeight.toFixed(1)} kg` : '-';
+
+      if (showTotalWeightPerItem) {
+        tableRows.push([
+          itemNum,
+          item.designation,
+          item.norm || '---',
+          minWeightStr,
+          totalWeightStr,
+          item.unit || 'c/u',
+          formattedUnitPrice,
+          qty.toString(),
+          formattedSubtotal,
+        ]);
+      } else {
+        tableRows.push([
+          itemNum,
+          item.designation,
+          item.norm || '---',
+          minWeightStr,
+          item.unit || 'c/u',
+          formattedUnitPrice,
+          qty.toString(),
+          formattedSubtotal,
+        ]);
+      }
     });
   } else {
     let dividerIndex = 0;
@@ -257,7 +302,7 @@ export function generateCotizacionPdf(
         tableRows.push([
           {
             content: `Subtotal ${currentPartidaNum} (${currentPartidaTitle}):`,
-            colSpan: 7,
+            colSpan: showTotalWeightPerItem ? 8 : 7,
             styles: {
               fillColor: [248, 250, 252],
               textColor: [51, 65, 85],
@@ -293,7 +338,7 @@ export function generateCotizacionPdf(
         tableRows.push([
           {
             content: `${currentPartidaNum} ${currentPartidaTitle.toUpperCase()}`,
-            colSpan: 8,
+            colSpan: showTotalWeightPerItem ? 9 : 8,
             styles: {
               fillColor: [238, 244, 252],
               textColor: [0, 68, 124],
@@ -311,7 +356,7 @@ export function generateCotizacionPdf(
           tableRows.push([
             {
               content: `1.1.1 PARTIDA 1`,
-              colSpan: 8,
+              colSpan: showTotalWeightPerItem ? 9 : 8,
               styles: {
                 fillColor: [238, 244, 252],
                 textColor: [0, 68, 124],
@@ -354,37 +399,131 @@ export function generateCotizacionPdf(
           ? `$${Math.round(subtotal).toLocaleString('es-CL')}`
           : subtotal.toFixed(2);
 
-        tableRows.push([
-          itemNum,
-          item.designation,
-          item.norm || '---',
-          item.minWeightKg ? `${item.minWeightKg} kg` : '-',
-          item.unit || 'c/u',
-          formattedUnitPrice,
-          qty.toString(),
-          formattedSubtotal,
-        ]);
+        const w = typeof item.minWeightKg === 'number' ? item.minWeightKg : parseFloat(String(item.minWeightKg || 0));
+        const minWeightStr = item.minWeightKg && !isNaN(w) && w > 0 ? `${w} kg` : '-';
+        const itemTotalWeight = !isNaN(w) && w > 0 ? w * qty : 0;
+        const totalWeightStr = itemTotalWeight > 0 ? `${itemTotalWeight.toFixed(1)} kg` : '-';
+
+        if (showTotalWeightPerItem) {
+          tableRows.push([
+            itemNum,
+            item.designation,
+            item.norm || '---',
+            minWeightStr,
+            totalWeightStr,
+            item.unit || 'c/u',
+            formattedUnitPrice,
+            qty.toString(),
+            formattedSubtotal,
+          ]);
+        } else {
+          tableRows.push([
+            itemNum,
+            item.designation,
+            item.norm || '---',
+            minWeightStr,
+            item.unit || 'c/u',
+            formattedUnitPrice,
+            qty.toString(),
+            formattedSubtotal,
+          ]);
+        }
       }
     });
 
     pushPartidaSubtotal();
   }
 
+  const tableHead = showTotalWeightPerItem
+    ? [
+        [
+          'Item',
+          'Designación Ensayo',
+          'Norma o Proced.',
+          'Masa Mín.\n(kg)',
+          'Masa Tot.\n(kg)',
+          'Unidad',
+          isUsd ? 'Precio\n(USD)' : isClp ? 'Precio\n(CLP)' : 'Precio\n(UF)',
+          'Cant.',
+          isUsd ? 'Subtotal\n(USD)' : isClp ? 'Subtotal\n(CLP)' : 'Subtotal\n(UF)',
+        ],
+      ]
+    : [
+        [
+          'Item',
+          'Designación Ensayo',
+          'Norma o Proced.',
+          'Masa Mín.\n(kg)',
+          'Unidad',
+          isUsd ? 'Precio\n(USD)' : isClp ? 'Precio\n(CLP)' : 'Precio\n(UF)',
+          'Cant.',
+          isUsd ? 'Subtotal\n(USD)' : isClp ? 'Subtotal\n(CLP)' : 'Subtotal\n(UF)',
+        ],
+      ];
+
+  const columnStyles: Record<number, any> = showTotalWeightPerItem
+    ? {
+        0: { cellWidth: 10, halign: 'center' }, // Item
+        1: { cellWidth: isClp ? 46.9 : 52.9 }, // Designación Ensayo
+        2: { cellWidth: isClp ? 34 : 36, fontSize: 6.8 }, // Norma o Proced.
+        3: { cellWidth: 14, halign: 'center' }, // Masa Mín. (kg)
+        4: { cellWidth: 14, halign: 'center' }, // Masa Tot. (kg)
+        5: { cellWidth: 11, halign: 'center' }, // Unidad
+        6: { cellWidth: isClp ? 19 : 17, halign: 'right' }, // Precio (UF/USD/CLP)
+        7: { cellWidth: 10, halign: 'center' }, // Cant.
+        8: { cellWidth: isClp ? 21 : 18, halign: 'right', fontStyle: 'bold' }, // Subtotal (UF/USD/CLP)
+      }
+    : {
+        0: { cellWidth: 11, halign: 'center' }, // Item
+        1: { cellWidth: isClp ? 57.9 : 63.9 }, // Designación Ensayo
+        2: { cellWidth: 39, fontSize: 6.8 }, // Norma o Proced.
+        3: { cellWidth: 16, halign: 'center' }, // Masa Mín. (kg)
+        4: { cellWidth: 12, halign: 'center' }, // Unidad
+        5: { cellWidth: isClp ? 20 : 17, halign: 'right' }, // Precio (UF/USD/CLP)
+        6: { cellWidth: 11, halign: 'center' }, // Cant.
+        7: { cellWidth: isClp ? 21 : 18, halign: 'right', fontStyle: 'bold' }, // Subtotal (UF/USD/CLP)
+      };
+
+  const formattedTotalAmount = isUsd
+    ? `${(cotizacion.totalUsd ?? (cotizacion.totalUf * ufVal) / usdVal).toFixed(2)} USD`
+    : isClp
+    ? `$${(cotizacion.totalClp || Math.round((cotizacion.totalUf || 0) * ufVal)).toLocaleString('es-CL')} CLP`
+    : `${(cotizacion.totalUf || 0).toFixed(2)} UF`;
+
+  const unitWeightFoot = showSummaryUnitWeight && totalUnitWeightKg > 0 ? `${totalUnitWeightKg.toFixed(1)} kg` : '';
+  const totalWeightFoot = showSummaryTotalWeight && totalWeightKg > 0 ? `${totalWeightKg.toFixed(1)} kg` : '';
+
+  const tableFoot = showTotalWeightPerItem
+    ? [
+        [
+          '',
+          'Total Ensayos',
+          '',
+          unitWeightFoot,
+          totalWeightFoot,
+          '',
+          '',
+          '',
+          formattedTotalAmount,
+        ],
+      ]
+    : [
+        [
+          '',
+          'Total Ensayos',
+          '',
+          unitWeightFoot || totalWeightFoot,
+          '',
+          '',
+          '',
+          formattedTotalAmount,
+        ],
+      ];
+
   autoTable(doc, {
     startY: currentY,
     margin: { top: 28, left: marginX, right: marginX, bottom: 26 },
-    head: [
-      [
-        'Item',
-        'Designación Ensayo',
-        'Norma o Proced.',
-        'Masa Mín.\n(kg)',
-        'Unidad',
-        isUsd ? 'Precio\n(USD)' : isClp ? 'Precio\n(CLP)' : 'Precio\n(UF)',
-        'Cant.',
-        isUsd ? 'Subtotal\n(USD)' : isClp ? 'Subtotal\n(CLP)' : 'Subtotal\n(UF)',
-      ],
-    ],
+    head: tableHead,
     body: tableRows,
     theme: 'grid',
     headStyles: {
@@ -405,32 +544,8 @@ export function generateCotizacionPdf(
       lineColor: [210, 210, 210],
       lineWidth: 0.15,
     },
-    columnStyles: {
-      0: { cellWidth: 11, halign: 'center' }, // Item
-      1: { cellWidth: isClp ? 57.9 : 63.9 }, // Designación Ensayo
-      2: { cellWidth: 39, fontSize: 6.8 }, // Norma o Proced.
-      3: { cellWidth: 16, halign: 'center' }, // Masa Mín. (kg)
-      4: { cellWidth: 12, halign: 'center' }, // Unidad
-      5: { cellWidth: isClp ? 20 : 17, halign: 'right' }, // Precio (UF/USD/CLP)
-      6: { cellWidth: 11, halign: 'center' }, // Cant.
-      7: { cellWidth: isClp ? 21 : 18, halign: 'right', fontStyle: 'bold' }, // Subtotal (UF/USD/CLP)
-    },
-    foot: [
-      [
-        '',
-        'Total Ensayos',
-        '',
-        cotizacion.totalWeightKg ? `${cotizacion.totalWeightKg.toFixed(1)} kg` : '',
-        '',
-        '',
-        '',
-        isUsd
-          ? `${(cotizacion.totalUsd ?? (cotizacion.totalUf * ufVal) / usdVal).toFixed(2)} USD`
-          : isClp
-          ? `$${(cotizacion.totalClp || Math.round((cotizacion.totalUf || 0) * ufVal)).toLocaleString('es-CL')} CLP`
-          : `${(cotizacion.totalUf || 0).toFixed(2)} UF`,
-      ],
-    ],
+    columnStyles,
+    foot: tableFoot,
     footStyles: {
       fillColor: [240, 245, 250],
       textColor: [0, 68, 124],
@@ -487,12 +602,26 @@ export function generateCotizacionPdf(
     currentY += lines.length * 3.4;
   });
 
-  if (cotizacion.totalWeightKg && cotizacion.totalWeightKg > 0) {
+  if (showSummaryUnitWeight && totalUnitWeightKg > 0) {
+    currentY += 1.5;
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 68, 124);
+    doc.text(
+      `Cantidad de muestra unitaria estimada (1 ensayo de cada tipo listado): ${totalUnitWeightKg.toFixed(
+        1
+      )} kg aproximadamente.`,
+      marginX,
+      currentY
+    );
+    currentY += 3.8;
+  }
+
+  if (showSummaryTotalWeight && totalWeightKg > 0) {
     currentY += 1.5;
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(180, 20, 20);
     doc.text(
-      `Masa total estimada de muestras a entregar en laboratorio: ${cotizacion.totalWeightKg.toFixed(
+      `Cantidad total estimada de muestras a entregar en laboratorio: ${totalWeightKg.toFixed(
         1
       )} kg aproximadamente.`,
       marginX,

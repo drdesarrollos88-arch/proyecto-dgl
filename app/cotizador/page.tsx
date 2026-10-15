@@ -337,6 +337,9 @@ function CotizadorContent() {
   }, []);
 
   const [showIndicatorsInPdf, setShowIndicatorsInPdf] = useState<boolean>(true);
+  const [showTotalWeightPerItem, setShowTotalWeightPerItem] = useState<boolean>(true);
+  const [showSummaryUnitWeight, setShowSummaryUnitWeight] = useState<boolean>(true);
+  const [showSummaryTotalWeight, setShowSummaryTotalWeight] = useState<boolean>(true);
 
   // Items in current quotation
   const [items, setItems] = useState<CotizacionItem[]>([]);
@@ -707,6 +710,15 @@ function CotizadorContent() {
           }
           if (c.showEconomicIndicators !== undefined) {
             setShowIndicatorsInPdf(c.showEconomicIndicators !== false);
+          }
+          if (c.showTotalWeightPerItem !== undefined) {
+            setShowTotalWeightPerItem(c.showTotalWeightPerItem !== false);
+          }
+          if (c.showSummaryUnitWeight !== undefined) {
+            setShowSummaryUnitWeight(c.showSummaryUnitWeight !== false);
+          }
+          if (c.showSummaryTotalWeight !== undefined) {
+            setShowSummaryTotalWeight(c.showSummaryTotalWeight !== false);
           }
           if (Array.isArray(c.items)) setItems(recalculateItemNumbers(c.items));
           if (c.aiChatState?.messages && Array.isArray(c.aiChatState.messages) && c.aiChatState.messages.length > 0) {
@@ -1337,6 +1349,7 @@ function CotizadorContent() {
     let totalUf = 0;
     let totalClp = 0;
     let totalWeight = 0;
+    let totalUnitWeight = 0;
 
     items.forEach((it) => {
       if (it.isDivider) return;
@@ -1345,6 +1358,7 @@ function CotizadorContent() {
       const w = typeof it.minWeightKg === 'number' ? it.minWeightKg : parseFloat(String(it.minWeightKg));
       if (!isNaN(w) && w > 0) {
         totalWeight += w * it.quantity;
+        totalUnitWeight += w;
       }
     });
 
@@ -1352,6 +1366,7 @@ function CotizadorContent() {
       totalUf: Math.round(totalUf * 100) / 100,
       totalClp: Math.round(totalClp),
       totalWeight: Math.round(totalWeight * 10) / 10,
+      totalUnitWeight: Math.round(totalUnitWeight * 10) / 10,
     };
   }, [items]);
 
@@ -1416,6 +1431,10 @@ function CotizadorContent() {
       totalClp: totals.totalClp,
       totalUsd,
       totalWeightKg: totals.totalWeight,
+      totalUnitWeightKg: totals.totalUnitWeight,
+      showTotalWeightPerItem,
+      showSummaryUnitWeight,
+      showSummaryTotalWeight,
       observations,
       condicionesComerciales,
       showEconomicIndicators: showIndicatorsInPdf,
@@ -1472,6 +1491,9 @@ function CotizadorContent() {
     observations,
     condicionesComerciales,
     showIndicatorsInPdf,
+    showTotalWeightPerItem,
+    showSummaryUnitWeight,
+    showSummaryTotalWeight,
     originalQuote,
     user?.name,
     user,
@@ -1518,6 +1540,10 @@ function CotizadorContent() {
           totalClp: originalQuote.totalClp,
           totalUsd: originalQuote.totalUsd,
           totalWeightKg: originalQuote.totalWeightKg,
+          totalUnitWeightKg: originalQuote.totalUnitWeightKg,
+          showTotalWeightPerItem: originalQuote.showTotalWeightPerItem,
+          showSummaryUnitWeight: originalQuote.showSummaryUnitWeight,
+          showSummaryTotalWeight: originalQuote.showSummaryTotalWeight,
           ufValue: originalQuote.ufValue,
           dollarValue: originalQuote.dollarValue,
           items: originalQuote.items,
@@ -1729,6 +1755,10 @@ function CotizadorContent() {
           totalClp: originalQuote.totalClp,
           totalUsd: originalQuote.totalUsd,
           totalWeightKg: originalQuote.totalWeightKg,
+          totalUnitWeightKg: originalQuote.totalUnitWeightKg,
+          showTotalWeightPerItem: originalQuote.showTotalWeightPerItem,
+          showSummaryUnitWeight: originalQuote.showSummaryUnitWeight,
+          showSummaryTotalWeight: originalQuote.showSummaryTotalWeight,
           ufValue: originalQuote.ufValue,
           dollarValue: originalQuote.dollarValue,
           items: originalQuote.items,
@@ -1744,6 +1774,9 @@ function CotizadorContent() {
         ...currentCotizacion,
         commercialSignature: activeSig || currentCotizacion.commercialSignature,
         showEconomicIndicators: showIndicatorsInPdf,
+        showTotalWeightPerItem,
+        showSummaryUnitWeight,
+        showSummaryTotalWeight,
         status: 'Finalizada',
         version: isVersionMode ? (originalQuote?.version || 1) + 1 : (currentCotizacion.version || 1),
         versionHistory: updatedVersionHistory,
@@ -1763,6 +1796,9 @@ function CotizadorContent() {
       const doc = generateCotizacionPdf(cotizacionForPdf, logoBase64, formatoSettings || undefined, {
         isDraft: false,
         showEconomicIndicators: showIndicatorsInPdf,
+        showTotalWeightPerItem,
+        showSummaryUnitWeight,
+        showSummaryTotalWeight,
       });
       const cleanCode = code.replace(/[^a-zA-Z0-9_-]/g, '_');
       const filename = `Cotizacion_${cleanCode}_${(clientName || 'Cliente').replace(/\s+/g, '_')}.pdf`;
@@ -1927,6 +1963,9 @@ function CotizadorContent() {
       const doc = generateCotizacionPdf(cotizacionForPdf, logoBase64, formatoSettings || undefined, {
         isDraft: true,
         showEconomicIndicators: showIndicatorsInPdf,
+        showTotalWeightPerItem,
+        showSummaryUnitWeight,
+        showSummaryTotalWeight,
       });
       const cleanCode = code.replace(/[^a-zA-Z0-9_-]/g, '_');
       const filename = `Borrador_Cotizacion_${cleanCode}_${(clientName || 'Cliente').replace(/\s+/g, '_')}.pdf`;
@@ -1983,7 +2022,13 @@ function CotizadorContent() {
         status: 'Finalizada',
       };
 
-      const doc = generateCotizacionPdf(cotizacionForPdf, logoBase64, formatoSettings || undefined);
+      const doc = generateCotizacionPdf(cotizacionForPdf, logoBase64, formatoSettings || undefined, {
+        isDraft: false,
+        showEconomicIndicators: showIndicatorsInPdf,
+        showTotalWeightPerItem,
+        showSummaryUnitWeight,
+        showSummaryTotalWeight,
+      });
       const cleanCode = code.replace(/[^a-zA-Z0-9_-]/g, '_');
       const filename = `Cotizacion_${cleanCode}_${(clientName || 'Cliente').replace(/\s+/g, '_')}.pdf`;
       doc.save(filename);
@@ -2025,6 +2070,9 @@ function CotizadorContent() {
     setOriginalQuote(null);
     setIsVersionMode(false);
     setShowIndicatorsInPdf(true);
+    setShowTotalWeightPerItem(true);
+    setShowSummaryUnitWeight(true);
+    setShowSummaryTotalWeight(true);
     setStatusMessage(null);
     setShowSuccessModal(false);
     assistantChatMessagesRef.current = null;
@@ -3448,6 +3496,14 @@ function CotizadorContent() {
                           <span className="text-[9px] font-normal text-blue-600 lowercase">(editable)</span>
                         </div>
                       </th>
+                      {showTotalWeightPerItem && (
+                        <th className="py-3 px-1 w-20 min-w-[70px] text-center bg-amber-50/60">
+                          <div className="flex flex-col items-center leading-tight">
+                            <span className="text-[11px] font-bold text-amber-900">Masa Tot.</span>
+                            <span className="text-[9px] font-normal text-amber-700 lowercase">(kg total)</span>
+                          </div>
+                        </th>
+                      )}
                       <th className="py-3 px-1 w-14 min-w-[50px] text-center">Unidad</th>
                       <th className="py-3 px-2 w-28 min-w-[95px] text-right">
                         <div className="flex flex-col items-end leading-tight">
@@ -3479,7 +3535,7 @@ function CotizadorContent() {
                   <tbody className="divide-y divide-slate-100">
                     {items.length === 0 ? (
                       <tr>
-                        <td colSpan={11} className="py-12 text-center text-slate-400">
+                        <td colSpan={showTotalWeightPerItem ? 12 : 11} className="py-12 text-center text-slate-400">
                           <div className="flex flex-col items-center gap-2">
                             <Search className="w-8 h-8 text-slate-300" />
                             <span className="text-sm font-medium text-slate-500">
@@ -3516,7 +3572,7 @@ function CotizadorContent() {
                                   : 'bg-gradient-to-r from-blue-50/90 via-indigo-50/40 to-slate-50 border-y-2 border-blue-300'
                               }`}
                             >
-                              <td colSpan={11} className="py-2.5 px-3">
+                              <td colSpan={showTotalWeightPerItem ? 12 : 11} className="py-2.5 px-3">
                                 <div className="flex items-center justify-between gap-3">
                                   <div className="flex items-center gap-2.5 flex-1 flex-wrap">
                                     <div
@@ -3925,6 +3981,24 @@ function CotizadorContent() {
                               </div>
                             </td>
 
+                            {/* Masa Total por Ensayo (Unitaria x Cantidad) */}
+                            {showTotalWeightPerItem && (
+                              <td className="py-2.5 px-1 text-center align-top pt-2 bg-amber-50/20">
+                                <div className="flex flex-col items-center justify-center pt-1.5">
+                                  <span className="font-mono text-xs font-bold text-amber-950">
+                                    {currentWeight > 0
+                                      ? `${(currentWeight * item.quantity).toFixed(1)} kg`
+                                      : '-'}
+                                  </span>
+                                  {currentWeight > 0 && item.quantity > 1 && (
+                                    <span className="text-[9px] text-amber-700/80 font-mono">
+                                      {currentWeight} × {item.quantity}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                            )}
+
                             {/* Unidad Editable */}
                             <td className="py-2.5 px-1 text-center align-top pt-2.5">
                               <input
@@ -4028,7 +4102,7 @@ function CotizadorContent() {
                           {/* Fila de subtotal por partida si es el último ensayo de la partida */}
                           {isLastItemOfSection && activeDividerForThisItem && pTotal && pTotal.count > 0 && (
                             <tr className="bg-slate-100/90 border-b-2 border-slate-300 font-semibold text-slate-800 text-xs">
-                              <td colSpan={8} className="py-2.5 px-3 text-right">
+                              <td colSpan={showTotalWeightPerItem ? 9 : 8} className="py-2.5 px-3 text-right">
                                 <div className="flex items-center justify-end gap-1.5">
                                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
                                     Subtotal {activeDividerForThisItem.itemNumber} ({activeDividerForThisItem.dividerTitle || activeDividerForThisItem.designation}):
@@ -4116,16 +4190,88 @@ function CotizadorContent() {
               <div>
                 <span className="text-[10px] uppercase font-bold text-amber-800 tracking-wider block flex items-center gap-1">
                   <Scale className="w-3.5 h-3.5 text-amber-700" />
-                  Masa Total de Muestras
+                  Masa de Muestras
                 </span>
-                <div className="text-xl font-bold font-mono text-amber-950 mt-0.5">
-                  {totals.totalWeight.toFixed(1)} <span className="text-xs font-normal text-amber-800">kg</span>
+                <div className="flex items-baseline gap-3 mt-0.5">
+                  <div>
+                    <span className="text-[9px] uppercase font-semibold text-amber-700 block">Total Proyecto</span>
+                    <span className="text-xl font-bold font-mono text-amber-950">
+                      {totals.totalWeight.toFixed(1)} <span className="text-xs font-normal text-amber-800">kg</span>
+                    </span>
+                  </div>
+                  <div className="pl-2 border-l border-amber-200">
+                    <span className="text-[9px] uppercase font-semibold text-amber-700 block">Unitaria (1 c/u)</span>
+                    <span className="text-base font-bold font-mono text-amber-900">
+                      {totals.totalUnitWeight.toFixed(1)} <span className="text-xs font-normal text-amber-800">kg</span>
+                    </span>
+                  </div>
                 </div>
-                <span className="text-[10px] text-amber-700">Mínimo para laboratorio</span>
+                <span className="text-[10px] text-amber-700 block mt-0.5">Mínimo para laboratorio</span>
               </div>
               <div className="w-8 h-8 rounded-lg bg-amber-100 border border-amber-200/60 flex items-center justify-center text-amber-800 font-bold text-xs">
                 kg
               </div>
+            </div>
+          </div>
+
+          {/* Configuración de visualización opcional de Muestras en Cotización y PDF */}
+          <div className="mt-3.5 bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-amber-100/80 text-amber-800 flex items-center justify-center flex-shrink-0">
+                  <Scale className="w-4 h-4 text-amber-700" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800">Visualización de Muestras (kg) en Cotización y PDF</h4>
+                  <p className="text-[10px] text-slate-500">Active o desactive los elementos de muestra según lo que requiera presentar al cliente:</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono text-slate-600 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                  Total: <strong className="text-amber-950">{totals.totalWeight.toFixed(1)} kg</strong> | Unitaria (1 c/u): <strong className="text-blue-900">{totals.totalUnitWeight.toFixed(1)} kg</strong>
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-2.5">
+              <label className="flex items-start gap-2.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-blue-50/40 hover:border-blue-200 cursor-pointer select-none transition">
+                <input
+                  type="checkbox"
+                  checked={showTotalWeightPerItem}
+                  onChange={(e) => setShowTotalWeightPerItem(e.target.checked)}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 mt-0.5 cursor-pointer flex-shrink-0"
+                />
+                <div className="text-[11px] leading-tight">
+                  <span className="font-semibold text-slate-800 block">Kilos totales por ensayo</span>
+                  <span className="text-[10px] text-slate-500">Muestra la columna con masa unitaria multiplicada por la cantidad de ensayos.</span>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-2.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-blue-50/40 hover:border-blue-200 cursor-pointer select-none transition">
+                <input
+                  type="checkbox"
+                  checked={showSummaryUnitWeight}
+                  onChange={(e) => setShowSummaryUnitWeight(e.target.checked)}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 mt-0.5 cursor-pointer flex-shrink-0"
+                />
+                <div className="text-[11px] leading-tight">
+                  <span className="font-semibold text-slate-800 block">Resumen: Muestra unitaria</span>
+                  <span className="text-[10px] text-slate-500">Indica en el pie y notas la masa considerando 1 solo ensayo de cada tipo listado.</span>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-2.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-blue-50/40 hover:border-blue-200 cursor-pointer select-none transition">
+                <input
+                  type="checkbox"
+                  checked={showSummaryTotalWeight}
+                  onChange={(e) => setShowSummaryTotalWeight(e.target.checked)}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 mt-0.5 cursor-pointer flex-shrink-0"
+                />
+                <div className="text-[11px] leading-tight">
+                  <span className="font-semibold text-slate-800 block">Resumen: Cantidad total</span>
+                  <span className="text-[10px] text-slate-500">Indica en el pie y notas la masa total acumulada a entregar en laboratorio.</span>
+                </div>
+              </label>
             </div>
           </div>
         </div>

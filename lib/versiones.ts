@@ -13,11 +13,31 @@ export interface VersionRegistro {
 
 export const HISTORIAL_VERSIONES: VersionRegistro[] = [
   {
+    version: '2.4.2',
+    tag: 'v2.4.2',
+    fecha: '2026-10-15',
+    fechaFormato: '15 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Cálculo y Visualización Opcional de Masa de Muestras en Cotizaciones y PDF',
+    modulos: ['Cotizador', 'Formatos', 'PDF Oficial'],
+    descripcion:
+      'Incorporación de cálculo de kilos totales por ensayo (masa unitaria × cantidad), desglose de muestra unitaria total y masa total acumulada en resumen inferior, con controles independientes para mostrar u ocultar cada uno de los 3 ítems en la propuesta comercial y PDF oficial.',
+    detalles: [
+      'Columna opcional "Masa Tot. (kg)" en tabla interactiva y PDF oficial calculada automáticamente como masa unitaria × cantidad de ensayos solicitados.',
+      'Indicador de cantidad de muestra unitaria total (considerando 1 solo ensayo de cada tipo listado) en el resumen inferior y notas oficiales de laboratorio.',
+      'Indicador de cantidad total estimada de muestra (masa acumulada total a entregar en laboratorio) en el resumen inferior y notas oficiales.',
+      'Panel interactivo de 3 selectores en el Cotizador para activar u omitir cada elemento de muestra de forma independiente.',
+      'Persistencia de la configuración de visualización de muestras en base de datos y versionado histórico de cotizaciones.',
+      'Adaptación geométrica automática de columnas en el PDF oficial Letter garantizando márgenes y legibilidad institucional.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
     version: '2.4.1',
     tag: 'v2.4.1',
     fecha: '2026-10-15',
     fechaFormato: '15 de Octubre, 2026',
-    estado: 'activa',
+    estado: 'previa',
     titulo: 'Cuentas Internacionales, Filtro por Usuario en Auditoría y Permisos Granulares RBAC',
     modulos: ['Auditoría', 'Salesforce', 'Cotizador', 'Seguridad RBAC', 'Formatos'],
     descripcion:

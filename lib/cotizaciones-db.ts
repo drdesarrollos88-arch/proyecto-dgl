@@ -27,6 +27,7 @@ export function mapSupabaseToCotizacion(row: any): Cotizacion {
   let calcUf = 0;
   let calcClp = 0;
   let totalWeightKg = 0;
+  let totalUnitWeightKg = 0;
 
   if (items.length > 0) {
     items.forEach((it: any) => {
@@ -41,7 +42,10 @@ export function mapSupabaseToCotizacion(row: any): Cotizacion {
       calcClp += subClp;
       const w =
         typeof it.minWeightKg === 'number' ? it.minWeightKg : parseFloat(String(it.minWeightKg || 0));
-      if (!isNaN(w) && w > 0) totalWeightKg += w * (it.quantity || 1);
+      if (!isNaN(w) && w > 0) {
+        totalWeightKg += w * (it.quantity || 1);
+        totalUnitWeightKg += w;
+      }
     });
   }
 
@@ -86,6 +90,22 @@ export function mapSupabaseToCotizacion(row: any): Cotizacion {
     totalUf: Number(totalUf.toFixed(2)),
     totalClp: Math.round(totalClp),
     totalWeightKg,
+    totalUnitWeightKg,
+    showTotalWeightPerItem:
+      row.show_total_weight_per_item ??
+      row.showTotalWeightPerItem ??
+      row.ai_chat_state?.showTotalWeightPerItem ??
+      true,
+    showSummaryUnitWeight:
+      row.show_summary_unit_weight ??
+      row.showSummaryUnitWeight ??
+      row.ai_chat_state?.showSummaryUnitWeight ??
+      true,
+    showSummaryTotalWeight:
+      row.show_summary_total_weight ??
+      row.showSummaryTotalWeight ??
+      row.ai_chat_state?.showSummaryTotalWeight ??
+      true,
     observations: Array.isArray(row.observations) ? row.observations : [],
     status: (row.status as any) || 'Borrador',
     version: row.version || 1,
@@ -183,6 +203,10 @@ export function mapCotizacionToSupabase(c: Partial<Cotizacion>): any {
     zona_proyecto: c.zonaProyecto || 'Región Metropolitana',
     ai_chat_state: {
       ...(c.aiChatState || {}),
+      showTotalWeightPerItem: c.showTotalWeightPerItem,
+      showSummaryUnitWeight: c.showSummaryUnitWeight,
+      showSummaryTotalWeight: c.showSummaryTotalWeight,
+      totalUnitWeightKg: c.totalUnitWeightKg,
       cierreNegocio: c.cierreNegocio || c.aiChatState?.cierreNegocio || undefined,
       versionHistory: c.versionHistory || [],
       projectMeta: {

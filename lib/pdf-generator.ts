@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Cotizacion, FormatoSettings } from './types';
+import { Cotizacion, FormatoSettings, isForeignRut } from './types';
 
 const DEFAULT_FORMATO: FormatoSettings = {
   formatCode: 'DGL-FA-193 V3',
@@ -111,7 +111,7 @@ export function generateCotizacionPdf(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(50, 50, 50);
-  if (cotizacion.clientRut) {
+  if (cotizacion.clientRut && !isForeignRut(cotizacion.clientRut)) {
     doc.text(`RUT: ${cotizacion.clientRut}`, marginX, currentY);
     currentY += 4.2;
   }

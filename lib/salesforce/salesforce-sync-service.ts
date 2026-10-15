@@ -1,4 +1,4 @@
-import { Cotizacion, getDGLInfoByCC, CuotaFacturacionDetalle, CierreNegocioData } from '@/lib/types';
+import { Cotizacion, getDGLInfoByCC, CuotaFacturacionDetalle, CierreNegocioData, isForeignRut } from '@/lib/types';
 import { getValidSalesforceClient } from './salesforce-client';
 import { generateCotizacionPdf } from '@/lib/pdf-generator';
 import { getFormatoSettingsAsync } from '@/lib/configuracion-db';
@@ -67,8 +67,62 @@ async function findOrCreateAccount(
     if (!cleanName) return null;
 
     const cleanRut = (clientRut || '').replace(/'/g, "\\'").trim();
+    const isForeign = isForeignRut(cleanRut);
 
-    // 1. Buscar si existe por RUT o por Nombre
+    // =========================================================================
+    // 1. CUENTAS INTERNACIONALES / EXTRANJERAS (RUT comodín 5555555-5 o sin RUT chileno)
+    // =========================================================================
+    // En Salesforce, muchas empresas extranjeras comparten el RUT comodín 5555555-5.
+    // NUNCA debemos buscar por RUT__c = '5555555-5' porque asociaría la cotización
+    // a la primera cuenta extranjera arbitraria que retorne la consulta.
+    // Se debe buscar estrictamente por la Razón Social real (Name / Razon_Social__c).
+    if (isForeign) {
+      // 1A. Coincidencia exacta por Razón Social o Name
+      const exactQueryStr = `SELECT Id, Name FROM Account WHERE Name = '${cleanName}' OR Razon_Social__c = '${cleanName}' LIMIT 1`;
+      const exactRes = await sfRequest(instanceUrl, accessToken, `query?q=${encodeURIComponent(exactQueryStr)}`);
+      if (exactRes?.records && exactRes.records.length > 0) {
+        console.log(`✓ Cuenta internacional encontrada por coincidencia exacta de nombre: ${exactRes.records[0].Name} (${exactRes.records[0].Id})`);
+        return exactRes.records[0].Id;
+      }
+
+      // 1B. Coincidencia por prefijo de Razón Social / Name
+      const shortName = cleanName.slice(0, 35);
+      const likeQueryStr = `SELECT Id, Name FROM Account WHERE Name LIKE '${shortName}%' OR Razon_Social__c LIKE '${shortName}%' LIMIT 1`;
+      const likeRes = await sfRequest(instanceUrl, accessToken, `query?q=${encodeURIComponent(likeQueryStr)}`);
+      if (likeRes?.records && likeRes.records.length > 0) {
+        console.log(`✓ Cuenta internacional encontrada por prefijo de nombre: ${likeRes.records[0].Name} (${likeRes.records[0].Id})`);
+        return likeRes.records[0].Id;
+      }
+
+      // 1C. Si no existe, crear la cuenta internacional con su Razón Social real
+      try {
+        const accountBody: Record<string, any> = {
+          Name: clientName.trim(),
+          Razon_Social__c: clientName.trim(),
+          Description: 'Cuenta Internacional / Extranjera creada automáticamente desde Cotizador DGL',
+        };
+        if (cleanRut) {
+          accountBody.RUT__c = cleanRut;
+        }
+
+        const createRes = await sfRequest(instanceUrl, accessToken, 'sobjects/Account', {
+          method: 'POST',
+          body: JSON.stringify(accountBody),
+        });
+        if (createRes?.id) {
+          console.log(`✓ Creada nueva Cuenta internacional en Salesforce para "${clientName}": ${createRes.id}`);
+          return createRes.id;
+        }
+      } catch (createErr) {
+        console.warn('No se pudo crear Account internacional automáticamente en Salesforce:', createErr);
+      }
+      return null;
+    }
+
+    // =========================================================================
+    // 2. CUENTAS NACIONALES (CHILE)
+    // =========================================================================
+    // Buscar prioritariamente por RUT único del SII; si no hay RUT, buscar por Nombre
     let queryStr = `SELECT Id, Name FROM Account WHERE Name LIKE '%${cleanName.slice(0, 30)}%' LIMIT 1`;
     if (cleanRut) {
       queryStr = `SELECT Id, Name FROM Account WHERE RUT__c = '${cleanRut}' OR Name LIKE '%${cleanName.slice(0, 30)}%' LIMIT 1`;
@@ -80,10 +134,11 @@ async function findOrCreateAccount(
       return searchRes.records[0].Id;
     }
 
-    // 2. Si no existe, intentar crear una Cuenta básica
+    // Si no existe, intentar crear una Cuenta básica nacional
     try {
       const accountBody: Record<string, any> = {
         Name: clientName,
+        Razon_Social__c: clientName,
         Description: cleanRut ? `RUT: ${cleanRut}` : 'Creado automáticamente desde Cotizador DGL',
       };
       if (cleanRut) {

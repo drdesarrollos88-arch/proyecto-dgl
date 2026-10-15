@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { Cotizacion } from './types';
+import { Cotizacion, isForeignRut } from './types';
 
 function sanitizeForExcel(val: unknown): string {
   if (val === null || val === undefined) return '';
@@ -47,7 +47,7 @@ export async function generateCotizacionExcel(cotizacion: Cotizacion): Promise<E
   ws.getCell('D12').value = 'Señores';
   ws.getCell('D13').value = cotizacion.clientName || 'RAZON SOCIAL';
   ws.getCell('D13').font = { bold: true, size: 11 };
-  ws.getCell('D14').value = `Rut: ${cotizacion.clientRut || '---'}`;
+  ws.getCell('D14').value = cotizacion.clientRut && !isForeignRut(cotizacion.clientRut) ? `Rut: ${cotizacion.clientRut}` : '';
   ws.getCell('D15').value = 'Presente';
 
   ws.getCell('D17').value = 'Atención';

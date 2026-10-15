@@ -25,6 +25,7 @@ import {
   SubsectorProyecto,
   ZonaProyecto,
   SeccionDGL,
+  isForeignRut,
 } from '@/lib/types';
 import { generateCotizacionPdf } from '@/lib/pdf-generator';
 import UnifiedAiAssistantModal, { DisplayChatMessage } from '@/components/UnifiedAiAssistantModal';
@@ -2403,8 +2404,12 @@ function CotizadorContent() {
                             {c.paymentCondition && <span>💳 {c.paymentCondition}</span>}
                           </div>
                         </div>
-                        <span className="font-mono text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-200 flex-shrink-0">
-                          {c.rut || 'S/RUT'}
+                        <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded border flex-shrink-0 ${
+                          isForeignRut(c.rut)
+                            ? 'bg-amber-50 text-amber-800 border-amber-200 font-semibold'
+                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                          {isForeignRut(c.rut) ? '🌍 Extranjero' : (c.rut || 'S/RUT')}
                         </span>
                       </button>
                     ))}
@@ -2432,8 +2437,12 @@ function CotizadorContent() {
                       </div>
                     </div>
                     {clientRut && (
-                      <span className="font-mono text-[11px] font-bold text-blue-900 bg-blue-100 px-2 py-0.5 rounded border border-blue-200 flex-shrink-0">
-                        {clientRut}
+                      <span className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded border flex-shrink-0 ${
+                        isForeignRut(clientRut)
+                          ? 'text-amber-800 bg-amber-50 border-amber-300'
+                          : 'text-blue-900 bg-blue-100 border-blue-200'
+                      }`}>
+                        {isForeignRut(clientRut) ? '🌍 Cuenta Extranjera (Sin RUT en PDF)' : clientRut}
                       </span>
                     )}
                   </div>
@@ -2952,19 +2961,15 @@ function CotizadorContent() {
                     onChange={(e) => handleCentroCostoChange(e.target.value)}
                     className="w-full py-1.5 px-2 rounded-lg border border-blue-300 bg-blue-50/40 text-xs font-semibold text-blue-950 focus:ring-1 focus:ring-blue-600 focus:outline-none"
                   >
-                    {SECCIONES_DGL.map((secGroup) => {
-                      const unitsInSec = DGL_UNIDADES.filter((u) => u.seccion === secGroup);
+                    {(DGL_UNIDADES.filter((u) => u.seccion === seccion).length > 0
+                      ? DGL_UNIDADES.filter((u) => u.seccion === seccion)
+                      : DGL_UNIDADES
+                    ).map((u) => {
+                      const ccMatch = CENTROS_DE_COSTO.find((cc) => cc.startsWith(u.code)) || u.name;
                       return (
-                        <optgroup key={secGroup} label={secGroup}>
-                          {unitsInSec.map((u) => {
-                            const ccMatch = CENTROS_DE_COSTO.find((cc) => cc.startsWith(u.code)) || u.name;
-                            return (
-                              <option key={u.code} value={ccMatch}>
-                                {u.name}
-                              </option>
-                            );
-                          })}
-                        </optgroup>
+                        <option key={u.code} value={ccMatch}>
+                          {u.name}
+                        </option>
                       );
                     })}
                   </select>

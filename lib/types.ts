@@ -32,6 +32,22 @@ export interface UserProfile {
 }
 
 // Estructura oficial División DGL IDIEM
+/**
+ * Detecta si un RUT corresponde a una cuenta internacional o extranjera
+ * (Salesforce asigna internamente el comodín 5555555-5 o derivados para clientes foráneos).
+ */
+export function isForeignRut(rut?: string | null): boolean {
+  if (!rut) return false;
+  const raw = String(rut).trim().toUpperCase();
+  if (['EXTRANJERO', 'INTERNACIONAL', 'EXTERIOR', 'NO APLICA', 'N/A', 'SIN RUT', 'PASAPORTE', 'EXTRANJERA'].includes(raw)) {
+    return true;
+  }
+  const clean = raw.replace(/[^0-9K]/g, '');
+  if (/^5{6,9}[0-9K]?$/.test(clean)) return true;
+  if (clean.startsWith('5555555')) return true;
+  return false;
+}
+
 export const SECCIONES_DGL = [
   'SGL - Sección Laboratorio de Geotecnia',
   'SLGP - Sección Laboratorio de Geomecánico Prat',

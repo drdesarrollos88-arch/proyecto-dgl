@@ -13,7 +13,7 @@ const CLIENT_ALLOWED_MODULES = new Set(['Asistente IA']);
 function parseDateParam(value: string | null, endOfDay: boolean): string | undefined {
   if (!value) return undefined;
   const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
-  const d = new Date(isDateOnly ? `${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}` : value);
+  const d = new Date(isDateOnly ? `${value}T${endOfDay ? '23:59:59.999Z' : '00:00:00.000Z'}` : value);
   return isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 

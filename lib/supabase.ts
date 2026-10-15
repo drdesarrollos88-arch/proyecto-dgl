@@ -1,23 +1,56 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const cleanStr = (val?: string) => (val || '').replace(/^\uFEFF/, '').trim();
-const supabaseUrl = cleanStr(process.env.NEXT_PUBLIC_SUPABASE_URL);
-const supabaseAnonKey = cleanStr(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
-const supabaseServiceKey = cleanStr(process.env.SUPABASE_SERVICE_ROLE_KEY) || supabaseAnonKey;
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && (supabaseServiceKey || supabaseAnonKey));
+function getUrl(): string {
+  return cleanStr(process.env.NEXT_PUBLIC_SUPABASE_URL);
+}
 
-// Cliente público para el navegador / componentes cliente
-export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+function getAnonKey(): string {
+  return cleanStr(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+}
 
-// Cliente administrativo con service_role para las API routes del servidor (Next.js)
-export const supabaseAdmin = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseServiceKey, {
+function getServiceKey(): string {
+  return cleanStr(process.env.SUPABASE_SERVICE_ROLE_KEY) || getAnonKey();
+}
+
+export const isSupabaseConfigured = Boolean(
+  cleanStr(process.env.NEXT_PUBLIC_SUPABASE_URL) &&
+  (cleanStr(process.env.SUPABASE_SERVICE_ROLE_KEY) || cleanStr(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY))
+);
+
+let _adminClient: SupabaseClient | null = null;
+let _lastServiceKey: string = '';
+
+export function getSupabaseAdmin(): SupabaseClient | null {
+  const url = getUrl();
+  const key = getServiceKey();
+  if (!url || !key) return null;
+
+  if (!_adminClient || _lastServiceKey !== key) {
+    _lastServiceKey = key;
+    _adminClient = createClient(url, key, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
       },
-    })
+    });
+  }
+  return _adminClient;
+}
+
+// Cliente público para el navegador / componentes cliente
+export const supabase = isSupabaseConfigured
+  ? createClient(getUrl(), getAnonKey())
   : null;
+
+// Cliente administrativo con service_role para las API routes del servidor (Next.js)
+// Envuelto en Proxy para evaluar dinámicamente el cliente con la mejor clave disponible
+export const supabaseAdmin = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    const client = getSupabaseAdmin();
+    if (!client) return null;
+    const val = (client as any)[prop];
+    return typeof val === 'function' ? val.bind(client) : val;
+  },
+});

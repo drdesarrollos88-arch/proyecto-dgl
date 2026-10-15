@@ -1,0 +1,145 @@
+export interface VersionRegistro {
+  version: string;
+  tag: string;
+  fecha: string;
+  fechaFormato: string;
+  estado: 'activa' | 'previa';
+  titulo: string;
+  modulos: string[];
+  descripcion: string;
+  detalles: string[];
+  autor?: string;
+}
+
+export const HISTORIAL_VERSIONES: VersionRegistro[] = [
+  {
+    version: '2.4.0',
+    tag: 'v2.4.0',
+    fecha: '2026-10-15',
+    fechaFormato: '15 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Módulo de Auditoría Integral y Control de Versiones',
+    modulos: ['Auditoría', 'Seguridad', 'Infraestructura Nube'],
+    descripcion:
+      'Implementación de bitácora de auditoría inmutable en Supabase con trazabilidad de eventos en tiempo real, registro histórico de cotizaciones, descargas oficiales y módulo de control de versiones desplegadas.',
+    detalles: [
+      'Persistencia de bitácora en PostgreSQL Supabase con protección contra modificaciones o eliminaciones accidentales (trigger inmutable).',
+      'Trazabilidad de inicios de sesión, cambios en propuestas comerciales, tarifas, usuarios y clientes.',
+      'Nueva sección de "Historial de Versiones" para visualización ejecutiva de cambios y despliegues en producción.',
+      'Exportación certificada de auditoría a CSV/Excel con protección contra inyección de fórmulas.',
+      'Paginación del lado del servidor y filtros combinados por fechas, usuario y módulo.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
+    version: '2.3.1',
+    tag: 'v2.3.1',
+    fecha: '2026-10-14',
+    fechaFormato: '14 de Octubre, 2026',
+    estado: 'previa',
+    titulo: 'Actualización Masiva Porcentual de Tarifario',
+    modulos: ['Tarifario', 'Comercial'],
+    descripcion:
+      'Herramienta de modificación masiva de precios mediante selección múltiple de ensayos y aplicación controlada de porcentaje.',
+    detalles: [
+      'Selección individual o grupal de partidas del tarifario oficial para ajuste rápido de valores.',
+      'Aplicación de incremento o decremento porcentual (%) con recálculo automático de subtotales en UF y CLP.',
+      'Validación preventiva de márgenes comerciales antes de confirmar cambios en base de datos.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
+    version: '2.3.0',
+    tag: 'v2.3.0',
+    fecha: '2026-10-13',
+    fechaFormato: '13 de Octubre, 2026',
+    estado: 'previa',
+    titulo: 'Ergonomía en Observaciones Técnicas y Visor de PDF',
+    modulos: ['Cotizador', 'Propuestas Técnicas', 'UI/UX'],
+    descripcion:
+      'Mejoras ergonómicas en la redacción de notas por ensayo y optimización del visor documental de cotizaciones.',
+    detalles: [
+      'Soporte completo para espacios tipográficos y saltos de línea (Shift+Enter / Alt+Enter) en observaciones técnicas de ensayos.',
+      'Botón de cierre directo (✕) y tecla Escape en el modal de visualización de PDFs oficiales y borradores.',
+      'Mejoras de rendimiento en renderizado de documentos extensos.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
+    version: '2.2.0',
+    tag: 'v2.2.0',
+    fecha: '2026-10-12',
+    fechaFormato: '12 de Octubre, 2026',
+    estado: 'previa',
+    titulo: 'Integración Salesforce IDIEM: Planilla Interactiva y Cuentas Comerciales',
+    modulos: ['Salesforce', 'Conciliador', 'Ventas'],
+    descripcion:
+      'Visualizador comercial tipo planilla de cálculo y filtrado selectivo de oportunidades por Cuenta Comercial de Salesforce.',
+    detalles: [
+      'Vista en columnas tipo tabla Excel para visualización y conciliación rápida de oportunidades comerciales.',
+      'Filtro inteligente para incluir o excluir oportunidades que contengan la etiqueta "Cuenta Comercial Salesforce".',
+      'Integración directa con contactos y cuentas corporativas de Salesforce para evitar duplicidad con la base de datos local.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
+    version: '2.1.0',
+    tag: 'v2.1.0',
+    fecha: '2026-10-09',
+    fechaFormato: '09 de Octubre, 2026',
+    estado: 'previa',
+    titulo: 'Arquitectura Nube Resiliente y Base de Datos Supabase',
+    modulos: ['Infraestructura', 'Base de Datos', 'Rendimiento'],
+    descripcion:
+      'Migración completa de datos a Supabase PostgreSQL y despliegue optimizado en edge workers de Cloudflare.',
+    detalles: [
+      'Base de datos relacional robusta en la nube con pooler de conexiones de alta concurrencia.',
+      'Políticas de seguridad por filas (RLS) y aislamiento multi-rol.',
+      'Parches de compatibilidad de runtime para compatibilidad 100% con Cloudflare Workers.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
+    version: '2.0.0',
+    tag: 'v2.0.0',
+    fecha: '2026-10-02',
+    fechaFormato: '02 de Octubre, 2026',
+    estado: 'previa',
+    titulo: 'Motor de Inteligencia Artificial para Ensayos y Normativa Geotécnica',
+    modulos: ['Inteligencia Artificial', 'Bibliografía', 'Cotizador'],
+    descripcion:
+      'Incorporación del asistente IA para análisis semántico de solicitudes de ensayo y correlación con normas NCh y ASTM.',
+    detalles: [
+      'Búsqueda semántica (RAG) sobre repositorio bibliográfico y especificaciones técnicas IDIEM.',
+      'Desglose predictivo de ensayos requeridos según tipo de suelo y proyecto vial o minero.',
+      'Chat interactivo contextualizado para formulación rápida de cotizaciones.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
+    version: '1.0.0',
+    tag: 'v1.0.0',
+    fecha: '2026-09-15',
+    fechaFormato: '15 de Septiembre, 2026',
+    estado: 'previa',
+    titulo: 'Lanzamiento Inicial del Sistema de Cotizaciones DGL',
+    modulos: ['Cotizador', 'Tarifario', 'Clientes', 'Formatos'],
+    descripcion:
+      'Versión fundacional del sistema web de cotizaciones del Departamento de Geotecnia y Laboratorio (DGL).',
+    detalles: [
+      'Catálogo maestro de ensayos clasificados por especialidad (Mecánica de Suelos, Rocas, Asfaltos, Hormigones).',
+      'Generación oficial de propuestas en formato PDF y hojas de cálculo Excel.',
+      'Control de correlativos automáticos por centro de costo DGL (1817, 2339, 2340, 2341).',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+];
+
+export function getVersionActual(): VersionRegistro {
+  return HISTORIAL_VERSIONES.find((v) => v.estado === 'activa') || HISTORIAL_VERSIONES[0];
+}
+
+export function getHistorialVersiones(): VersionRegistro[] {
+  return HISTORIAL_VERSIONES;
+}
+

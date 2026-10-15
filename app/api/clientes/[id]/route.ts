@@ -7,8 +7,25 @@ import {
   updateSalesforceAccount,
 } from '@/lib/salesforce/salesforce-crm-service';
 import { isAdminRole } from '@/lib/permissions';
+import { auditRequest } from '@/lib/audit-db';
 
 export const dynamic = 'force-dynamic';
+
+async function auditClienteEdit(
+  req: NextRequest,
+  user: Parameters<typeof auditRequest>[1],
+  id: string,
+  body: Record<string, unknown>,
+  cliente: any,
+  source: 'salesforce' | 'local'
+) {
+  await auditRequest(req, user, {
+    action: 'CLIENTE_EDITAR',
+    module: 'Clientes',
+    description: 'Edición del cliente ' + (cliente?.name || id) + ' (' + (source === 'salesforce' ? 'Salesforce' : 'base local') + ').',
+    details: { clienteId: id, origen: source, camposModificados: Object.keys(body || {}).filter((k) => k !== 'source') },
+  });
+}
 
 export async function GET(
   req: NextRequest,
@@ -65,6 +82,7 @@ export async function PUT(
           try {
             await updateCliente(id, body);
           } catch {}
+          await auditClienteEdit(req, user, id, body, updatedSf, 'salesforce');
           return NextResponse.json({ success: true, cliente: updatedSf, source: 'salesforce' });
         }
       } catch (sfErr) {
@@ -73,6 +91,7 @@ export async function PUT(
         if (!id.startsWith('001')) {
           const updatedLocal = await updateCliente(id, body);
           if (updatedLocal) {
+            await auditClienteEdit(req, user, id, body, updatedLocal, 'local');
             return NextResponse.json({ success: true, cliente: updatedLocal, source: 'local' });
           }
         }
@@ -86,6 +105,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 404 });
     }
 
+    await auditClienteEdit(req, user, id, body, updated, 'local');
     return NextResponse.json({ success: true, cliente: updated, source: 'local' });
   } catch (err: any) {
     console.error('Error updating cliente:', err);
@@ -106,6 +126,15 @@ export async function DELETE(
   }
 
   const { id } = await params;
+  const prev = await getClienteById(id).catch(() => undefined);
   const ok = await deleteCliente(id);
+  if (ok) {
+    await auditRequest(req, user, {
+      action: 'CLIENTE_ELIMINAR',
+      module: 'Clientes',
+      description: 'Eliminación del cliente ' + (prev?.name || id) + '.',
+      details: { clienteId: id, nombre: prev?.name, rut: prev?.rut },
+    });
+  }
   return NextResponse.json({ success: ok });
 }

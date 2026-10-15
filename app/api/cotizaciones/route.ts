@@ -10,7 +10,7 @@ import {
 import { upsertContacto } from '@/lib/contactos-db';
 import { createOrGetProyecto } from '@/lib/proyectos-db';
 import { hasPermission, isAdminRole } from '@/lib/permissions';
-import { registrarAuditoria } from '@/lib/audit-db';
+import { registrarAuditoria, getClientIp } from '@/lib/audit-db';
 import { AuditAction } from '@/lib/types';
 
 export async function GET() {
@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
       updatedBy: currentUser.name,
     });
 
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+    const ip = getClientIp(req);
     let action: AuditAction = 'COTIZACION_CREAR';
     if (data.status === 'Borrador') {
       action = 'COTIZACION_BORRADOR';
@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
       action = 'COTIZACION_EDITAR';
     }
 
-    registrarAuditoria({
+    await registrarAuditoria({
       userId: currentUser.id,
       userName: currentUser.name,
       userEmail: currentUser.email,
@@ -231,8 +231,8 @@ export async function DELETE(req: NextRequest) {
       isAdmin
     );
 
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
-    registrarAuditoria({
+    const ip = getClientIp(req);
+    await registrarAuditoria({
       userId: currentUser.id,
       userName: currentUser.name,
       userEmail: currentUser.email,

@@ -1,9 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { isAdminRole } from '@/lib/permissions';
-import { getAuditLogs, getAuditStats, registrarAuditoria } from '@/lib/audit-db';
+import { getAuditLogsPaged, getAuditStats, getClientIp, registrarAuditoria } from '@/lib/audit-db';
 
 export const dynamic = 'force-dynamic';
+
+// Acciones que el navegador puede registrar por sí mismo (el resto solo las registra el servidor).
+const CLIENT_ALLOWED_ACTIONS = new Set(['ASISTENTE_CHAT_ARCHIVADO']);
+const CLIENT_ALLOWED_MODULES = new Set(['Asistente IA']);
+
+/** Convierte 'YYYY-MM-DD' a ISO. `endOfDay` fija 23:59:59.999 para incluir todo el día final. */
+function parseDateParam(value: string | null, endOfDay: boolean): string | undefined {
+  if (!value) return undefined;
+  const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const d = new Date(isDateOnly ? `${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}` : value);
+  return isNaN(d.getTime()) ? undefined : d.toISOString();
+}
 
 export async function GET(req: NextRequest) {
   const currentUser = await getCurrentUser();
@@ -20,28 +32,32 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = new URL(req.url);
-  const moduleParam = searchParams.get('module') || undefined;
-  const actionParam = searchParams.get('action') || undefined;
-  const search = searchParams.get('search') || undefined;
-  const limit = parseInt(searchParams.get('limit') || '200', 10);
+  const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '100', 10) || 100, 1), 1000);
+  const offset = Math.max(parseInt(searchParams.get('offset') || '0', 10) || 0, 0);
   const includeStats = searchParams.get('stats') === 'true';
 
   try {
-    const logs = await getAuditLogs({
-      module: moduleParam,
-      action: actionParam,
-      search,
+    const { logs, total, source } = await getAuditLogsPaged({
+      module: searchParams.get('module') || undefined,
+      action: searchParams.get('action') || undefined,
+      userId: searchParams.get('userId') || undefined,
+      search: searchParams.get('search') || undefined,
+      startDate: parseDateParam(searchParams.get('from'), false),
+      endDate: parseDateParam(searchParams.get('to'), true),
       limit,
+      offset,
     });
 
-    let stats = null;
-    if (includeStats) {
-      stats = await getAuditStats();
-    }
+    const stats = includeStats ? await getAuditStats() : null;
 
     return NextResponse.json({
       success: true,
       logs,
+      total,
+      limit,
+      offset,
+      hasMore: offset + logs.length < total,
+      source,
       stats,
     });
   } catch (err: any) {
@@ -70,18 +86,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+    // Evita la falsificación de la bitácora desde el navegador
+    if (!CLIENT_ALLOWED_ACTIONS.has(String(action)) || !CLIENT_ALLOWED_MODULES.has(String(mod))) {
+      return NextResponse.json(
+        { error: 'Esta acción solo puede ser registrada por el servidor.' },
+        { status: 403 }
+      );
+    }
 
     const log = await registrarAuditoria({
       userId: currentUser.id,
       userName: currentUser.name,
       userEmail: currentUser.email,
       userRole: currentUser.role,
-      action,
+      action: String(action).slice(0, 60),
       module: mod,
-      description,
+      description: String(description).slice(0, 500),
       details,
-      ip,
+      ip: getClientIp(req),
     });
 
     return NextResponse.json({ success: true, log });
@@ -93,4 +115,3 @@ export async function POST(req: NextRequest) {
     );
   }
 }
-

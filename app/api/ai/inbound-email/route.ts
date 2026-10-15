@@ -5,7 +5,7 @@ import { getNextCorrelativo } from '@/lib/db';
 import { getUsersAsync } from '@/lib/users-db';
 import { upsertContacto } from '@/lib/contactos-db';
 import { createOrGetProyecto } from '@/lib/proyectos-db';
-import { registrarAuditoria } from '@/lib/audit-db';
+import { registrarAuditoria, getClientIp } from '@/lib/audit-db';
 import { Cotizacion, CotizacionItem } from '@/lib/types';
 
 // Token secreto para comunicación segura con Google Apps Script
@@ -272,7 +272,7 @@ export async function POST(req: NextRequest) {
     const savedCotizacion = await saveCotizacionAsync(newCotizacion);
 
     // 12. Registrar en Auditoría Oficial
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+    const ip = getClientIp(req);
     await registrarAuditoria({
       userId: createdById,
       userName: commercialName,

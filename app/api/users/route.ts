@@ -12,6 +12,7 @@ import {
 import { hasPermission, isAdminRole } from '@/lib/permissions';
 import { sendWelcomeEmail } from '@/lib/email-service';
 import { UserRole } from '@/lib/types';
+import { auditRequest } from '@/lib/audit-db';
 
 // GET: Consultar el listado de usuarios del sistema
 export async function GET() {
@@ -115,6 +116,20 @@ export async function POST(req: NextRequest) {
       customPermissions: Array.isArray(customPermissions) ? customPermissions : undefined,
     });
 
+    await auditRequest(req, currentUser, {
+      action: 'USUARIO_CREAR',
+      module: 'Usuarios',
+      description: 'Creación de usuario ' + newUser.name + ' (' + newUser.email + ') con rol ' + newUser.role + ' y perfil ' + newUser.profileId + '.',
+      details: {
+        targetId: newUser.id,
+        email: newUser.email,
+        rut: newUser.rut,
+        role: newUser.role,
+        profileId: newUser.profileId,
+        customPermissions: newUser.customPermissions || null,
+      },
+    });
+
     // 2. Despachar correo electrónico con notificación y credenciales provisorias
     let emailResult = null;
     try {
@@ -209,6 +224,26 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Error al actualizar usuario.' }, { status: 500 });
     }
 
+    const changed: Record<string, { antes: unknown; despues: unknown }> = {};
+    const track = (k: string, before: unknown, after: unknown) => {
+      if (JSON.stringify(before) !== JSON.stringify(after)) changed[k] = { antes: before, despues: after };
+    };
+    track('nombre', targetUser.name, updated.name);
+    track('correo', targetUser.email, updated.email);
+    track('rol', targetUser.role, updated.role);
+    track('perfil', targetUser.profileId, updated.profileId);
+    track('permisosPersonalizados', targetUser.customPermissions ?? null, updated.customPermissions ?? null);
+    const passwordReset = updates.passwordHash !== undefined;
+    await auditRequest(req, currentUser, {
+      action: 'USUARIO_EDITAR',
+      module: 'Usuarios',
+      description:
+        'Modificación del usuario ' + updated.name + ' (' + updated.email + ')' +
+        (passwordReset ? ' · contraseña restablecida' : '') +
+        (Object.keys(changed).length ? ': ' + Object.keys(changed).join(', ') + '.' : '.'),
+      details: { targetId: id, cambios: changed, contrasenaRestablecida: passwordReset },
+    });
+
     const { passwordHash: _, ...safeUser } = updated;
     return NextResponse.json({ success: true, user: safeUser });
   } catch (err) {
@@ -259,6 +294,13 @@ export async function DELETE(req: NextRequest) {
     if (!success) {
       return NextResponse.json({ error: 'Error al eliminar usuario.' }, { status: 500 });
     }
+
+    await auditRequest(req, currentUser, {
+      action: 'USUARIO_ELIMINAR',
+      module: 'Usuarios',
+      description: 'Eliminación del usuario ' + targetUser.name + ' (' + targetUser.email + ').',
+      details: { targetId: id, email: targetUser.email, rut: targetUser.rut, role: targetUser.role, profileId: targetUser.profileId },
+    });
 
     return NextResponse.json({ success: true });
   } catch (err) {

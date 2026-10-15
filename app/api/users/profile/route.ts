@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserByIdAsync, updateUserAsync } from '@/lib/users-db';
+import { auditRequest } from '@/lib/audit-db';
 
 export async function GET() {
   const currentUser = await getCurrentUser();
@@ -40,6 +41,18 @@ export async function PUT(req: NextRequest) {
     if (!updated) {
       return NextResponse.json({ error: 'Usuario no encontrado' }, { status: 404 });
     }
+
+    await auditRequest(req, currentUser, {
+      action: 'USUARIO_PERFIL_PROPIO',
+      module: 'Usuarios',
+      description: 'El usuario ' + currentUser.name + ' actualizó sus datos de perfil.',
+      details: {
+        targetId: currentUser.id,
+        camposModificados: ['name', 'rut', 'email', 'commercialTitle', 'phone', 'commercialInitials', 'signature'].filter(
+          (k) => data[k] !== undefined
+        ),
+      },
+    });
 
     const { passwordHash: _, ...safeUser } = updated;
     return NextResponse.json({ success: true, user: safeUser });

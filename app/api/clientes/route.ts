@@ -6,7 +6,7 @@ import {
   searchSalesforceAccounts,
   createSalesforceAccount,
 } from '@/lib/salesforce/salesforce-crm-service';
-import { registrarAuditoria } from '@/lib/audit-db';
+import { registrarAuditoria, getClientIp } from '@/lib/audit-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -103,8 +103,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No se pudo crear el cliente en Salesforce ni en la base local.' }, { status: 500 });
     }
 
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
-    registrarAuditoria({
+    const ip = getClientIp(req);
+    await registrarAuditoria({
       userId: user.id,
       userName: user.name,
       userEmail: user.email,

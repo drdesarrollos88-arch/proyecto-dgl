@@ -6,6 +6,7 @@ import {
   deleteCotizacionAsync,
 } from '@/lib/cotizaciones-db';
 import { isAdminRole } from '@/lib/permissions';
+import { auditRequest } from '@/lib/audit-db';
 
 export async function GET(
   req: NextRequest,
@@ -68,6 +69,12 @@ export async function PATCH(
       updatedBy: currentUser.name,
     });
 
+    await auditRequest(req, currentUser, {
+      action: 'COTIZACION_ESTADO',
+      module: 'Cotizaciones',
+      description: 'Cambio de estado de la cotización ' + (updated.code || id) + ': ' + cotizacion.status + ' → ' + updated.status + '.',
+      details: { id, code: updated.code, cliente: updated.clientName, estadoAnterior: cotizacion.status, estadoNuevo: updated.status },
+    });
     return NextResponse.json({ success: true, cotizacion: updated });
   } catch (err) {
     console.error('Error updating cotizacion status:', err);
@@ -113,5 +120,11 @@ export async function DELETE(
     );
   }
 
+  await auditRequest(req, currentUser, {
+    action: 'COTIZACION_ELIMINAR',
+    module: 'Cotizaciones',
+    description: 'Eliminación de la cotización ' + (cotizacion.code || id) + ' - ' + cotizacion.clientName + '.',
+    details: { id, code: cotizacion.code, cliente: cotizacion.clientName, estado: cotizacion.status },
+  });
   return NextResponse.json({ success: true });
 }

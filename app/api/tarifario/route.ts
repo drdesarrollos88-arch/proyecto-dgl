@@ -8,7 +8,7 @@ import {
   batchUpdateTarifarioPricesAsync,
 } from '@/lib/tarifario-db';
 import { isAdminRole } from '@/lib/permissions';
-import { registrarAuditoria } from '@/lib/audit-db';
+import { registrarAuditoria, getClientIp } from '@/lib/audit-db';
 
 export async function GET() {
   const currentUser = await getCurrentUser();
@@ -56,8 +56,8 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ error: result.error || 'Error al mover los ensayos en lote.' }, { status: 500 });
       }
 
-      const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
-      registrarAuditoria({
+      const ip = getClientIp(req);
+      await registrarAuditoria({
         userId: currentUser.id,
         userName: currentUser.name,
         userEmail: currentUser.email,
@@ -102,8 +102,8 @@ export async function PUT(req: NextRequest) {
 
       const result = await batchUpdateTarifarioPricesAsync(validUpdates, currentUser.name);
 
-      const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
-      registrarAuditoria({
+      const ip = getClientIp(req);
+      await registrarAuditoria({
         userId: currentUser.id,
         userName: currentUser.name,
         userEmail: currentUser.email,
@@ -133,8 +133,8 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Ítem no encontrado en el tarifario' }, { status: 404 });
     }
 
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
-    registrarAuditoria({
+    const ip = getClientIp(req);
+    await registrarAuditoria({
       userId: currentUser.id,
       userName: currentUser.name,
       userEmail: currentUser.email,
@@ -188,8 +188,8 @@ export async function POST(req: NextRequest) {
       currentUser.name
     );
 
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
-    registrarAuditoria({
+    const ip = getClientIp(req);
+    await registrarAuditoria({
       userId: currentUser.id,
       userName: currentUser.name,
       userEmail: currentUser.email,

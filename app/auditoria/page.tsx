@@ -32,6 +32,7 @@ const MODULE_OPTIONS = [
   { value: 'Cotizaciones', label: 'Cotizaciones' },
   { value: 'Tarifario', label: 'Tarifado Oficial' },
   { value: 'Clientes', label: 'Clientes y CRM' },
+  { value: 'Salesforce', label: 'Salesforce' },
   { value: 'Bibliografía', label: 'Bibliografía IA' },
   { value: 'Asistente IA', label: 'Asistente IA' },
   { value: 'Usuarios', label: 'Usuarios y Accesos' },
@@ -46,14 +47,52 @@ const ACTION_OPTIONS = [
   { value: 'COTIZACION_BORRADOR', label: 'Guardado Borrador Cotización' },
   { value: 'COTIZACION_FINALIZAR', label: 'Emisión Final Cotización' },
   { value: 'COTIZACION_EDITAR', label: 'Edición Cotización' },
+  { value: 'COTIZACION_ESTADO', label: 'Cambio de Estado Cotización' },
+  { value: 'COTIZACION_DESCARGAR', label: 'Descarga de Cotización (PDF/Excel)' },
   { value: 'COTIZACION_ELIMINAR', label: 'Eliminación Cotización' },
   { value: 'TARIFARIO_EDITAR', label: 'Edición de Ensayos' },
+  { value: 'TARIFARIO_EDITAR_MASIVO', label: 'Edición Masiva de Precios' },
   { value: 'TARIFARIO_MOVER', label: 'Reubicación de Ensayos' },
   { value: 'TARIFARIO_NUEVO', label: 'Nuevo Ensayo Oficial' },
+  { value: 'TARIFARIO_IMPORTAR', label: 'Importación de Tarifario' },
+  { value: 'TARIFARIO_ESTRUCTURA', label: 'Cambios de Categorías/Subcategorías' },
+  { value: 'TARIFARIO_EXPORTAR', label: 'Descarga de Tarifario' },
   { value: 'CLIENTE_CREAR', label: 'Creación de Cliente' },
+  { value: 'CLIENTE_EDITAR', label: 'Edición de Cliente' },
+  { value: 'CLIENTE_ELIMINAR', label: 'Eliminación de Cliente' },
+  { value: 'CLIENTE_IMPORTAR', label: 'Importación de Clientes' },
+  { value: 'USUARIO_CREAR', label: 'Creación de Usuario' },
+  { value: 'USUARIO_EDITAR', label: 'Edición de Usuario / Permisos' },
+  { value: 'USUARIO_ELIMINAR', label: 'Eliminación de Usuario' },
+  { value: 'USUARIO_CLAVE_CAMBIADA', label: 'Cambio de Contraseña' },
+  { value: 'USUARIO_PERFIL_PROPIO', label: 'Edición de Perfil Propio' },
+  { value: 'PERFIL_CREAR', label: 'Creación de Perfil de Acceso' },
+  { value: 'PERFIL_EDITAR', label: 'Edición de Perfil de Acceso' },
+  { value: 'PERFIL_ELIMINAR', label: 'Eliminación de Perfil de Acceso' },
+  { value: 'CONFIG_CORRELATIVOS', label: 'Cambio de Correlativos' },
+  { value: 'CONFIG_FORMATO', label: 'Cambio de Formato Oficial' },
+  { value: 'SALESFORCE_CONECTADO', label: 'Salesforce Conectado' },
+  { value: 'SALESFORCE_DISCONNECTED', label: 'Salesforce Desconectado' },
+  { value: 'SALESFORCE_SYNC', label: 'Envío a Salesforce' },
+  { value: 'SALESFORCE_CIERRE', label: 'Cierre de Oportunidad Salesforce' },
   { value: 'BIBLIOGRAFIA_SUBIR', label: 'Carga de Documento Técnico' },
+  { value: 'BIBLIOGRAFIA_ESTADO', label: 'Cambio de Estado de Documento' },
+  { value: 'BIBLIOGRAFIA_ELIMINAR', label: 'Eliminación de Documento Técnico' },
   { value: 'ASISTENTE_CHAT_ARCHIVADO', label: 'Interacción IA Archivada' },
 ];
+
+const PAGE_SIZE = 100;
+const EXPORT_MAX = 10000;
+
+interface AuditStatsDto {
+  totalLogs: number;
+  totalAccesses: number;
+  totalLogins: number;
+  failedLogins: number;
+  totalChanges: number;
+  last24h: number;
+  activeUsersCount: number;
+}
 
 function getActionBadge(action: string) {
   const act = action.toUpperCase();
@@ -134,11 +173,21 @@ export default function AuditoriaPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  // Paginación, estadísticas globales y origen de los datos
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [stats, setStats] = useState<AuditStatsDto | null>(null);
+  const [source, setSource] = useState<'supabase' | 'memoria'>('supabase');
 
   // Filtros
   const [search, setSearch] = useState('');
   const [selectedModule, setSelectedModule] = useState('TODOS');
   const [selectedAction, setSelectedAction] = useState('TODOS');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   // Modal de detalle
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
@@ -154,21 +203,35 @@ export default function AuditoriaPage() {
       .finally(() => setLoadingUser(false));
   }, []);
 
-  const fetchAuditLogs = async () => {
-    setRefreshing(true);
-    try {
-      const params = new URLSearchParams();
-      if (selectedModule !== 'TODOS') params.set('module', selectedModule);
-      if (selectedAction !== 'TODOS') params.set('action', selectedAction);
-      if (search.trim()) params.set('search', search.trim());
-      params.set('stats', 'true');
-      params.set('limit', '300');
+  const buildParams = (offset: number, limit: number, withStats: boolean) => {
+    const params = new URLSearchParams();
+    if (selectedModule !== 'TODOS') params.set('module', selectedModule);
+    if (selectedAction !== 'TODOS') params.set('action', selectedAction);
+    if (search.trim()) params.set('search', search.trim());
+    if (dateFrom) params.set('from', dateFrom);
+    if (dateTo) params.set('to', dateTo);
+    if (withStats) params.set('stats', 'true');
+    params.set('limit', String(limit));
+    params.set('offset', String(offset));
+    return params;
+  };
 
-      const res = await fetch(`/api/auditoria?${params.toString()}`);
+  /** reset=true recarga desde el inicio; reset=false agrega la siguiente página. */
+  const fetchAuditLogs = async (reset: boolean = true) => {
+    if (reset) setRefreshing(true);
+    else setLoadingMore(true);
+
+    try {
+      const offset = reset ? 0 : logs.length;
+      const res = await fetch(`/api/auditoria?${buildParams(offset, PAGE_SIZE, reset).toString()}`);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.logs)) {
-          setLogs(data.logs);
+          setLogs((prev) => (reset ? data.logs : [...prev, ...data.logs]));
+          setTotal(data.total ?? data.logs.length);
+          setHasMore(Boolean(data.hasMore));
+          if (data.source) setSource(data.source);
+          if (reset && data.stats) setStats(data.stats);
         }
       }
     } catch (err) {
@@ -176,34 +239,103 @@ export default function AuditoriaPage() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setLoadingMore(false);
     }
   };
 
+  // Recarga inmediata al cambiar módulo, acción o fechas
   useEffect(() => {
     if (user && isAdminRole(user.role)) {
-      fetchAuditLogs();
+      fetchAuditLogs(true);
     }
-  }, [user, selectedModule, selectedAction]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, selectedModule, selectedAction, dateFrom, dateTo]);
 
   // Manejo de búsqueda por debounce
   useEffect(() => {
     const timer = setTimeout(() => {
       if (user && isAdminRole(user.role)) {
-        fetchAuditLogs();
+        fetchAuditLogs(true);
       }
     }, 350);
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  // Métricas calculadas
+  /** Exporta TODOS los eventos que cumplen los filtros (en bloques), no solo los visibles. */
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const rows: AuditLog[] = [];
+      const BLOCK = 1000;
+      let offset = 0;
+      let more = true;
+      while (more && rows.length < EXPORT_MAX) {
+        const res = await fetch(`/api/auditoria?${buildParams(offset, BLOCK, false).toString()}`);
+        if (!res.ok) throw new Error('No se pudo obtener la bitácora');
+        const data = await res.json();
+        rows.push(...(data.logs || []));
+        more = Boolean(data.hasMore) && (data.logs || []).length > 0;
+        offset += BLOCK;
+      }
+
+      // Neutraliza fórmulas de Excel (=, +, -, @, tab, CR) y escapa comillas
+      const cell = (v: unknown) => {
+        let s = v === undefined || v === null ? '' : String(v);
+        if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+        return `"${s.replace(/"/g, '""')}"`;
+      };
+      const header = ['Fecha', 'Usuario', 'Correo', 'Rol', 'Módulo', 'Acción', 'Descripción', 'IP', 'Detalle (JSON)'];
+      const lines = rows.map((l) =>
+        [
+          new Date(l.timestamp).toLocaleString('es-CL'),
+          l.userName,
+          l.userEmail,
+          l.userRole,
+          l.module,
+          l.action,
+          l.description,
+          l.ip,
+          l.details ? JSON.stringify(l.details) : '',
+        ]
+          .map(cell)
+          .join(',')
+      );
+      const csv = '\uFEFF' + [header.map(cell).join(','), ...lines].join('\r\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `auditoria_DGL_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error exportando auditoría:', err);
+      alert('No se pudo exportar la bitácora. Intenta nuevamente.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Métricas: se priorizan las estadísticas globales del servidor (toda la bitácora)
   const metrics = useMemo(() => {
+    if (stats) {
+      return {
+        totalLogs: stats.totalLogs,
+        logins: stats.totalLogins,
+        changes: stats.totalChanges,
+        uniqueUsers: stats.activeUsersCount,
+      };
+    }
     const totalLogs = logs.length;
     const logins = logs.filter((l) => l.action === 'LOGIN').length;
     const changes = logs.filter((l) => l.module !== 'Acceso').length;
     const uniqueUsers = new Set(logs.map((l) => l.userEmail || l.userName).filter(Boolean)).size;
 
     return { totalLogs, logins, changes, uniqueUsers };
-  }, [logs]);
+  }, [logs, stats]);
 
   // Si está cargando usuario
   if (loadingUser) {
@@ -271,7 +403,7 @@ export default function AuditoriaPage() {
 
           <div className="flex items-center gap-2 self-end md:self-auto">
             <button
-              onClick={fetchAuditLogs}
+              onClick={() => fetchAuditLogs(true)}
               disabled={refreshing}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-2xs"
               title="Actualizar bitácora"
@@ -378,6 +510,65 @@ export default function AuditoriaPage() {
             </div>
           </div>
         </div>
+
+        {/* Rango de fechas y exportación */}
+        <div className="bg-white rounded-xl p-3 border border-slate-200/80 shadow-xs flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+            <span className="font-semibold text-slate-700">Período:</span>
+            <label className="flex items-center gap-1.5">
+              <span>Desde</span>
+              <input
+                type="date"
+                value={dateFrom}
+                max={dateTo || undefined}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50/50 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-600"
+              />
+            </label>
+            <label className="flex items-center gap-1.5">
+              <span>Hasta</span>
+              <input
+                type="date"
+                value={dateTo}
+                min={dateFrom || undefined}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="px-2 py-1.5 rounded-lg border border-slate-200 bg-slate-50/50 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-600"
+              />
+            </label>
+            {(dateFrom || dateTo) && (
+              <button
+                onClick={() => {
+                  setDateFrom('');
+                  setDateTo('');
+                }}
+                className="px-2 py-1.5 rounded-lg text-xs text-slate-500 hover:text-slate-800 hover:bg-slate-100 cursor-pointer"
+              >
+                Limpiar fechas
+              </button>
+            )}
+          </div>
+
+          <button
+            onClick={exportCsv}
+            disabled={exporting || total === 0}
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+            title="Descarga todos los eventos que cumplen los filtros actuales (máx. 10.000)"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>{exporting ? 'Exportando...' : `Exportar CSV (${total.toLocaleString('es-CL')})`}</span>
+          </button>
+        </div>
+
+        {source === 'memoria' && (
+          <div className="flex items-start gap-2.5 p-3.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 text-xs">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+            <div>
+              <strong>La bitácora no está conectada a la base de datos persistente.</strong> Solo se muestran los eventos
+              registrados desde el último reinicio del servidor; el historial completo no está disponible hasta restablecer la
+              conexión con Supabase.
+            </div>
+          </div>
+        )}
 
         {/* Tabla de Registros de Auditoría */}
         <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
@@ -497,6 +688,24 @@ export default function AuditoriaPage() {
               </tbody>
             </table>
           </div>
+
+          {!loading && logs.length > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-4 py-3 border-t border-slate-100 bg-slate-50/60 text-[11px] text-slate-500">
+              <span>
+                Mostrando <strong className="text-slate-800">{logs.length.toLocaleString('es-CL')}</strong> de{' '}
+                <strong className="text-slate-800">{total.toLocaleString('es-CL')}</strong> eventos
+              </span>
+              {hasMore && (
+                <button
+                  onClick={() => fetchAuditLogs(false)}
+                  disabled={loadingMore}
+                  className="px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {loadingMore ? 'Cargando...' : 'Cargar más eventos'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </main>
 

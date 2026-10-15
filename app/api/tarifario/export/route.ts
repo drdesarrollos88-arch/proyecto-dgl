@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import { getTarifarioAsync } from '@/lib/tarifario-db';
 import { getCurrentUser } from '@/lib/auth';
 import { TarifarioItem } from '@/lib/types';
+import { auditRequest } from '@/lib/audit-db';
 
 function sanitizeForExcel(val: unknown): string {
   if (val === null || val === undefined) return '';
@@ -143,6 +144,12 @@ export async function GET(req: NextRequest) {
     items = items.filter((it) => selectedCategories.includes(it.category));
   }
 
+  await auditRequest(req, currentUser, {
+    action: 'TARIFARIO_EXPORTAR',
+    module: 'Tarifario',
+    description: 'Descarga del tarifario en Excel (' + items.length + ' ensayos).',
+    details: { ensayos: items.length, centrosDeCosto: selectedCcs, categorias: selectedCategories },
+  });
   return buildExcelResponse(items, separateSheets);
 }
 
@@ -170,6 +177,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    await auditRequest(req, currentUser, {
+      action: 'TARIFARIO_EXPORTAR',
+      module: 'Tarifario',
+      description: 'Descarga personalizada del tarifario en Excel (' + items.length + ' ensayos).',
+      details: { ensayos: items.length, selecciones: Array.isArray(selectedCombinations) ? selectedCombinations.length : 0 },
+    });
     return await buildExcelResponse(items, !!separateSheets, 'PERSONALIZADO');
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Error al exportar a Excel.' }, { status: 500 });

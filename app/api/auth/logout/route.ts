@@ -1,13 +1,13 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { AUTH_COOKIE_NAME, getCurrentUser } from '@/lib/auth';
-import { registrarAuditoria } from '@/lib/audit-db';
+import { registrarAuditoria, getClientIp } from '@/lib/audit-db';
 
 export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser();
     if (user) {
-      const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
-      registrarAuditoria({
+      const ip = getClientIp(req);
+      await registrarAuditoria({
         userId: user.id,
         userName: user.name,
         userEmail: user.email,

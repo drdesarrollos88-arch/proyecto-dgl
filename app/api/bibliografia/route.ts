@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getBibliografia, saveBibliografiaItem } from '@/lib/bibliografia-db';
-import { registrarAuditoria } from '@/lib/audit-db';
+import { registrarAuditoria, getClientIp } from '@/lib/audit-db';
 import { parseExcelToText, parseWordToText } from '@/lib/document-parser';
 import { TipoBibliografia } from '@/lib/types';
 
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const contentType = req.headers.get('content-type') || '';
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+    const ip = getClientIp(req);
 
     let tipo: TipoBibliografia = 'tecnica';
     let titulo = '';

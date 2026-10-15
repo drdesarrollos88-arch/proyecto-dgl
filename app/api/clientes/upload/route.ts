@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { importClientesFromExcel } from '@/lib/clientes-db';
 import { isAdminRole } from '@/lib/permissions';
+import { auditRequest } from '@/lib/audit-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,13 @@ export async function POST(req: NextRequest) {
 
     const arrayBuffer = await file.arrayBuffer();
     const count = await importClientesFromExcel(arrayBuffer);
+
+    await auditRequest(req, user, {
+      action: 'CLIENTE_IMPORTAR',
+      module: 'Clientes',
+      description: 'Importación masiva de clientes desde Excel (' + count.toLocaleString('es-CL') + ' empresas).',
+      details: { archivo: file.name, tamanoBytes: file.size, empresasProcesadas: count },
+    });
 
     return NextResponse.json({
       success: true,

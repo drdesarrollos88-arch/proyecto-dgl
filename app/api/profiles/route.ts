@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getProfiles, saveProfile, deleteProfile } from '@/lib/db';
 import { hasPermission, isAdminRole } from '@/lib/permissions';
+import { auditRequest } from '@/lib/audit-db';
 
 // GET: Obtener lista de todos los perfiles de usuario y sus permisos configurados
 export async function GET() {
@@ -49,6 +50,13 @@ export async function POST(req: NextRequest) {
       isSystem: body.isSystem || false,
     });
 
+    await auditRequest(req, currentUser, {
+      action: id ? 'PERFIL_EDITAR' : 'PERFIL_CREAR',
+      module: 'Usuarios',
+      description: (id ? 'Modificación' : 'Creación') + ' del perfil de acceso "' + saved.name + '" (' + permissions.length + ' permisos).',
+      details: { profileId: saved.id, nombre: saved.name, permisos: permissions },
+    });
+
     return NextResponse.json({ success: true, profile: saved });
   } catch (err) {
     console.error('Error al guardar perfil:', err);
@@ -77,10 +85,18 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'ID de perfil no especificado.' }, { status: 400 });
   }
 
+  const prevProfile = getProfiles().find((p) => p.id === id);
   const res = deleteProfile(id);
   if (!res.success) {
     return NextResponse.json({ error: res.message || 'No se pudo eliminar el perfil.' }, { status: 400 });
   }
+
+  await auditRequest(req, currentUser, {
+    action: 'PERFIL_ELIMINAR',
+    module: 'Usuarios',
+    description: 'Eliminación del perfil de acceso "' + (prevProfile?.name || id) + '".',
+    details: { profileId: id, nombre: prevProfile?.name, permisos: prevProfile?.permissions },
+  });
 
   return NextResponse.json({ success: true });
 }

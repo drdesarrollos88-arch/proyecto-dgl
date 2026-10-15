@@ -4,6 +4,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { replaceTarifarioAsync } from '@/lib/tarifario-db';
 import { TarifarioItem } from '@/lib/types';
 import { isAdminRole } from '@/lib/permissions';
+import { auditRequest } from '@/lib/audit-db';
 
 export async function POST(req: NextRequest) {
   const currentUser = await getCurrentUser();
@@ -90,6 +91,12 @@ export async function POST(req: NextRequest) {
     }
 
     await replaceTarifarioAsync(items, currentUser.name);
+    await auditRequest(req, currentUser, {
+      action: 'TARIFARIO_IMPORTAR',
+      module: 'Tarifario',
+      description: 'Reemplazo completo del tarifario oficial desde Excel (' + items.length + ' ensayos).',
+      details: { archivo: file.name, tamanoBytes: file.size, ensayosProcesados: items.length },
+    });
 
     return NextResponse.json({
       success: true,

@@ -11,6 +11,7 @@ import {
   deleteCategoryFromStructureAsync,
   deleteSubcategoryFromStructureAsync,
 } from '@/lib/tarifario-db';
+import { auditRequest } from '@/lib/audit-db';
 
 export async function GET() {
   const currentUser = await getCurrentUser();
@@ -73,6 +74,12 @@ export async function POST(req: NextRequest) {
       if (!result.success) {
         return NextResponse.json({ error: result.message }, { status: 400 });
       }
+      await auditRequest(req, currentUser, {
+        action: 'TARIFARIO_ESTRUCTURA',
+        module: 'Tarifario',
+        description: 'Creación de categoría "' + category + '" en el centro de costo ' + cc + '.',
+        details: { tipo: 'categoria', cc, category },
+      });
       return NextResponse.json({ success: true, message: 'Categoría creada con éxito.' });
     }
 
@@ -87,6 +94,12 @@ export async function POST(req: NextRequest) {
       if (!result.success) {
         return NextResponse.json({ error: result.message }, { status: 400 });
       }
+      await auditRequest(req, currentUser, {
+        action: 'TARIFARIO_ESTRUCTURA',
+        module: 'Tarifario',
+        description: 'Creación de subcategoría "' + subcategory + '" en ' + category + ' (' + cc + ').',
+        details: { tipo: 'subcategoria', cc, category, subcategory, parentSubcategory },
+      });
       return NextResponse.json({ success: true, message: 'Subcategoría creada con éxito.' });
     }
 
@@ -120,6 +133,12 @@ export async function PUT(req: NextRequest) {
       if (!result.success) {
         return NextResponse.json({ error: result.message }, { status: 400 });
       }
+      await auditRequest(req, currentUser, {
+        action: 'TARIFARIO_ESTRUCTURA',
+        module: 'Tarifario',
+        description: 'Renombre de categoría "' + oldCategory + '" a "' + newCategory + '" (' + cc + ').',
+        details: { tipo: 'renombrar_categoria', cc, oldCategory, newCategory, ensayosActualizados: result.updatedCount },
+      });
       return NextResponse.json({
         success: true,
         message: `Categoría renombrada. Se actualizaron ${result.updatedCount} ensayo(s).`,
@@ -138,6 +157,12 @@ export async function PUT(req: NextRequest) {
       if (!result.success) {
         return NextResponse.json({ error: result.message }, { status: 400 });
       }
+      await auditRequest(req, currentUser, {
+        action: 'TARIFARIO_ESTRUCTURA',
+        module: 'Tarifario',
+        description: 'Renombre de subcategoría "' + oldSubcategory + '" a "' + newSubcategory + '" en ' + category + ' (' + cc + ').',
+        details: { tipo: 'renombrar_subcategoria', cc, category, oldSubcategory, newSubcategory, ensayosActualizados: result.updatedCount },
+      });
       return NextResponse.json({
         success: true,
         message: `Subcategoría renombrada. Se actualizaron ${result.updatedCount} ensayo(s).`,
@@ -172,6 +197,12 @@ export async function DELETE(req: NextRequest) {
       if (!result.success) {
         return NextResponse.json({ error: result.message, count: result.count }, { status: 400 });
       }
+      await auditRequest(req, currentUser, {
+        action: 'TARIFARIO_ESTRUCTURA',
+        module: 'Tarifario',
+        description: 'Eliminación de categoría "' + category + '" del centro de costo ' + cc + '.',
+        details: { tipo: 'eliminar_categoria', cc, category },
+      });
       return NextResponse.json({ success: true, message: 'Categoría eliminada correctamente.' });
     }
 
@@ -186,6 +217,12 @@ export async function DELETE(req: NextRequest) {
       if (!result.success) {
         return NextResponse.json({ error: result.message, count: result.count }, { status: 400 });
       }
+      await auditRequest(req, currentUser, {
+        action: 'TARIFARIO_ESTRUCTURA',
+        module: 'Tarifario',
+        description: 'Eliminación de subcategoría "' + subcategory + '" de ' + category + ' (' + cc + ').',
+        details: { tipo: 'eliminar_subcategoria', cc, category, subcategory },
+      });
       return NextResponse.json({ success: true, message: 'Subcategoría eliminada correctamente.' });
     }
 

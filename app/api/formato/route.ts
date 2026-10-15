@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getFormatoSettingsAsync, saveFormatoSettingsAsync } from '@/lib/configuracion-db';
 import { isAdminRole } from '@/lib/permissions';
+import { auditRequest } from '@/lib/audit-db';
 
 export async function GET() {
   const currentUser = await getCurrentUser();
@@ -47,6 +48,15 @@ export async function PUT(req: NextRequest) {
     }
 
     const updated = await saveFormatoSettingsAsync(data, currentUser.name);
+    await auditRequest(req, currentUser, {
+      action: 'CONFIG_FORMATO',
+      module: 'Configuración',
+      description: 'Modificación del formato oficial de cotización.',
+      details: {
+        camposModificados: Object.keys(data).filter((k) => k !== 'headerImage'),
+        logoActualizado: Boolean(data.headerImage),
+      },
+    });
     return NextResponse.json({ success: true, settings: updated });
   } catch (err) {
     console.error('Error saving formato settings:', err);

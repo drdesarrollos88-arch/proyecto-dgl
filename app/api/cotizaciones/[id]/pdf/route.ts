@@ -5,6 +5,7 @@ import { getCurrentUser } from '@/lib/auth';
 import { getFormatoSettings, getUsers } from '@/lib/db';
 import { getCotizacionByIdAsync } from '@/lib/cotizaciones-db';
 import { generateCotizacionPdf } from '@/lib/pdf-generator';
+import { auditRequest } from '@/lib/audit-db';
 
 export async function GET(
   req: NextRequest,
@@ -104,6 +105,15 @@ export async function GET(
   const disposition = isInline
     ? `inline; filename="${filename}"`
     : `attachment; filename="${filename}"`;
+
+  if (!isInline) {
+    await auditRequest(req, currentUser, {
+      action: 'COTIZACION_DESCARGAR',
+      module: 'Cotizaciones',
+      description: 'Descarga de PDF ' + (isDraft ? 'borrador' : 'oficial') + ' de la cotización ' + targetCotizacion.code + ' - ' + (targetCotizacion.clientName || '') + '.',
+      details: { id, code: targetCotizacion.code, cliente: targetCotizacion.clientName, formato: 'pdf', borrador: isDraft, version: versionParam || null },
+    });
+  }
 
   return new NextResponse(pdfBuffer, {
     headers: {

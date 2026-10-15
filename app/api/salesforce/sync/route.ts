@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getCotizacionByIdAsync, saveCotizacionAsync } from '@/lib/cotizaciones-db';
 import { syncCotizacionToSalesforce } from '@/lib/salesforce/salesforce-sync-service';
+import { getCurrentUser } from '@/lib/auth';
+import { auditRequest } from '@/lib/audit-db';
 
 export async function POST(req: Request) {
   try {
@@ -48,6 +50,12 @@ export async function POST(req: Request) {
     }
 
     const result = await syncCotizacionToSalesforce(cotizacionToSync);
+    await auditRequest(req, await getCurrentUser(), {
+      action: 'SALESFORCE_SYNC',
+      module: 'Salesforce',
+      description: 'Envío de la cotización ' + cotizacion.code + ' (' + cotizacion.clientName + ') a Salesforce.',
+      details: { cotizacionId, code: cotizacion.code, cliente: cotizacion.clientName, centroCosto: cotizacionToSync.centroCosto, sector: sectorProyecto || null },
+    });
 
     return NextResponse.json({
       success: true,

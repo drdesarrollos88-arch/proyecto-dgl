@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { exchangeCodeForTokens } from '@/lib/salesforce/salesforce-client';
+import { getCurrentUser } from '@/lib/auth';
+import { auditRequest } from '@/lib/audit-db';
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
@@ -42,6 +44,12 @@ export async function GET(req: NextRequest) {
 
   try {
     const authData = await exchangeCodeForTokens(code, verifier, req.nextUrl.origin);
+    await auditRequest(req, await getCurrentUser(), {
+      action: 'SALESFORCE_CONECTADO',
+      module: 'Configuración',
+      description: 'Integración con Salesforce conectada con la cuenta ' + (authData.userEmail || authData.userName || 'desconocida') + '.',
+      details: { cuentaSalesforce: authData.userEmail, orgId: authData.orgId, instanceUrl: authData.instanceUrl },
+    });
 
     const html = `<!DOCTYPE html>
     <html>

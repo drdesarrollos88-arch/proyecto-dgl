@@ -6,7 +6,7 @@ import {
   deleteBibliografiaItem,
   saveBibliografiaItem,
 } from '@/lib/bibliografia-db';
-import { registrarAuditoria } from '@/lib/audit-db';
+import { registrarAuditoria, getClientIp } from '@/lib/audit-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +39,7 @@ export async function PUT(
 
   const { id } = await params;
   const body = await req.json();
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+  const ip = getClientIp(req);
 
   try {
     if (body.action === 'toggleEstado') {
@@ -92,7 +92,7 @@ export async function DELETE(
   }
 
   const { id } = await params;
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+  const ip = getClientIp(req);
 
   const item = await getBibliografiaById(id);
   const success = await deleteBibliografiaItem(id);

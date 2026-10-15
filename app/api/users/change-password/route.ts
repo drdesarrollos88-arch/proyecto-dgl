@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser, verifyPassword, hashPassword } from '@/lib/auth';
 import { getUserByIdAsync, updateUserAsync } from '@/lib/users-db';
+import { auditRequest } from '@/lib/audit-db';
 
 export async function POST(req: NextRequest) {
   const currentUser = await getCurrentUser();
@@ -44,6 +45,13 @@ export async function POST(req: NextRequest) {
     if (!updated) {
       return NextResponse.json({ error: 'Error al actualizar la contraseña.' }, { status: 500 });
     }
+
+    await auditRequest(req, currentUser, {
+      action: 'USUARIO_CLAVE_CAMBIADA',
+      module: 'Usuarios',
+      description: 'El usuario ' + currentUser.name + ' cambió su propia contraseña.',
+      details: { targetId: currentUser.id },
+    });
 
     return NextResponse.json({
       success: true,

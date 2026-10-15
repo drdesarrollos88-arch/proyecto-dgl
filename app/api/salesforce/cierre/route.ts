@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { closeOpportunityWon, closeOpportunityLost } from '@/lib/salesforce/salesforce-sync-service';
 import { getCotizacionByIdAsync } from '@/lib/cotizaciones-db';
+import { getCurrentUser } from '@/lib/auth';
+import { auditRequest } from '@/lib/audit-db';
 
 export async function POST(req: Request) {
   try {
@@ -57,6 +59,12 @@ export async function POST(req: Request) {
         userName,
       });
 
+      await auditRequest(req, await getCurrentUser(), {
+        action: 'SALESFORCE_CIERRE',
+        module: 'Salesforce',
+        description: 'Cierre GANADO de la cotización ' + cotizacion.code + ' (' + cotizacion.clientName + ') en Salesforce: UF ' + closingUf + ' / CLP ' + closingClp + '.',
+        details: { cotizacionId, code: cotizacion.code, resultado: 'ganada', closingUf, closingClp, cuotas: cuotas.length, fechaCierre: fechaCierre || null },
+      });
       return NextResponse.json({
         success: true,
         data: result,
@@ -81,6 +89,12 @@ export async function POST(req: Request) {
         userName,
       });
 
+      await auditRequest(req, await getCurrentUser(), {
+        action: 'SALESFORCE_CIERRE',
+        module: 'Salesforce',
+        description: 'Cierre PERDIDO de la cotización ' + cotizacion.code + ' (' + cotizacion.clientName + ') en Salesforce. Motivo: ' + motivoRechazo + '.',
+        details: { cotizacionId, code: cotizacion.code, resultado: 'perdida', motivoRechazo, observaciones: observaciones || null, fechaCierre: fechaCierre || null },
+      });
       return NextResponse.json({
         success: true,
         data: result,

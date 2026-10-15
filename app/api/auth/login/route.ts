@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { findUserByIdentifier, verifyPassword, createSessionToken, AUTH_COOKIE_NAME } from '@/lib/auth';
 import { checkDualRateLimit, recordDualFailedAttempt, resetDualLoginAttempts } from '@/lib/security';
-import { registrarAuditoria } from '@/lib/audit-db';
+import { registrarAuditoria, getClientIp } from '@/lib/audit-db';
 
 export async function POST(req: NextRequest) {
   try {
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || '127.0.0.1';
+    const ip = getClientIp(req);
     const body = await req.json().catch(() => ({}));
     const { identifier, password } = body;
 
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     const user = await findUserByIdentifier(identifier);
     if (!user) {
       recordDualFailedAttempt(ip, identifier);
-      registrarAuditoria({
+      await registrarAuditoria({
         action: 'LOGIN_FAILED',
         module: 'Acceso',
         description: `Intento de acceso fallido para identificador: ${identifier}`,
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     const passwordMatch = await verifyPassword(password, user.passwordHash);
     if (!passwordMatch) {
       recordDualFailedAttempt(ip, identifier);
-      registrarAuditoria({
+      await registrarAuditoria({
         userId: user.id,
         userName: user.name,
         userEmail: user.email,
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
       role: user.role,
     };
 
-    registrarAuditoria({
+    await registrarAuditoria({
       userId: user.id,
       userName: user.name,
       userEmail: user.email,

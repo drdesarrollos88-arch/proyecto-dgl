@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getCorrelativoConfigAsync, saveCorrelativoConfigAsync } from '@/lib/configuracion-db';
 import { hasPermission, isAdminRole } from '@/lib/permissions';
+import { auditRequest } from '@/lib/audit-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +41,15 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Cuerpo de solicitud no válido' }, { status: 400 });
     }
 
+    const before = await getCorrelativoConfigAsync();
+    const beforeSequences = JSON.parse(JSON.stringify(before.sequences || {}));
     const updated = await saveCorrelativoConfigAsync(body);
+    await auditRequest(req, user, {
+      action: 'CONFIG_CORRELATIVOS',
+      module: 'Configuración',
+      description: 'Modificación de la secuencia de correlativos oficiales de cotización.',
+      details: { antes: beforeSequences, despues: updated.sequences, numeroInicialPorDefecto: updated.defaultInitialNumber },
+    });
     return NextResponse.json({ success: true, config: updated });
   } catch (err) {
     console.error('Error saving correlativo config:', err);

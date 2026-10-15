@@ -4186,30 +4186,36 @@ function CotizadorContent() {
             </div>
 
             {/* Sample Mass */}
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-amber-900 shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-[10px] uppercase font-bold text-amber-800 tracking-wider block flex items-center gap-1">
-                  <Scale className="w-3.5 h-3.5 text-amber-700" />
-                  Masa de Muestras
-                </span>
-                <div className="flex items-baseline gap-3 mt-0.5">
-                  <div>
-                    <span className="text-[9px] uppercase font-semibold text-amber-700 block">Total Proyecto</span>
-                    <span className="text-xl font-bold font-mono text-amber-950">
-                      {totals.totalWeight.toFixed(1)} <span className="text-xs font-normal text-amber-800">kg</span>
-                    </span>
-                  </div>
-                  <div className="pl-2 border-l border-amber-200">
-                    <span className="text-[9px] uppercase font-semibold text-amber-700 block">Unitaria (1 c/u)</span>
-                    <span className="text-base font-bold font-mono text-amber-900">
-                      {totals.totalUnitWeight.toFixed(1)} <span className="text-xs font-normal text-amber-800">kg</span>
-                    </span>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-amber-900 shadow-xs flex flex-col justify-between">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-amber-800 tracking-wider flex items-center gap-1">
+                    <Scale className="w-3.5 h-3.5 text-amber-700" />
+                    Masa de Muestras
+                  </span>
+                  <div className="flex items-baseline gap-3 mt-0.5">
+                    <div>
+                      <span className="text-[9px] uppercase font-semibold text-amber-700 block">Total Proyecto</span>
+                      <span className="text-xl font-bold font-mono text-amber-950">
+                        {totals.totalWeight.toFixed(1)} <span className="text-xs font-normal text-amber-800">kg</span>
+                      </span>
+                    </div>
+                    <div className="pl-2 border-l border-amber-200">
+                      <span className="text-[9px] uppercase font-semibold text-amber-700 block">Unitaria (1 c/u)</span>
+                      <span className="text-base font-bold font-mono text-amber-900">
+                        {totals.totalUnitWeight.toFixed(1)} <span className="text-xs font-normal text-amber-800">kg</span>
+                      </span>
+                    </div>
                   </div>
                 </div>
-                <span className="text-[10px] text-amber-700 block mt-0.5">Mínimo para laboratorio</span>
+                <div className="w-8 h-8 rounded-lg bg-amber-100 border border-amber-200/60 flex items-center justify-center text-amber-800 font-bold text-xs flex-shrink-0">
+                  kg
+                </div>
               </div>
-              <div className="w-8 h-8 rounded-lg bg-amber-100 border border-amber-200/60 flex items-center justify-center text-amber-800 font-bold text-xs">
-                kg
+              <div className="mt-2 pt-1.5 border-t border-amber-200/70">
+                <span className="text-[9.5px] text-amber-800/90 leading-tight block italic font-medium">
+                  * Cantidad de material indicado es estimativo y se deberá confirmar con laboratorio la cantidad por enviar
+                </span>
               </div>
             </div>
           </div>
@@ -4272,6 +4278,11 @@ function CotizadorContent() {
                   <span className="text-[10px] text-slate-500">Indica en el pie y notas la masa total acumulada a entregar en laboratorio.</span>
                 </div>
               </label>
+            </div>
+
+            <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center gap-1.5 text-[10.5px] text-amber-800 bg-amber-50/60 p-2 rounded-lg border border-amber-100">
+              <span className="font-semibold text-amber-900 shrink-0">Nota técnica en cotización:</span>
+              <span className="italic">&ldquo;Cantidad de material indicado es estimativo y se deberá confirmar con laboratorio la cantidad por enviar&rdquo;</span>
             </div>
           </div>
         </div>

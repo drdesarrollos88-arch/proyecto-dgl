@@ -27,6 +27,7 @@ export const HISTORIAL_VERSIONES: VersionRegistro[] = [
       'Indicador de cantidad de muestra unitaria total (considerando 1 solo ensayo de cada tipo listado) en el resumen inferior y notas oficiales de laboratorio.',
       'Indicador de cantidad total estimada de muestra (masa acumulada total a entregar en laboratorio) en el resumen inferior y notas oficiales.',
       'Panel interactivo de 3 selectores en el Cotizador para activar u omitir cada elemento de muestra de forma independiente.',
+      'Nota técnica aclaratoria institucional ("Cantidad de material indicado es estimativo y se deberá confirmar con laboratorio la cantidad por enviar") integrada directamente en la tarjeta de Masa de Muestras del Cotizador y en la Sección 1.2 del PDF Oficial.',
       'Persistencia de la configuración de visualización de muestras en base de datos y versionado histórico de cotizaciones.',
       'Adaptación geométrica automática de columnas en el PDF oficial Letter garantizando márgenes y legibilidad institucional.',
     ],

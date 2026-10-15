@@ -604,6 +604,7 @@ export function generateCotizacionPdf(
 
   if (showSummaryUnitWeight && totalUnitWeightKg > 0) {
     currentY += 1.5;
+    doc.setFontSize(7.5);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 68, 124);
     doc.text(
@@ -618,6 +619,7 @@ export function generateCotizacionPdf(
 
   if (showSummaryTotalWeight && totalWeightKg > 0) {
     currentY += 1.5;
+    doc.setFontSize(7.5);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(180, 20, 20);
     doc.text(
@@ -628,6 +630,22 @@ export function generateCotizacionPdf(
       currentY
     );
     currentY += 4;
+  }
+
+  const hasSampleWeightDisplayed =
+    (totalWeightKg > 0 || totalUnitWeightKg > 0) &&
+    (showSummaryUnitWeight || showSummaryTotalWeight || showTotalWeightPerItem);
+
+  if (hasSampleWeightDisplayed) {
+    currentY += 1.2;
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(7.2);
+    doc.setTextColor(115, 60, 15);
+    const weightNote =
+      '(*) Cantidad de material indicado es estimativo y se deberá confirmar con laboratorio la cantidad por enviar.';
+    const noteLines = doc.splitTextToSize(weightNote, pageWidth - marginX * 2);
+    doc.text(noteLines, marginX, currentY);
+    currentY += noteLines.length * 3.4;
   }
 
   // ==========================================

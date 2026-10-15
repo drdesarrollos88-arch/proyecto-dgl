@@ -223,6 +223,29 @@ export function getProfiles(): UserProfile[] {
   if (!db.profiles || !Array.isArray(db.profiles) || db.profiles.length === 0) {
     db.profiles = [...DEFAULT_PROFILES];
     writeDb(db);
+    return db.profiles;
+  }
+
+  // Sincronizar perfiles de sistema para asegurar que los nuevos módulos aparezcan disponibles
+  let modified = false;
+  DEFAULT_PROFILES.forEach((def) => {
+    const idx = db.profiles!.findIndex((p) => p.id === def.id);
+    if (idx === -1) {
+      db.profiles!.push({ ...def });
+      modified = true;
+    } else if (db.profiles![idx].isSystem) {
+      const currentPerms = new Set(db.profiles![idx].permissions);
+      def.permissions.forEach((perm) => {
+        if (!currentPerms.has(perm)) {
+          db.profiles![idx].permissions.push(perm);
+          modified = true;
+        }
+      });
+    }
+  });
+
+  if (modified) {
+    writeDb(db);
   }
   return db.profiles;
 }

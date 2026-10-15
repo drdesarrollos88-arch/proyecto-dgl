@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Navbar from '@/components/Navbar';
 import { AuditLog, SessionUser } from '@/lib/types';
-import { isAdminRole } from '@/lib/permissions';
+import { isAdminRole, hasPermission } from '@/lib/permissions';
 import { HISTORIAL_VERSIONES, VersionRegistro, getVersionActual } from '@/lib/versiones';
 import Link from 'next/link';
 import {
@@ -204,6 +204,8 @@ export default function AuditoriaPage() {
   const [search, setSearch] = useState('');
   const [selectedModule, setSelectedModule] = useState('TODOS');
   const [selectedAction, setSelectedAction] = useState('TODOS');
+  const [selectedUser, setSelectedUser] = useState('TODOS');
+  const [registeredUsers, setRegisteredUsers] = useState<{ id: string; name: string; email: string; role?: string }[]>([]);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -215,7 +217,7 @@ export default function AuditoriaPage() {
   // Modal de detalle
   const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
 
-  // Cargar usuario en sesión
+  // Cargar usuario en sesión y usuarios registrados
   useEffect(() => {
     fetch('/api/auth/me')
       .then((res) => (res.ok ? res.json() : null))
@@ -224,12 +226,53 @@ export default function AuditoriaPage() {
       })
       .catch(() => {})
       .finally(() => setLoadingUser(false));
+
+    fetch('/api/users')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (Array.isArray(data?.users)) {
+          setRegisteredUsers(data.users);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  // Lista unificada de opciones de usuarios para filtrado
+  const userOptions = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; email: string; role?: string }>();
+
+    // 1. Usuarios registrados formalmente en la plataforma
+    registeredUsers.forEach((u) => {
+      const key = u.email || u.id;
+      map.set(key, {
+        id: key,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+      });
+    });
+
+    // 2. Extraer de los logs si existen usuarios históricos no registrados actualmente
+    logs.forEach((l) => {
+      const key = l.userEmail || l.userName;
+      if (key && !map.has(key)) {
+        map.set(key, {
+          id: key,
+          name: l.userName || key,
+          email: l.userEmail || '',
+          role: l.userRole,
+        });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [registeredUsers, logs]);
 
   const buildParams = (offset: number, limit: number, withStats: boolean) => {
     const params = new URLSearchParams();
     if (selectedModule !== 'TODOS') params.set('module', selectedModule);
     if (selectedAction !== 'TODOS') params.set('action', selectedAction);
+    if (selectedUser !== 'TODOS') params.set('userId', selectedUser);
     if (search.trim()) params.set('search', search.trim());
     if (dateFrom) params.set('from', dateFrom);
     if (dateTo) params.set('to', dateTo);
@@ -266,18 +309,18 @@ export default function AuditoriaPage() {
     }
   };
 
-  // Recarga inmediata al cambiar módulo, acción o fechas
+  // Recarga inmediata al cambiar módulo, acción, usuario o fechas
   useEffect(() => {
-    if (user && isAdminRole(user.role)) {
+    if (user && (isAdminRole(user.role) || hasPermission(user, 'auditoria.ver'))) {
       fetchAuditLogs(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, selectedModule, selectedAction, dateFrom, dateTo]);
+  }, [user, selectedModule, selectedAction, selectedUser, dateFrom, dateTo]);
 
   // Manejo de búsqueda por debounce
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (user && isAdminRole(user.role)) {
+      if (user && (isAdminRole(user.role) || hasPermission(user, 'auditoria.ver'))) {
         fetchAuditLogs(true);
       }
     }, 350);
@@ -393,8 +436,8 @@ export default function AuditoriaPage() {
     );
   }
 
-  // Protección de acceso: solo Administrador o Soporte
-  if (!user || !isAdminRole(user.role)) {
+  // Protección de acceso: Administrador, Soporte o usuarios con permiso explícito de auditoría
+  if (!user || (!isAdminRole(user.role) && !hasPermission(user, 'auditoria.ver'))) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl max-w-md w-full p-6 text-center shadow-lg border border-slate-200">
@@ -573,6 +616,24 @@ export default function AuditoriaPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                {/* Filtro por Usuario Responsable */}
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+                  <User className="w-3.5 h-3.5 text-purple-600" />
+                  <select
+                    value={selectedUser}
+                    onChange={(e) => setSelectedUser(e.target.value)}
+                    className="text-xs bg-transparent border-none text-slate-700 font-medium focus:outline-none cursor-pointer max-w-[200px] truncate"
+                    title="Filtrar por usuario registrado o responsable"
+                  >
+                    <option value="TODOS">Todos los Usuarios ({userOptions.length})</option>
+                    {userOptions.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} {u.role ? `(${u.role})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
                   <Filter className="w-3.5 h-3.5 text-slate-400" />
                   <select
@@ -604,6 +665,28 @@ export default function AuditoriaPage() {
                 </div>
               </div>
             </div>
+
+            {/* Indicador de filtro activo por usuario */}
+            {selectedUser !== 'TODOS' && (
+              <div className="flex items-center justify-between gap-2 bg-purple-50/90 border border-purple-200 px-4 py-2 rounded-xl text-xs text-purple-900 animate-in fade-in duration-150 shadow-2xs">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-purple-800">Filtrando historial por:</span>
+                  <span className="font-mono bg-purple-200/70 text-purple-950 px-2 py-0.5 rounded font-bold border border-purple-300">
+                    {userOptions.find((u) => u.id === selectedUser)?.name || selectedUser}
+                  </span>
+                  <span className="text-[11px] text-purple-600">
+                    ({total} evento{total === 1 ? '' : 's'} encontrado{total === 1 ? '' : 's'})
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedUser('TODOS')}
+                  className="text-purple-700 hover:text-purple-950 font-bold hover:underline cursor-pointer flex items-center gap-1 text-[11px] shrink-0"
+                >
+                  ✕ Ver todos los usuarios
+                </button>
+              </div>
+            )}
 
             {/* Rango de fechas y exportación */}
             <div className="bg-white rounded-xl p-3 border border-slate-200/80 shadow-xs flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">

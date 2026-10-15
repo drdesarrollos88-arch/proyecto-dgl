@@ -159,7 +159,15 @@ function applyMemoryFilters(logs: AuditLog[], f?: AuditFilter): AuditLog[] {
   let out = logs;
   if (f?.module && f.module !== 'TODOS') out = out.filter((l) => l.module.toLowerCase() === f.module!.toLowerCase());
   if (f?.action && f.action !== 'TODOS') out = out.filter((l) => l.action.toLowerCase() === f.action!.toLowerCase());
-  if (f?.userId) out = out.filter((l) => l.userId === f.userId);
+  if (f?.userId && f.userId !== 'TODOS') {
+    const u = f.userId.toLowerCase().trim();
+    out = out.filter(
+      (l) =>
+        (l.userId && l.userId.toLowerCase() === u) ||
+        (l.userEmail && l.userEmail.toLowerCase() === u) ||
+        (l.userName && l.userName.toLowerCase() === u)
+    );
+  }
   if (f?.startDate) {
     const s = new Date(f.startDate).getTime();
     out = out.filter((l) => new Date(l.timestamp).getTime() >= s);
@@ -201,7 +209,12 @@ export async function getAuditLogsPaged(
 
       if (filtro?.module && filtro.module !== 'TODOS') query = query.eq('module', filtro.module);
       if (filtro?.action && filtro.action !== 'TODOS') query = query.eq('action', filtro.action);
-      if (filtro?.userId) query = query.eq('user_id', filtro.userId);
+      if (filtro?.userId && filtro.userId !== 'TODOS') {
+        const u = sanitizeSearchTerm(filtro.userId);
+        if (u) {
+          query = query.or(`user_id.eq.${u},user_email.eq.${u},user_name.eq.${u}`);
+        }
+      }
       if (filtro?.startDate) query = query.gte('created_at', filtro.startDate);
       if (filtro?.endDate) query = query.lte('created_at', filtro.endDate);
 

@@ -2,19 +2,44 @@ export type UserRole = 'superadmin' | 'admin' | 'comercial';
 
 // Lista oficial de permisos granulares del sistema
 export const PERMISSION_KEYS = [
+  // Módulo Cotizador
   'cotizador.ver',
   'cotizador.descargar_borrador',
   'cotizador.descargar_definitivo',
+
+  // Módulo Cotizaciones (Historial & Métricas)
   'cotizaciones.ver_todas',
   'cotizaciones.eliminar',
+
+  // Módulo Ventas & Salesforce
+  'ventas.ver',
+  'ventas.cierre_oportunidad',
+  'ventas.conciliador',
+
+  // Módulo Tarifario Oficial
   'tarifario.ver',
   'tarifario.descargar',
   'tarifario.editar',
+  'tarifario.estructura',
+
+  // Módulo Clientes, Contactos y Proyectos
   'clientes.gestionar',
-  'configuracion.formato',
+  'clientes.importar',
+
+  // Módulo Inteligencia Artificial (Asistente & RAG)
+  'ia.asistente',
   'configuracion.aprendizaje',
   'configuracion.bibliografia',
+
+  // Módulo Auditoría & Trazabilidad
   'auditoria.ver',
+  'auditoria.exportar',
+
+  // Módulo Configuración Oficial
+  'configuracion.correlativos',
+  'configuracion.formato',
+
+  // Módulo Usuarios y Seguridad (RBAC)
   'usuarios.administrar',
 ] as const;
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { isAdminRole } from '@/lib/permissions';
+import { isAdminRole, hasPermission } from '@/lib/permissions';
 import { getAuditLogsPaged, getAuditStats, getClientIp, registrarAuditoria } from '@/lib/audit-db';
 
 export const dynamic = 'force-dynamic';
@@ -23,10 +23,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
   }
 
-  // Solo administradores y soporte técnico tienen acceso a la auditoría del sistema
-  if (!isAdminRole(currentUser.role)) {
+  // Solo administradores, soporte técnico o usuarios con permiso explícito de auditoría tienen acceso
+  if (!isAdminRole(currentUser.role) && !hasPermission(currentUser, 'auditoria.ver')) {
     return NextResponse.json(
-      { error: 'Acceso denegado: Se requieren privilegios de Administrador o Soporte.' },
+      { error: 'Acceso denegado: Se requieren privilegios de Administrador o permiso de auditoría.' },
       { status: 403 }
     );
   }

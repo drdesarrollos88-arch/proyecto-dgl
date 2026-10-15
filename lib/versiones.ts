@@ -13,11 +13,31 @@ export interface VersionRegistro {
 
 export const HISTORIAL_VERSIONES: VersionRegistro[] = [
   {
+    version: '2.4.1',
+    tag: 'v2.4.1',
+    fecha: '2026-10-15',
+    fechaFormato: '15 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Cuentas Internacionales, Filtro por Usuario en Auditoría y Permisos Granulares RBAC',
+    modulos: ['Auditoría', 'Salesforce', 'Cotizador', 'Seguridad RBAC', 'Formatos'],
+    descripcion:
+      'Actualización integral con soporte de cuentas internacionales en Salesforce y documentos oficiales, filtrado de eventos por usuario en bitácora de auditoría, control de permisos granulares RBAC para todos los módulos y filtrado contextual de centros de costo.',
+    detalles: [
+      'Omisión automática de RUT comodín 5555555-5 en PDF y Excel para clientes extranjeros e internacionales.',
+      'Sincronización a Salesforce por Razón Social real en cuentas internacionales, evitando vinculaciones erróneas por RUT genérico.',
+      'Filtrado dinámico de Centros de Costo en Cotizador según Sección DGL seleccionada (SGL, SLGP, Sin Sección DGL).',
+      'Filtro por usuario registrado en Bitácora de Auditoría para trazabilidad individual de interacciones y modificaciones.',
+      'Expansión del sistema de permisos RBAC para nuevos módulos: Conciliador de Ventas, Cierre de Oportunidades, Estructura Tarifaria, Asistente IA, RAG y Auditoría.',
+      'Mejoras ergonómicas consolidadas: redacción de notas con espacios/saltos de línea (Shift+Enter/Alt+Enter), cierre con X en visor PDF y modificación porcentual masiva de tarifas.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
     version: '2.4.0',
     tag: 'v2.4.0',
     fecha: '2026-10-15',
     fechaFormato: '15 de Octubre, 2026',
-    estado: 'activa',
+    estado: 'previa',
     titulo: 'Módulo de Auditoría Integral y Control de Versiones',
     modulos: ['Auditoría', 'Seguridad', 'Infraestructura Nube'],
     descripcion:

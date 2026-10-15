@@ -5,7 +5,16 @@ export interface PermissionDefinition {
   key: PermissionKey;
   label: string;
   description: string;
-  module: 'Cotizador' | 'Cotizaciones' | 'Tarifario' | 'Clientes' | 'Configuración' | 'Usuarios';
+  module:
+    | 'Cotizador'
+    | 'Cotizaciones'
+    | 'Ventas'
+    | 'Tarifario'
+    | 'Clientes'
+    | 'Inteligencia Artificial'
+    | 'Auditoría'
+    | 'Configuración'
+    | 'Usuarios';
 }
 
 export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
@@ -29,7 +38,7 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     module: 'Cotizador',
   },
 
-  // Módulo Cotizaciones (Historial)
+  // Módulo Cotizaciones (Historial & Métricas)
   {
     key: 'cotizaciones.ver_todas',
     label: 'Ver Todas las Cotizaciones',
@@ -43,7 +52,27 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     module: 'Cotizaciones',
   },
 
-  // Módulo Tarifario
+  // Módulo Ventas & Salesforce
+  {
+    key: 'ventas.ver',
+    label: 'Panel de Ventas & Oportunidades',
+    description: 'Permite consultar el pipeline comercial de cotizaciones y cuotas en curso.',
+    module: 'Ventas',
+  },
+  {
+    key: 'ventas.cierre_oportunidad',
+    label: 'Cierre de Oportunidades Salesforce',
+    description: 'Permite registrar cierres comerciales (Ganada con cuotas / Perdida) directamente en Salesforce.',
+    module: 'Ventas',
+  },
+  {
+    key: 'ventas.conciliador',
+    label: 'Conciliador EERR vs Salesforce',
+    description: 'Permite acceder a la herramienta de cuadratura contable y conciliación de estados de resultados.',
+    module: 'Ventas',
+  },
+
+  // Módulo Tarifario Oficial
   {
     key: 'tarifario.ver',
     label: 'Visualizar Catálogo Tarifario',
@@ -62,6 +91,12 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     description: 'Permite modificar valores UF, nombres de ensayos o incorporar nuevos ensayos oficiales.',
     module: 'Tarifario',
   },
+  {
+    key: 'tarifario.estructura',
+    label: 'Configurar Estructura Tarifaria',
+    description: 'Permite administrar categorías, subcategorías y ordenamiento jerárquico del tarifario.',
+    module: 'Tarifario',
+  },
 
   // Módulo Clientes, Contactos y Proyectos
   {
@@ -70,37 +105,65 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     description: 'Permite registrar y editar empresas, contactos y correlativos de proyectos.',
     module: 'Clientes',
   },
-
-  // Módulo Configuración & Conocimiento IA
   {
-    key: 'configuracion.formato',
-    label: 'Configuración de Formato y Plantilla',
-    description: 'Permite modificar código de formato oficial, direcciones, teléfonos y logotipos.',
-    module: 'Configuración',
+    key: 'clientes.importar',
+    label: 'Importación Masiva de Clientes',
+    description: 'Permite cargar planillas Excel con directorios masivos de empresas y contactos.',
+    module: 'Clientes',
+  },
+
+  // Módulo Inteligencia Artificial (Asistente & RAG)
+  {
+    key: 'ia.asistente',
+    label: 'Asistente Técnico IA (Chat & Desglose)',
+    description: 'Permite interactuar con el copiloto IA para recomendación de ensayos y consultas normativas.',
+    module: 'Inteligencia Artificial',
   },
   {
     key: 'configuracion.aprendizaje',
     label: 'Memoria y Aprendizaje IA',
     description: 'Permite supervisar el aprendizaje continuo, sinónimos y base de conocimiento histórico RAG.',
-    module: 'Configuración',
+    module: 'Inteligencia Artificial',
   },
   {
     key: 'configuracion.bibliografia',
     label: 'Bibliografía y Normas IA',
     description: 'Permite consultar y cargar documentos técnicos y normativos oficiales (NCh, ASTM, MOP).',
+    module: 'Inteligencia Artificial',
+  },
+
+  // Módulo Auditoría & Trazabilidad
+  {
+    key: 'auditoria.ver',
+    label: 'Bitácora de Auditoría y Trazabilidad',
+    description: 'Permite visualizar el registro cronológico de accesos, inicios de sesión y modificaciones.',
+    module: 'Auditoría',
+  },
+  {
+    key: 'auditoria.exportar',
+    label: 'Exportación Certificada de Auditoría',
+    description: 'Permite descargar el registro histórico de auditoría en formato CSV seguro.',
+    module: 'Auditoría',
+  },
+
+  // Módulo Configuración Oficial
+  {
+    key: 'configuracion.correlativos',
+    label: 'Configuración de Correlativos',
+    description: 'Permite modificar la secuencia numérica consecutiva por Centro de Costo (CC).',
     module: 'Configuración',
   },
   {
-    key: 'auditoria.ver',
-    label: 'Auditoría y Trazabilidad',
-    description: 'Permite visualizar el registro de accesos, inicios de sesión y modificaciones del sistema.',
+    key: 'configuracion.formato',
+    label: 'Configuración de Formato Oficial',
+    description: 'Permite modificar encabezado, pie de página, logotipos y observaciones de las cotizaciones.',
     module: 'Configuración',
   },
 
-  // Módulo Usuarios y Accesos
+  // Módulo Usuarios y Seguridad (RBAC)
   {
     key: 'usuarios.administrar',
-    label: 'Administración de Usuarios y Perfiles',
+    label: 'Administración de Usuarios y Perfiles (RBAC)',
     description: 'Permite crear usuarios, asignar perfiles de acceso y definir permisos granulares.',
     module: 'Usuarios',
   },
@@ -113,22 +176,7 @@ export const DEFAULT_PROFILES: UserProfile[] = [
     name: 'Administrador / Soporte',
     description: 'Control absoluto de la plataforma, roles protegidos, usuarios y configuraciones maestras.',
     isSystem: true,
-    permissions: [
-      'cotizador.ver',
-      'cotizador.descargar_borrador',
-      'cotizador.descargar_definitivo',
-      'cotizaciones.ver_todas',
-      'cotizaciones.eliminar',
-      'tarifario.ver',
-      'tarifario.descargar',
-      'tarifario.editar',
-      'clientes.gestionar',
-      'configuracion.formato',
-      'configuracion.aprendizaje',
-      'configuracion.bibliografia',
-      'auditoria.ver',
-      'usuarios.administrar',
-    ],
+    permissions: PERMISSION_DEFINITIONS.map((p) => p.key),
     createdAt: '2026-01-01T00:00:00.000Z',
   },
   {
@@ -136,37 +184,25 @@ export const DEFAULT_PROFILES: UserProfile[] = [
     name: 'Administrador',
     description: 'Control total de cotizaciones, tarifas, clientes y gestión de usuarios.',
     isSystem: true,
-    permissions: [
-      'cotizador.ver',
-      'cotizador.descargar_borrador',
-      'cotizador.descargar_definitivo',
-      'cotizaciones.ver_todas',
-      'cotizaciones.eliminar',
-      'tarifario.ver',
-      'tarifario.descargar',
-      'tarifario.editar',
-      'clientes.gestionar',
-      'configuracion.formato',
-      'configuracion.aprendizaje',
-      'configuracion.bibliografia',
-      'auditoria.ver',
-      'usuarios.administrar',
-    ],
+    permissions: PERMISSION_DEFINITIONS.map((p) => p.key),
     createdAt: '2026-01-01T00:00:00.000Z',
   },
   {
     id: 'comercial_senior',
     name: 'Comercial Senior',
-    description: 'Cotización completa, descarga oficial, visualización global y descarga de tarifario.',
+    description: 'Cotización completa, descarga oficial, ventas, Salesforce, visualización global y descarga de tarifario.',
     isSystem: true,
     permissions: [
       'cotizador.ver',
       'cotizador.descargar_borrador',
       'cotizador.descargar_definitivo',
       'cotizaciones.ver_todas',
+      'ventas.ver',
+      'ventas.cierre_oportunidad',
       'tarifario.ver',
       'tarifario.descargar',
       'clientes.gestionar',
+      'ia.asistente',
       'configuracion.aprendizaje',
       'configuracion.bibliografia',
     ],
@@ -175,14 +211,17 @@ export const DEFAULT_PROFILES: UserProfile[] = [
   {
     id: 'comercial_junior',
     name: 'Comercial Estándar',
-    description: 'Cotización y emisión oficial. No tiene autorización para descargar el libro tarifario completo.',
+    description: 'Cotización y emisión oficial, ventas y CRM. No tiene autorización para descargar el libro tarifario completo.',
     isSystem: true,
     permissions: [
       'cotizador.ver',
       'cotizador.descargar_borrador',
       'cotizador.descargar_definitivo',
+      'ventas.ver',
+      'ventas.cierre_oportunidad',
       'tarifario.ver',
       'clientes.gestionar',
+      'ia.asistente',
       'configuracion.aprendizaje',
       'configuracion.bibliografia',
     ],
@@ -196,8 +235,10 @@ export const DEFAULT_PROFILES: UserProfile[] = [
     permissions: [
       'cotizador.ver',
       'cotizador.descargar_borrador',
+      'ventas.ver',
       'tarifario.ver',
       'clientes.gestionar',
+      'ia.asistente',
       'configuracion.bibliografia',
     ],
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -211,7 +252,9 @@ export const DEFAULT_PROFILES: UserProfile[] = [
       'cotizador.ver',
       'cotizador.descargar_borrador',
       'cotizaciones.ver_todas',
+      'ventas.ver',
       'tarifario.ver',
+      'ia.asistente',
       'configuracion.aprendizaje',
       'configuracion.bibliografia',
     ],

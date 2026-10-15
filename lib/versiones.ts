@@ -21,13 +21,15 @@ export const HISTORIAL_VERSIONES: VersionRegistro[] = [
     titulo: 'Cálculo y Visualización Opcional de Masa de Muestras en Cotizaciones y PDF',
     modulos: ['Cotizador', 'Formatos', 'PDF Oficial'],
     descripcion:
-      'Incorporación de cálculo de kilos totales por ensayo (masa unitaria × cantidad), desglose de muestra unitaria total y masa total acumulada en resumen inferior, con controles independientes para mostrar u ocultar cada uno de los 3 ítems en la propuesta comercial y PDF oficial.',
+      'Incorporación de cálculo de kilos totales por ensayo (masa unitaria × cantidad), desglose de muestra unitaria total y masa total acumulada en resumen inferior, con 5 controles y gatillantes independientes para activar u ocultar columnas, cifras en pie de tabla ("Total Ensayos") y notas explicativas en Observaciones 1.2.',
     detalles: [
       'Columna opcional "Masa Tot. (kg)" en tabla interactiva y PDF oficial calculada automáticamente como masa unitaria × cantidad de ensayos solicitados.',
       'Indicador de cantidad de muestra unitaria total (considerando 1 solo ensayo de cada tipo listado) en el resumen inferior y notas oficiales de laboratorio.',
       'Indicador de cantidad total estimada de muestra (masa acumulada total a entregar en laboratorio) en el resumen inferior y notas oficiales.',
-      'Panel interactivo de 3 selectores en el Cotizador para activar u omitir cada elemento de muestra de forma independiente.',
+      'Gatillante independiente para cifras en pie de tabla: control para mostrar u ocultar los kilos en la fila de cierre "Total Ensayos" del PDF.',
+      'Gatillante independiente para observaciones técnicas (Sección 1.2): control para mostrar u omitir las líneas de notas de masa bajo la tabla.',
       'Nota técnica aclaratoria institucional ("Cantidad de material indicado es estimativo y se deberá confirmar con laboratorio la cantidad por enviar") integrada directamente en la tarjeta de Masa de Muestras del Cotizador y en la Sección 1.2 del PDF Oficial.',
+      'Panel interactivo de 5 selectores en el Cotizador organizados en cálculos y ubicaciones independientes.',
       'Persistencia de la configuración de visualización de muestras en base de datos y versionado histórico de cotizaciones.',
       'Adaptación geométrica automática de columnas en el PDF oficial Letter garantizando márgenes y legibilidad institucional.',
     ],

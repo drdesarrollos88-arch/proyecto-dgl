@@ -56,6 +56,8 @@ export function generateCotizacionPdf(
     showTotalWeightPerItem?: boolean;
     showSummaryUnitWeight?: boolean;
     showSummaryTotalWeight?: boolean;
+    showTableFootWeight?: boolean;
+    showObservationsWeight?: boolean;
   }
 ): jsPDF {
   const doc = new jsPDF({
@@ -78,6 +80,10 @@ export function generateCotizacionPdf(
     options?.showSummaryUnitWeight ?? (cotizacion.showSummaryUnitWeight !== false);
   const showSummaryTotalWeight =
     options?.showSummaryTotalWeight ?? (cotizacion.showSummaryTotalWeight !== false);
+  const showTableFootWeight =
+    options?.showTableFootWeight ?? (cotizacion.showTableFootWeight !== false);
+  const showObservationsWeight =
+    options?.showObservationsWeight ?? (cotizacion.showObservationsWeight !== false);
 
   const pageWidth = doc.internal.pageSize.getWidth(); // 215.9 mm
   const pageHeight = doc.internal.pageSize.getHeight(); // 279.4 mm
@@ -490,8 +496,14 @@ export function generateCotizacionPdf(
     ? `$${(cotizacion.totalClp || Math.round((cotizacion.totalUf || 0) * ufVal)).toLocaleString('es-CL')} CLP`
     : `${(cotizacion.totalUf || 0).toFixed(2)} UF`;
 
-  const unitWeightFoot = showSummaryUnitWeight && totalUnitWeightKg > 0 ? `${totalUnitWeightKg.toFixed(1)} kg` : '';
-  const totalWeightFoot = showSummaryTotalWeight && totalWeightKg > 0 ? `${totalWeightKg.toFixed(1)} kg` : '';
+  const unitWeightFoot =
+    showTableFootWeight && showSummaryUnitWeight && totalUnitWeightKg > 0
+      ? `${totalUnitWeightKg.toFixed(1)} kg`
+      : '';
+  const totalWeightFoot =
+    showTableFootWeight && showSummaryTotalWeight && totalWeightKg > 0
+      ? `${totalWeightKg.toFixed(1)} kg`
+      : '';
 
   const tableFoot = showTotalWeightPerItem
     ? [
@@ -602,50 +614,52 @@ export function generateCotizacionPdf(
     currentY += lines.length * 3.4;
   });
 
-  if (showSummaryUnitWeight && totalUnitWeightKg > 0) {
-    currentY += 1.5;
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0, 68, 124);
-    doc.text(
-      `Cantidad de muestra unitaria estimada (1 ensayo de cada tipo listado): ${totalUnitWeightKg.toFixed(
-        1
-      )} kg aproximadamente.`,
-      marginX,
-      currentY
-    );
-    currentY += 3.8;
-  }
+  if (showObservationsWeight) {
+    if (showSummaryUnitWeight && totalUnitWeightKg > 0) {
+      currentY += 1.5;
+      doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 68, 124);
+      doc.text(
+        `Cantidad de muestra unitaria estimada (1 ensayo de cada tipo listado): ${totalUnitWeightKg.toFixed(
+          1
+        )} kg aproximadamente.`,
+        marginX,
+        currentY
+      );
+      currentY += 3.8;
+    }
 
-  if (showSummaryTotalWeight && totalWeightKg > 0) {
-    currentY += 1.5;
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(180, 20, 20);
-    doc.text(
-      `Cantidad total estimada de muestras a entregar en laboratorio: ${totalWeightKg.toFixed(
-        1
-      )} kg aproximadamente.`,
-      marginX,
-      currentY
-    );
-    currentY += 4;
-  }
+    if (showSummaryTotalWeight && totalWeightKg > 0) {
+      currentY += 1.5;
+      doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(180, 20, 20);
+      doc.text(
+        `Cantidad total estimada de muestras a entregar en laboratorio: ${totalWeightKg.toFixed(
+          1
+        )} kg aproximadamente.`,
+        marginX,
+        currentY
+      );
+      currentY += 4;
+    }
 
-  const hasSampleWeightDisplayed =
-    (totalWeightKg > 0 || totalUnitWeightKg > 0) &&
-    (showSummaryUnitWeight || showSummaryTotalWeight || showTotalWeightPerItem);
+    const hasSampleWeightDisplayed =
+      (totalWeightKg > 0 || totalUnitWeightKg > 0) &&
+      (showSummaryUnitWeight || showSummaryTotalWeight || showTotalWeightPerItem);
 
-  if (hasSampleWeightDisplayed) {
-    currentY += 1.2;
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(7.2);
-    doc.setTextColor(115, 60, 15);
-    const weightNote =
-      '(*) Cantidad de material indicado es estimativo y se deberá confirmar con laboratorio la cantidad por enviar.';
-    const noteLines = doc.splitTextToSize(weightNote, pageWidth - marginX * 2);
-    doc.text(noteLines, marginX, currentY);
-    currentY += noteLines.length * 3.4;
+    if (hasSampleWeightDisplayed) {
+      currentY += 1.2;
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(7.2);
+      doc.setTextColor(115, 60, 15);
+      const weightNote =
+        '(*) Cantidad de material indicado es estimativo y se deberá confirmar con laboratorio la cantidad por enviar.';
+      const noteLines = doc.splitTextToSize(weightNote, pageWidth - marginX * 2);
+      doc.text(noteLines, marginX, currentY);
+      currentY += noteLines.length * 3.4;
+    }
   }
 
   // ==========================================

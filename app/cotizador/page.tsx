@@ -340,6 +340,8 @@ function CotizadorContent() {
   const [showTotalWeightPerItem, setShowTotalWeightPerItem] = useState<boolean>(true);
   const [showSummaryUnitWeight, setShowSummaryUnitWeight] = useState<boolean>(true);
   const [showSummaryTotalWeight, setShowSummaryTotalWeight] = useState<boolean>(true);
+  const [showTableFootWeight, setShowTableFootWeight] = useState<boolean>(true);
+  const [showObservationsWeight, setShowObservationsWeight] = useState<boolean>(true);
 
   // Items in current quotation
   const [items, setItems] = useState<CotizacionItem[]>([]);
@@ -719,6 +721,12 @@ function CotizadorContent() {
           }
           if (c.showSummaryTotalWeight !== undefined) {
             setShowSummaryTotalWeight(c.showSummaryTotalWeight !== false);
+          }
+          if (c.showTableFootWeight !== undefined) {
+            setShowTableFootWeight(c.showTableFootWeight !== false);
+          }
+          if (c.showObservationsWeight !== undefined) {
+            setShowObservationsWeight(c.showObservationsWeight !== false);
           }
           if (Array.isArray(c.items)) setItems(recalculateItemNumbers(c.items));
           if (c.aiChatState?.messages && Array.isArray(c.aiChatState.messages) && c.aiChatState.messages.length > 0) {
@@ -1435,6 +1443,8 @@ function CotizadorContent() {
       showTotalWeightPerItem,
       showSummaryUnitWeight,
       showSummaryTotalWeight,
+      showTableFootWeight,
+      showObservationsWeight,
       observations,
       condicionesComerciales,
       showEconomicIndicators: showIndicatorsInPdf,
@@ -1494,6 +1504,8 @@ function CotizadorContent() {
     showTotalWeightPerItem,
     showSummaryUnitWeight,
     showSummaryTotalWeight,
+    showTableFootWeight,
+    showObservationsWeight,
     originalQuote,
     user?.name,
     user,
@@ -1544,6 +1556,8 @@ function CotizadorContent() {
           showTotalWeightPerItem: originalQuote.showTotalWeightPerItem,
           showSummaryUnitWeight: originalQuote.showSummaryUnitWeight,
           showSummaryTotalWeight: originalQuote.showSummaryTotalWeight,
+          showTableFootWeight: originalQuote.showTableFootWeight,
+          showObservationsWeight: originalQuote.showObservationsWeight,
           ufValue: originalQuote.ufValue,
           dollarValue: originalQuote.dollarValue,
           items: originalQuote.items,
@@ -1759,6 +1773,8 @@ function CotizadorContent() {
           showTotalWeightPerItem: originalQuote.showTotalWeightPerItem,
           showSummaryUnitWeight: originalQuote.showSummaryUnitWeight,
           showSummaryTotalWeight: originalQuote.showSummaryTotalWeight,
+          showTableFootWeight: originalQuote.showTableFootWeight,
+          showObservationsWeight: originalQuote.showObservationsWeight,
           ufValue: originalQuote.ufValue,
           dollarValue: originalQuote.dollarValue,
           items: originalQuote.items,
@@ -1777,6 +1793,8 @@ function CotizadorContent() {
         showTotalWeightPerItem,
         showSummaryUnitWeight,
         showSummaryTotalWeight,
+        showTableFootWeight,
+        showObservationsWeight,
         status: 'Finalizada',
         version: isVersionMode ? (originalQuote?.version || 1) + 1 : (currentCotizacion.version || 1),
         versionHistory: updatedVersionHistory,
@@ -1799,6 +1817,8 @@ function CotizadorContent() {
         showTotalWeightPerItem,
         showSummaryUnitWeight,
         showSummaryTotalWeight,
+        showTableFootWeight,
+        showObservationsWeight,
       });
       const cleanCode = code.replace(/[^a-zA-Z0-9_-]/g, '_');
       const filename = `Cotizacion_${cleanCode}_${(clientName || 'Cliente').replace(/\s+/g, '_')}.pdf`;
@@ -1966,6 +1986,8 @@ function CotizadorContent() {
         showTotalWeightPerItem,
         showSummaryUnitWeight,
         showSummaryTotalWeight,
+        showTableFootWeight,
+        showObservationsWeight,
       });
       const cleanCode = code.replace(/[^a-zA-Z0-9_-]/g, '_');
       const filename = `Borrador_Cotizacion_${cleanCode}_${(clientName || 'Cliente').replace(/\s+/g, '_')}.pdf`;
@@ -2028,6 +2050,8 @@ function CotizadorContent() {
         showTotalWeightPerItem,
         showSummaryUnitWeight,
         showSummaryTotalWeight,
+        showTableFootWeight,
+        showObservationsWeight,
       });
       const cleanCode = code.replace(/[^a-zA-Z0-9_-]/g, '_');
       const filename = `Cotizacion_${cleanCode}_${(clientName || 'Cliente').replace(/\s+/g, '_')}.pdf`;
@@ -2073,6 +2097,8 @@ function CotizadorContent() {
     setShowTotalWeightPerItem(true);
     setShowSummaryUnitWeight(true);
     setShowSummaryTotalWeight(true);
+    setShowTableFootWeight(true);
+    setShowObservationsWeight(true);
     setStatusMessage(null);
     setShowSuccessModal(false);
     assistantChatMessagesRef.current = null;
@@ -4229,7 +4255,7 @@ function CotizadorContent() {
                 </div>
                 <div>
                   <h4 className="text-xs font-bold text-slate-800">Visualización de Muestras (kg) en Cotización y PDF</h4>
-                  <p className="text-[10px] text-slate-500">Active o desactive los elementos de muestra según lo que requiera presentar al cliente:</p>
+                  <p className="text-[10px] text-slate-500">Active o desactive los elementos y ubicaciones de muestra según requiera presentar al cliente:</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -4239,49 +4265,91 @@ function CotizadorContent() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-2.5">
-              <label className="flex items-start gap-2.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-blue-50/40 hover:border-blue-200 cursor-pointer select-none transition">
-                <input
-                  type="checkbox"
-                  checked={showTotalWeightPerItem}
-                  onChange={(e) => setShowTotalWeightPerItem(e.target.checked)}
-                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 mt-0.5 cursor-pointer flex-shrink-0"
-                />
-                <div className="text-[11px] leading-tight">
-                  <span className="font-semibold text-slate-800 block">Kilos totales por ensayo</span>
-                  <span className="text-[10px] text-slate-500">Muestra la columna con masa unitaria multiplicada por la cantidad de ensayos.</span>
-                </div>
-              </label>
+            <div className="pt-2.5 space-y-2.5">
+              {/* Sección 1: Datos y Cálculos de Masa */}
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5">
+                  1. Cálculos y Columnas de Masa
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                  <label className="flex items-start gap-2.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-blue-50/40 hover:border-blue-200 cursor-pointer select-none transition">
+                    <input
+                      type="checkbox"
+                      checked={showTotalWeightPerItem}
+                      onChange={(e) => setShowTotalWeightPerItem(e.target.checked)}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 mt-0.5 cursor-pointer flex-shrink-0"
+                    />
+                    <div className="text-[11px] leading-tight">
+                      <span className="font-semibold text-slate-800 block">Kilos totales por ensayo</span>
+                      <span className="text-[10px] text-slate-500">Muestra la columna "Masa Tot. (kg)" con masa unitaria multiplicada por la cantidad.</span>
+                    </div>
+                  </label>
 
-              <label className="flex items-start gap-2.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-blue-50/40 hover:border-blue-200 cursor-pointer select-none transition">
-                <input
-                  type="checkbox"
-                  checked={showSummaryUnitWeight}
-                  onChange={(e) => setShowSummaryUnitWeight(e.target.checked)}
-                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 mt-0.5 cursor-pointer flex-shrink-0"
-                />
-                <div className="text-[11px] leading-tight">
-                  <span className="font-semibold text-slate-800 block">Resumen: Muestra unitaria</span>
-                  <span className="text-[10px] text-slate-500">Indica en el pie y notas la masa considerando 1 solo ensayo de cada tipo listado.</span>
-                </div>
-              </label>
+                  <label className="flex items-start gap-2.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-blue-50/40 hover:border-blue-200 cursor-pointer select-none transition">
+                    <input
+                      type="checkbox"
+                      checked={showSummaryUnitWeight}
+                      onChange={(e) => setShowSummaryUnitWeight(e.target.checked)}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 mt-0.5 cursor-pointer flex-shrink-0"
+                    />
+                    <div className="text-[11px] leading-tight">
+                      <span className="font-semibold text-slate-800 block">Resumen: Muestra unitaria</span>
+                      <span className="text-[10px] text-slate-500">Calcula la masa considerando 1 solo ensayo de cada tipo listado (1 c/u).</span>
+                    </div>
+                  </label>
 
-              <label className="flex items-start gap-2.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-blue-50/40 hover:border-blue-200 cursor-pointer select-none transition">
-                <input
-                  type="checkbox"
-                  checked={showSummaryTotalWeight}
-                  onChange={(e) => setShowSummaryTotalWeight(e.target.checked)}
-                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 mt-0.5 cursor-pointer flex-shrink-0"
-                />
-                <div className="text-[11px] leading-tight">
-                  <span className="font-semibold text-slate-800 block">Resumen: Cantidad total</span>
-                  <span className="text-[10px] text-slate-500">Indica en el pie y notas la masa total acumulada a entregar en laboratorio.</span>
+                  <label className="flex items-start gap-2.5 p-2 rounded-lg border border-slate-200 bg-slate-50/70 hover:bg-blue-50/40 hover:border-blue-200 cursor-pointer select-none transition">
+                    <input
+                      type="checkbox"
+                      checked={showSummaryTotalWeight}
+                      onChange={(e) => setShowSummaryTotalWeight(e.target.checked)}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 mt-0.5 cursor-pointer flex-shrink-0"
+                    />
+                    <div className="text-[11px] leading-tight">
+                      <span className="font-semibold text-slate-800 block">Resumen: Cantidad total</span>
+                      <span className="text-[10px] text-slate-500">Calcula la masa total acumulada del proyecto a entregar en laboratorio.</span>
+                    </div>
+                  </label>
                 </div>
-              </label>
+              </div>
+
+              {/* Sección 2: Ubicaciones en la Cotización / PDF */}
+              <div className="pt-2 border-t border-slate-100">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5">
+                  2. Ubicación en la Cotización / PDF (Gatillantes Independientes)
+                </span>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  <label className="flex items-start gap-2.5 p-2 rounded-lg border border-amber-200/80 bg-amber-50/40 hover:bg-amber-100/40 cursor-pointer select-none transition">
+                    <input
+                      type="checkbox"
+                      checked={showTableFootWeight}
+                      onChange={(e) => setShowTableFootWeight(e.target.checked)}
+                      className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4 mt-0.5 cursor-pointer flex-shrink-0"
+                    />
+                    <div className="text-[11px] leading-tight">
+                      <span className="font-semibold text-slate-800 block">Pie de Tabla: Cifras en fila Total Ensayos</span>
+                      <span className="text-[10px] text-slate-500">Muestra los valores de masa (kg) en las celdas inferiores de la tabla principal del PDF.</span>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-2.5 p-2 rounded-lg border border-amber-200/80 bg-amber-50/40 hover:bg-amber-100/40 cursor-pointer select-none transition">
+                    <input
+                      type="checkbox"
+                      checked={showObservationsWeight}
+                      onChange={(e) => setShowObservationsWeight(e.target.checked)}
+                      className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4 mt-0.5 cursor-pointer flex-shrink-0"
+                    />
+                    <div className="text-[11px] leading-tight">
+                      <span className="font-semibold text-slate-800 block">Observaciones: Notas de masa técnica (Sección 1.2)</span>
+                      <span className="text-[10px] text-slate-500">Imprime las líneas descriptivas y nota de confirmación con laboratorio bajo la tabla.</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
             </div>
 
             <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center gap-1.5 text-[10.5px] text-amber-800 bg-amber-50/60 p-2 rounded-lg border border-amber-100">
-              <span className="font-semibold text-amber-900 shrink-0">Nota técnica en cotización:</span>
+              <span className="font-semibold text-amber-900 shrink-0">Nota técnica institucional:</span>
               <span className="italic">&ldquo;Cantidad de material indicado es estimativo y se deberá confirmar con laboratorio la cantidad por enviar&rdquo;</span>
             </div>
           </div>

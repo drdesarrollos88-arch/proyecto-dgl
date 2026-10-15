@@ -106,6 +106,16 @@ export function mapSupabaseToCotizacion(row: any): Cotizacion {
       row.showSummaryTotalWeight ??
       row.ai_chat_state?.showSummaryTotalWeight ??
       true,
+    showTableFootWeight:
+      row.show_table_foot_weight ??
+      row.showTableFootWeight ??
+      row.ai_chat_state?.showTableFootWeight ??
+      true,
+    showObservationsWeight:
+      row.show_observations_weight ??
+      row.showObservationsWeight ??
+      row.ai_chat_state?.showObservationsWeight ??
+      true,
     observations: Array.isArray(row.observations) ? row.observations : [],
     status: (row.status as any) || 'Borrador',
     version: row.version || 1,
@@ -206,6 +216,8 @@ export function mapCotizacionToSupabase(c: Partial<Cotizacion>): any {
       showTotalWeightPerItem: c.showTotalWeightPerItem,
       showSummaryUnitWeight: c.showSummaryUnitWeight,
       showSummaryTotalWeight: c.showSummaryTotalWeight,
+      showTableFootWeight: c.showTableFootWeight,
+      showObservationsWeight: c.showObservationsWeight,
       totalUnitWeightKg: c.totalUnitWeightKg,
       cierreNegocio: c.cierreNegocio || c.aiChatState?.cierreNegocio || undefined,
       versionHistory: c.versionHistory || [],

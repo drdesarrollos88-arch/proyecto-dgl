@@ -300,6 +300,8 @@ export interface Cotizacion {
   showTotalWeightPerItem?: boolean; // Opción 1: Kilos totales por ensayo (masa unitaria * cantidad)
   showSummaryUnitWeight?: boolean;  // Opción 2: Resumen inferior de muestra unitaria
   showSummaryTotalWeight?: boolean; // Opción 3: Resumen inferior de muestra total
+  showTableFootWeight?: boolean;    // Opción 4 (Círculo 1): Mostrar cifras de masa en pie de tabla (Fila Total Ensayos)
+  showObservationsWeight?: boolean; // Opción 5 (Círculo 2): Mostrar líneas de notas de masa en Observaciones 1.2
   observations: string[];
   condicionesComerciales?: CotizacionCondicionesComerciales;
   showEconomicIndicators?: boolean; // Determina si se imprimen los valores UF/Dólar en el documento PDF
@@ -395,6 +397,8 @@ export interface CotizacionVersionSnapshot {
   showTotalWeightPerItem?: boolean;
   showSummaryUnitWeight?: boolean;
   showSummaryTotalWeight?: boolean;
+  showTableFootWeight?: boolean;
+  showObservationsWeight?: boolean;
   ufValue: number;
   dollarValue?: number;
   items: CotizacionItem[];

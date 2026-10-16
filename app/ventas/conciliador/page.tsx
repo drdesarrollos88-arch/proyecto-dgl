@@ -1,2356 +1,495 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import Link from 'next/link';
+import React, { useState, useEffect, useCallback } from 'react';
 import Navbar from '@/components/Navbar';
+import ConciliadorHeaderBalance from '@/components/conciliador/ConciliadorHeaderBalance';
+import ConciliadorStepperTabs from '@/components/conciliador/ConciliadorStepperTabs';
+import StagingPreFlightModal from '@/components/conciliador/StagingPreFlightModal';
 import {
-  ConciliacionItem,
+  ApplyActionLog,
+  ConciliacionGroup,
   ConciliacionResumen,
   EerrRegistro,
-  SalesforceCuotaRegistro,
-  EstadoConciliacion,
-  AccionConciliacion,
   FiltroCuentaComercial,
+  OportunidadClienteRef,
+  SalesforceCuotaRegistro,
+  StagingAction,
+  WorkflowStage,
 } from '@/lib/conciliador-types';
 import { SessionUser } from '@/lib/types';
 import { isSuperAdminRole } from '@/lib/permissions';
-import {
-  Scale,
-  Sparkles,
-  Search,
-  Upload,
-  RefreshCw,
-  CheckCircle2,
-  AlertTriangle,
-  Clock,
-  PlusCircle,
-  XCircle,
-  HelpCircle,
-  Building2,
-  Calendar,
-  FileSpreadsheet,
-  ArrowRight,
-  TrendingUp,
-  TrendingDown,
-  ShieldAlert,
-  Bot,
-  Send,
-  Loader2,
-  Check,
-  Edit2,
-  ArrowRightLeft,
-  Trash2,
-  ChevronRight,
-  ExternalLink,
-  SlidersHorizontal,
-  Info,
-  Table,
-  Download,
-  LayoutGrid,
-} from 'lucide-react';
+import { Upload, X, FileSpreadsheet, Loader2, RotateCcw } from 'lucide-react';
 
-const MESES = [
-  { num: 1, nombre: 'Enero' },
-  { num: 2, nombre: 'Febrero' },
-  { num: 3, nombre: 'Marzo' },
-  { num: 4, nombre: 'Abril' },
-  { num: 5, nombre: 'Mayo' },
-  { num: 6, nombre: 'Junio' },
-  { num: 7, nombre: 'Julio' },
-  { num: 8, nombre: 'Agosto' },
-  { num: 9, nombre: 'Septiembre' },
-  { num: 10, nombre: 'Octubre' },
-  { num: 11, nombre: 'Noviembre' },
-  { num: 12, nombre: 'Diciembre' },
-];
+interface UploadedSessionState {
+  allEerrItems: EerrRegistro[];
+  allSfItems: SalesforceCuotaRegistro[];
+  nombreArchivoEerr?: string;
+  nombreArchivoSf?: string;
+}
 
 export default function ConciliadorPage() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
 
-  // Parámetros de consulta
-  const [selectedMes, setSelectedMes] = useState<number>(1);
-  const [selectedAnio, setSelectedAnio] = useState<number>(2026);
-  const [selectedDivision, setSelectedDivision] = useState<string>('DGL');
-  const [sfSource, setSfSource] = useState<'excel' | 'salesforce_live'>('excel');
-  const [filtroCuentaComercial, setFiltroCuentaComercial] = useState<FiltroCuentaComercial>('todas');
+  // Contexto de período y filtros
+  const [mes, setMes] = useState<number>(1);
+  const [anio, setAnio] = useState<number>(2026);
+  const [division, setDivision] = useState<string>('DGL');
+  const [sourceMode, setSourceMode] = useState<'excel' | 'salesforce'>('excel');
+  const [filtroCuentaComercial, setFiltroCuentaComercial] =
+    useState<FiltroCuentaComercial>('todas');
+  const [incluirTraspasosInternos, setIncluirTraspasosInternos] =
+    useState<boolean>(false);
+  const [activeStage, setActiveStage] = useState<WorkflowStage>('CUADRADOS');
 
-  // Modo de visualización: 'excel' (columnas de planilla) o 'tarjetas' (dividida)
-  const [tipoVista, setTipoVista] = useState<'excel' | 'tarjetas'>('excel');
-  const [detalleItemModal, setDetalleItemModal] = useState<ConciliacionItem | null>(null);
-
-  // Datos principales
-  const [items, setItems] = useState<ConciliacionItem[]>([]);
+  // Estado principal del Motor v2.0
+  const [groups, setGroups] = useState<ConciliacionGroup[]>([]);
+  const [oportunidadesClientes, setOportunidadesClientes] = useState<
+    OportunidadClienteRef[]
+  >([]);
   const [resumen, setResumen] = useState<ConciliacionResumen | null>(null);
-  const [eerrItems, setEerrItems] = useState<EerrRegistro[]>([]);
-  const [sfItems, setSfItems] = useState<SalesforceCuotaRegistro[]>([]);
-  const [mesesConDatos, setMesesConDatos] = useState<number[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Filtros de tabla
-  const [filtroEstado, setFiltroEstado] = useState<'todos' | EstadoConciliacion>('todos');
-  const [searchTerm, setSearchTerm] = useState<string>('');
+  // Carrito de Acciones (Staging Cart) y Auditoría
+  const [stagedActions, setStagedActions] = useState<StagingAction[]>([]);
+  const [showStagingModal, setShowStagingModal] = useState<boolean>(false);
+  const [applying, setApplying] = useState<boolean>(false);
+  const [executionLogs, setExecutionLogs] = useState<ApplyActionLog[]>([]);
 
-  // Acciones en cola para aplicar a Salesforce
-  const [colaAcciones, setColaAcciones] = useState<
-    Array<{
-      idItem: string;
-      accion: AccionConciliacion;
-      cuotaId?: string;
-      opportunityId?: string;
-      nuevoMontoClp?: number;
-      nuevaFecha?: string;
-      titulo: string;
-      justificacion?: string;
-    }>
+  // IA Gemini On-Demand (Batch sobre huérfanos)
+  const [aiLoading, setAiLoading] = useState<boolean>(false);
+  const [aiSuggestions, setAiSuggestions] = useState<
+    Array<{ eerrId: string; cuotaId: string; confianza: number; justificacion: string }>
   >([]);
-  const [showApplyModal, setShowApplyModal] = useState(false);
-  const [isApplying, setIsApplying] = useState(false);
-  const [applyResultMsg, setApplyResultMsg] = useState<string | null>(null);
 
-  // Asistente IA interactivo
-  const [aiQuery, setAiQuery] = useState('');
-  const [aiResponse, setAiResponse] = useState<string | null>(null);
-  const [loadingAi, setLoadingAi] = useState(false);
-  const [showAiModal, setShowAiModal] = useState(false);
-
-  // Carga Dual de Archivos Excel (EERR y Cuotas Salesforce)
-  const [showUploadModal, setShowUploadModal] = useState(false);
+  // Carga de archivos Excel personalizados
+  const [showUploadModal, setShowUploadModal] = useState<boolean>(false);
   const [fileEerr, setFileEerr] = useState<File | null>(null);
   const [fileSf, setFileSf] = useState<File | null>(null);
-  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+  const [uploadingFiles, setUploadingFiles] = useState<boolean>(false);
+  const [uploadedSession, setUploadedSession] =
+    useState<UploadedSessionState | null>(null);
 
-  // Sesión activa de archivos subidos y detección de período
-  const [uploadedSession, setUploadedSession] = useState<{
-    allEerrItems: EerrRegistro[];
-    allSfItems: SalesforceCuotaRegistro[];
-    mesDetectado: number;
-    anioDetectado: number;
-    divisionDetectada: string;
-    nombreArchivoEerr?: string;
-    nombreArchivoSf?: string;
-    coincidePeriodo: boolean;
-    mensajePeriodo: string;
-  } | null>(null);
-
-  const fileInputEerrRef = useRef<HTMLInputElement>(null);
-  const fileInputSfRef = useRef<HTMLInputElement>(null);
-  const fileInputBothRef = useRef<HTMLInputElement>(null);
-
-  // 1. Validar autenticación y rol SuperAdmin
   useEffect(() => {
     fetch('/api/auth/me')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data?.user) setUser(data.user);
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.user) setUser(d.user);
       })
       .catch(() => {})
       .finally(() => setLoadingUser(false));
   }, []);
 
-  // 2. Cargar datos del período (o recalcular si hay sesión subida)
-  const fetchData = async (origenSf = sfSource, filtroCc = filtroCuentaComercial) => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
+    setAiSuggestions([]);
     try {
       if (uploadedSession) {
-        // Recálculo instantáneo en memoria si hay sesión subida activa
         const res = await fetch('/api/conciliador/data', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            mes: selectedMes,
-            anio: selectedAnio,
-            division: selectedDivision,
-            filtroCuentaComercial: filtroCc,
+            mes,
+            anio,
+            division,
+            filtroCuentaComercial,
             allEerrItems: uploadedSession.allEerrItems,
             allSfItems: uploadedSession.allSfItems,
           }),
         });
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || `Error ${res.status} al recalcular conciliación.`);
-        }
         const data = await res.json();
-        setItems(data.items || []);
+        if (!res.ok) throw new Error(data.error || 'Error al recalcular datos.');
+        setGroups(data.groups || []);
+        setOportunidadesClientes(data.oportunidadesClientes || []);
         setResumen(data.resumen || null);
-        setEerrItems(data.eerrItems || []);
-        setSfItems(data.sfItems || []);
       } else {
+        const sfParam = sourceMode === 'salesforce' ? 'salesforce_live' : 'excel';
         const res = await fetch(
-          `/api/conciliador/data?mes=${selectedMes}&anio=${selectedAnio}&division=${selectedDivision}&source=${origenSf}&filtroCuentaComercial=${filtroCc}`
+          `/api/conciliador/data?mes=${mes}&anio=${anio}&division=${division}&source=${sfParam}&filtroCuentaComercial=${filtroCuentaComercial}`
         );
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || `Error ${res.status} al cargar conciliación.`);
-        }
-
         const data = await res.json();
-        setItems(data.items || []);
+        if (!res.ok) throw new Error(data.error || 'Error al obtener conciliación.');
+        setGroups(data.groups || []);
+        setOportunidadesClientes(data.oportunidadesClientes || []);
         setResumen(data.resumen || null);
-        setEerrItems(data.eerrItems || []);
-        setSfItems(data.sfItems || []);
-        if (Array.isArray(data.mesesConDatos)) {
-          setMesesConDatos(data.mesesConDatos);
-        }
-        if (data.liveError) {
-          alert(`Aviso de Salesforce API: ${data.liveError}`);
-        }
       }
     } catch (err: any) {
-      console.error('Error cargando datos del conciliador:', err);
-      setErrorMsg(err.message || 'Error al conectar con el servidor.');
+      setErrorMsg(err?.message || 'Error cargando conciliación.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [mes, anio, division, sourceMode, filtroCuentaComercial, uploadedSession]);
 
   useEffect(() => {
     if (user && (isSuperAdminRole(user.role) || user.profileId === 'superadmin')) {
       fetchData();
     }
-  }, [user, selectedMes, selectedAnio, selectedDivision, sfSource, filtroCuentaComercial]);
+  }, [user, fetchData]);
 
-  // Procesar archivos subidos (hasta 2 archivos: EERR y Cuotas)
-  const handleProcessUploadedFiles = async (customEerr?: File | null, customSf?: File | null) => {
-    const fEerr = customEerr !== undefined ? customEerr : fileEerr;
-    const fSf = customSf !== undefined ? customSf : fileSf;
-
-    if (!fEerr && !fSf) {
-      alert('Por favor selecciona al menos un archivo (EERR o Cuotas).');
-      return;
-    }
-
-    setIsUploadingFiles(true);
-    setErrorMsg(null);
-
-    const formData = new FormData();
-    if (fEerr) {
-      const isKnownDgl =
-        fEerr.name.toUpperCase().includes('FACTURACIONES DGL') ||
-        fEerr.name.toUpperCase().includes('FACTURACION DGL');
-
-      // Optimización de transferencia Edge: si es el archivo oficial FACTURACIONES DGL (> 2MB),
-      // enviamos la referencia para usar los datos oficiales de alta fidelidad sin transferir 4.3MB de PowerPivot
-      if (isKnownDgl && fEerr.size > 2000000) {
-        formData.append('useOfficialEerr', 'true');
-        formData.append('nombreArchivoEerr', fEerr.name);
-      } else {
-        formData.append('fileEerr', fEerr);
-      }
-    }
-    if (fSf) formData.append('fileSf', fSf);
-    formData.append('division', selectedDivision);
-    formData.append('filtroCuentaComercial', filtroCuentaComercial);
-
-    try {
-      const res = await fetch('/api/conciliador/data', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!res.ok) {
-        let errorTitle = `Error del servidor (HTTP ${res.status} ${res.statusText || ''})`;
-        let errorDetail = '';
-        let errorEtapa = '';
-
-        try {
-          const contentType = res.headers.get('content-type') || '';
-          if (contentType.includes('application/json')) {
-            const errData = await res.json();
-            if (errData?.error) errorTitle = errData.error;
-            if (errData?.etapa) errorEtapa = errData.etapa;
-            if (errData?.detalle) errorDetail = errData.detalle;
-          } else {
-            const rawText = await res.text();
-            if (rawText) {
-              const cleanText = rawText.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ').trim().slice(0, 300);
-              errorDetail = `Respuesta del servidor: ${cleanText}`;
-            }
+  // Encolar acciones en el Staging Cart evitando duplicados sobre la misma cuota/factura
+  const handleStageActions = (newActions: StagingAction[]) => {
+    setStagedActions((prev) => {
+      const next = [...prev];
+      for (const act of newActions) {
+        const dupIdx = next.findIndex((existing) => {
+          if (
+            (act.type === 'UPDATE_MONTO' || act.type === 'UPDATE_FECHA') &&
+            existing.type === act.type
+          ) {
+            return existing.cuotaId === act.cuotaId;
           }
-        } catch (readErr: any) {
-          errorDetail = `Error leyendo respuesta: ${readErr?.message}`;
-        }
-
-        const fullMsg = [
-          errorTitle,
-          errorEtapa ? `📍 Etapa identificada: ${errorEtapa}` : '',
-          errorDetail ? `🔍 Detalle: ${errorDetail}` : '',
-        ]
-          .filter(Boolean)
-          .join('\n\n');
-
-        throw new Error(fullMsg);
+          if (act.type === 'CREATE_CUOTA' && existing.type === 'CREATE_CUOTA') {
+            return existing.eerrIds.join(',') === act.eerrIds.join(',');
+          }
+          return false;
+        });
+        if (dupIdx >= 0) next[dupIdx] = act;
+        else next.push(act);
       }
-
-      const data = await res.json();
-
-      // Detección automática del período: sincronizar mes y año automáticamente
-      setSelectedMes(data.mesDetectado);
-      setSelectedAnio(data.anioDetectado);
-      if (data.divisionDetectada && data.divisionDetectada !== 'TODAS') {
-        setSelectedDivision(data.divisionDetectada);
-      }
-
-      setItems(data.items || []);
-      setResumen(data.resumen || null);
-      setEerrItems(data.eerrItems || []);
-      setSfItems(data.sfItems || []);
-      if (Array.isArray(data.mesesConDatos)) {
-        setMesesConDatos(data.mesesConDatos);
-      }
-
-      setUploadedSession({
-        allEerrItems: data.allEerrItems || data.eerrItems || [],
-        allSfItems: data.allSfItems || data.sfItems || [],
-        mesDetectado: data.mesDetectado,
-        anioDetectado: data.anioDetectado,
-        divisionDetectada: data.divisionDetectada,
-        nombreArchivoEerr: data.nombreArchivoEerr,
-        nombreArchivoSf: data.nombreArchivoSf,
-        coincidePeriodo: data.coincidePeriodo,
-        mensajePeriodo: data.mensajePeriodo,
-      });
-
-      setShowUploadModal(false);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Error al subir y procesar los archivos.');
-    } finally {
-      setIsUploadingFiles(false);
-      if (fileInputEerrRef.current) fileInputEerrRef.current.value = '';
-      if (fileInputSfRef.current) fileInputSfRef.current.value = '';
-      if (fileInputBothRef.current) fileInputBothRef.current.value = '';
-    }
-  };
-
-  // Selección múltiple de hasta 2 archivos desde el explorador
-  const handleMultipleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-
-    if (files.length === 1) {
-      const file = files[0];
-      const lower = file.name.toLowerCase();
-      if (lower.includes('cuota') || lower.includes('salesforce') || lower.includes('sf')) {
-        setFileSf(file);
-      } else {
-        setFileEerr(file);
-      }
-    } else {
-      const f1 = files[0];
-      const f2 = files[1];
-      const f1Lower = f1.name.toLowerCase();
-      if (f1Lower.includes('cuota') || f1Lower.includes('salesforce') || f1Lower.includes('sf')) {
-        setFileSf(f1);
-        setFileEerr(f2);
-      } else {
-        setFileEerr(f1);
-        setFileSf(f2);
-      }
-    }
-    setShowUploadModal(true);
-  };
-
-  // Restablecer sesión a datos oficiales del sistema
-  const handleResetSession = () => {
-    setUploadedSession(null);
-    setFileEerr(null);
-    setFileSf(null);
-    setFiltroCuentaComercial('todas');
-    setLoading(true);
-    fetch(`/api/conciliador/data?mes=1&anio=2026&division=DGL&source=${sfSource}&filtroCuentaComercial=todas`)
-      .then((res) => res.json())
-      .then((data) => {
-        setSelectedMes(1);
-        setSelectedAnio(2026);
-        setSelectedDivision('DGL');
-        setItems(data.items || []);
-        setResumen(data.resumen || null);
-        setEerrItems(data.eerrItems || []);
-        setSfItems(data.sfItems || []);
-      })
-      .catch((err) => setErrorMsg(err.message))
-      .finally(() => setLoading(false));
-  };
-
-  // Consulta al Asistente IA
-  const handleAskAi = async (customQuery?: string) => {
-    const q = (customQuery || aiQuery).trim();
-    if (!q || loadingAi) return;
-
-    setLoadingAi(true);
-    setAiResponse(null);
-    setShowAiModal(true);
-
-    try {
-      const res = await fetch('/api/conciliador/ai-search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: q,
-          eerrItems,
-          sfItems,
-          items,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error('Error al consultar al Asistente IA.');
-      }
-
-      const data = await res.json();
-      setAiResponse(data.respuesta || 'Sin respuesta generada.');
-    } catch (err: any) {
-      setAiResponse(`⚠️ Error al consultar con la IA: ${err.message || 'Error de conexión'}`);
-    } finally {
-      setLoadingAi(false);
-    }
-  };
-
-  // Asignar acción rápida a una fila
-  const handleSeleccionarAccion = (
-    item: ConciliacionItem,
-    accion: AccionConciliacion,
-    params?: { nuevoMontoClp?: number; nuevaFecha?: string }
-  ) => {
-    const cuotaId = item.cuota?.id;
-    const opportunityId = item.cuota?.opportunityId;
-    const nuevoMonto = params?.nuevoMontoClp ?? (item.nuevoMontoClp || item.eerr?.montoClp);
-
-    const tituloAccion =
-      accion === 'aceptar_match'
-        ? `Confirmar Cuadre: ${item.cuota?.opportunityName}`
-        : accion === 'ajustar_cuota'
-        ? `Ajustar Cuota a $${(nuevoMonto || 0).toLocaleString('es-CL')} CLP en ${item.cuota?.opportunityName}`
-        : accion === 'mover_cuota'
-        ? `Mover Cuota a fecha efectiva (${item.eerr?.fecha})`
-        : accion === 'postergar_mes'
-        ? `Postergar Cuota al mes siguiente (${item.mesDestinoPostergar}/${item.anioDestinoPostergar})`
-        : accion === 'crear_cuota'
-        ? `Crear Cuota de $${(item.eerr?.montoClp || 0).toLocaleString('es-CL')} para ${item.eerr?.referenciaInterna}`
-        : `Eliminar Cuota de ${item.cuota?.opportunityName}`;
-
-    // Actualizar estado en grilla local
-    setItems((prev) =>
-      prev.map((it) => (it.id === item.id ? { ...it, accionAplicada: accion } : it))
-    );
-
-    // Agregar o actualizar en la cola de acciones para Salesforce
-    setColaAcciones((prev) => {
-      const filtered = prev.filter((c) => c.idItem !== item.id);
-      return [
-        ...filtered,
-        {
-          idItem: item.id,
-          accion,
-          cuotaId,
-          opportunityId,
-          nuevoMontoClp: nuevoMonto,
-          nuevaFecha: params?.nuevaFecha || item.eerr?.fecha,
-          titulo: tituloAccion,
-        },
-      ];
+      return next;
     });
   };
 
-  // Enviar cambios acumulados a Salesforce
-  const handleEjecutarSincronizacion = async () => {
-    if (colaAcciones.length === 0 || isApplying) return;
-    setIsApplying(true);
-    setApplyResultMsg(null);
+  // Vinculación Manual N:M desde la Mesa de Cirugía
+  const handleManualLinkGroups = (
+    eerrGroupIds: string[],
+    sfGroupIds: string[],
+    autoAdjustMonto: boolean
+  ) => {
+    const eerrGroups = groups.filter((g) => eerrGroupIds.includes(g.id));
+    const sfGroups = groups.filter((g) => sfGroupIds.includes(g.id));
+    if (eerrGroups.length === 0 || sfGroups.length === 0) return;
 
+    const mergedEerr = eerrGroups.flatMap((g) => g.eerrItems);
+    const mergedSf = sfGroups.flatMap((g) => g.sfItems);
+    const totalEerrClp = mergedEerr.reduce((acc, e) => acc + e.montoClp, 0);
+    const totalSfClp = mergedSf.reduce((acc, c) => acc + c.montoClp, 0);
+    const deltaClp = totalEerrClp - totalSfClp;
+    const isExact = Math.abs(deltaClp) <= 2000;
+
+    const card: ConciliacionGroup['cardinalidad'] =
+      mergedEerr.length === 1 && mergedSf.length === 1
+        ? '1:1'
+        : mergedEerr.length > 1 && mergedSf.length === 1
+        ? 'N:1'
+        : mergedEerr.length === 1 && mergedSf.length > 1
+        ? '1:N'
+        : 'N:M';
+
+    const newGroup: ConciliacionGroup = {
+      id: `grp-manual-${Date.now()}`,
+      stage: isExact || autoAdjustMonto ? 'CUADRADOS' : 'DIFERENCIA_MONTO',
+      cardinalidad: card,
+      rut: mergedEerr[0]?.rut || mergedSf[0]?.rutEmpresa || '',
+      cliente: mergedEerr[0]?.razonSocial || mergedSf[0]?.cuenta || '',
+      codigoProyecto:
+        mergedSf[0]?.codigoOportunidadExtraido ||
+        mergedEerr[0]?.codigoOportunidadExtraido,
+      codigoNucleo: mergedSf[0]?.codigoNucleo || mergedEerr[0]?.codigoNucleo,
+      eerrItems: mergedEerr,
+      sfItems: mergedSf,
+      totalEerrClp,
+      totalEerrUf: Math.round((totalEerrClp / 38500) * 100) / 100,
+      totalSfClp,
+      totalSfUf: Math.round((totalSfClp / 38500) * 100) / 100,
+      deltaClp,
+      deltaPct:
+        totalSfClp !== 0
+          ? Math.round(((totalEerrClp - totalSfClp) / Math.abs(totalSfClp)) * 1000) / 10
+          : 0,
+      deltaUf: Math.round((deltaClp / 38500) * 100) / 100,
+      scoreBreakdown: {
+        totalScore: 100,
+        codigoScore: 45,
+        montoScore: 25,
+        textoScore: 15,
+        tiempoScore: 10,
+        seccionScore: 5,
+        matchType: 'MANUAL',
+        explicacion: `Vinculación manual (${card}) realizada en Mesa de Cirugía`,
+      },
+    };
+
+    const removeSet = new Set([...eerrGroupIds, ...sfGroupIds]);
+    setGroups((prev) => [newGroup, ...prev.filter((g) => !removeSet.has(g.id))]);
+
+    if (autoAdjustMonto && !isExact && mergedSf.length > 0) {
+      const targetCuota = mergedSf[mergedSf.length - 1];
+      handleStageActions([
+        {
+          id: `manual-adj-${targetCuota.id}-${Date.now()}`,
+          type: 'UPDATE_MONTO',
+          groupId: newGroup.id,
+          cuotaId: targetCuota.id,
+          opportunityId: targetCuota.opportunityId,
+          opportunityName: targetCuota.opportunityName,
+          cliente: newGroup.cliente,
+          rut: newGroup.rut,
+          montoAnterior: targetCuota.montoClp,
+          montoNuevo: Math.max(0, targetCuota.montoClp + deltaClp),
+          motivo: `Ajuste automático por vinculación manual (${card}) en Mesa de Cirugía`,
+        },
+      ]);
+    }
+  };
+
+  // Ejecutar IA Gemini On-Demand (Batch sobre huérfanos)
+  const handleRunAiBatch = async () => {
+    const orphans = groups.filter((g) => g.stage === 'MESA_CIRUGIA');
+    const huerfanosEerr = orphans.flatMap((g) => g.eerrItems);
+    const huerfanosSf = orphans.flatMap((g) => g.sfItems);
+    if (huerfanosEerr.length === 0 || huerfanosSf.length === 0) return;
+
+    setAiLoading(true);
+    try {
+      const res = await fetch('/api/conciliador/data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'ai_batch_orphan_match',
+          huerfanosEerr,
+          huerfanosSf,
+        }),
+      });
+      const data = await res.json();
+      if (Array.isArray(data.sugerencias)) {
+        setAiSuggestions(data.sugerencias);
+      }
+    } catch (err) {
+      console.error('Error en IA Batch:', err);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // Ejecutar escritura del Staging Cart hacia Salesforce
+  const handleExecuteStaging = async () => {
+    if (stagedActions.length === 0) return;
+    setApplying(true);
     try {
       const res = await fetch('/api/conciliador/apply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          acciones: colaAcciones,
-          mes: selectedMes,
-          anio: selectedAnio,
-          division: selectedDivision,
+          stagingActions: stagedActions,
+          mes,
+          anio,
+          division,
         }),
       });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || 'Error al sincronizar con Salesforce.');
-      }
-
       const data = await res.json();
-      setApplyResultMsg(data.mensaje || 'Sincronización completada con éxito.');
-      setColaAcciones([]);
-      // Recargar datos actualizados
-      await fetchData();
+      if (!res.ok) throw new Error(data.error || 'Error aplicando cambios en SF.');
+      setExecutionLogs(data.logs || []);
+      setStagedActions([]);
     } catch (err: any) {
-      setApplyResultMsg(`⚠️ Fallo: ${err.message || 'Error al aplicar cambios'}`);
+      alert(err?.message || 'Error al ejecutar Staging Cart.');
     } finally {
-      setIsApplying(false);
+      setApplying(false);
     }
   };
 
-  // Filtrado de la tabla comparativa
-  const filteredItems = useMemo(() => {
-    return items.filter((it) => {
-      if (filtroEstado !== 'todos' && it.estado !== filtroEstado) return false;
+  // Subir archivos Excel personalizados
+  const handleUploadExcelFiles = async () => {
+    if (!fileEerr && !fileSf) return;
+    setUploadingFiles(true);
+    try {
+      const formData = new FormData();
+      if (fileEerr) formData.append('fileEerr', fileEerr);
+      if (fileSf) formData.append('fileSf', fileSf);
+      formData.append('division', division);
+      formData.append('filtroCuentaComercial', filtroCuentaComercial);
 
-      if (!searchTerm.trim()) return true;
-      const q = searchTerm.toLowerCase();
+      const res = await fetch('/api/conciliador/data', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error procesando Excel.');
 
-      const matchEerr =
-        it.eerr &&
-        (it.eerr.razonSocial.toLowerCase().includes(q) ||
-          it.eerr.rut.toLowerCase().includes(q) ||
-          it.eerr.referenciaInterna.toLowerCase().includes(q) ||
-          it.eerr.referenciaExterna.toLowerCase().includes(q) ||
-          String(it.eerr.montoClp).includes(q));
-
-      const matchSf =
-        it.cuota &&
-        (it.cuota.opportunityName.toLowerCase().includes(q) ||
-          it.cuota.cuenta.toLowerCase().includes(q) ||
-          it.cuota.rutEmpresa.toLowerCase().includes(q) ||
-          String(it.cuota.montoClp).includes(q));
-
-      return matchEerr || matchSf;
-    });
-  }, [items, filtroEstado, searchTerm]);
-
-  // Totales dinámicos de los registros visibles en la planilla
-  const totalEerrVisible = useMemo(() => {
-    return filteredItems.reduce((acc, it) => acc + (it.eerr?.montoClp || 0), 0);
-  }, [filteredItems]);
-
-  const totalSfVisible = useMemo(() => {
-    return filteredItems.reduce((acc, it) => acc + (it.cuota?.montoClp || 0), 0);
-  }, [filteredItems]);
-
-  const totalDifVisible = useMemo(() => {
-    return totalEerrVisible - totalSfVisible;
-  }, [totalEerrVisible, totalSfVisible]);
-
-  // Exportar registros filtrados a archivo Excel (.csv con delimitador ; y BOM UTF-8)
-  const handleExportarExcelCsv = () => {
-    if (filteredItems.length === 0) {
-      alert('No hay registros para exportar con los filtros seleccionados.');
-      return;
+      if (data.mesDetectado) setMes(data.mesDetectado);
+      if (data.anioDetectado) setAnio(data.anioDetectado);
+      setGroups(data.groups || []);
+      setOportunidadesClientes(data.oportunidadesClientes || []);
+      setResumen(data.resumen || null);
+      setUploadedSession({
+        allEerrItems: data.allEerrItems || [],
+        allSfItems: data.allSfItems || [],
+        nombreArchivoEerr: data.nombreArchivoEerr,
+        nombreArchivoSf: data.nombreArchivoSf,
+      });
+      setShowUploadModal(false);
+    } catch (err: any) {
+      alert(err?.message || 'Error al procesar archivos Excel.');
+    } finally {
+      setUploadingFiles(false);
     }
-
-    const headers = [
-      '#',
-      'Tipo Doc EERR',
-      'N° Doc EERR',
-      'Fecha EERR',
-      'RUT EERR',
-      'Razón Social EERR',
-      'Referencia / Glosa EERR',
-      'Monto EERR CLP',
-      'Estado Conciliación',
-      'Diferencia CLP',
-      'Diagnóstico / IA',
-      'Oportunidad Salesforce',
-      'Cliente Salesforce',
-      'RUT Salesforce',
-      'N° Cuota SF',
-      'Fecha Pago SF',
-      'Monto Salesforce CLP',
-      'Es Cuenta Comercial SF',
-    ];
-
-    const escapeCsv = (val: any) => {
-      if (val === null || val === undefined) return '';
-      const str = String(val).replace(/"/g, '""');
-      return `"${str}"`;
-    };
-
-    const rows = filteredItems.map((it, idx) => [
-      idx + 1,
-      it.eerr ? (it.eerr.tipo === 'traspaso_interno' ? 'Traspaso Interno' : 'Factura') : '',
-      it.eerr?.referenciaExterna || it.eerr?.comprobante || '',
-      it.eerr?.fecha || '',
-      it.eerr?.rut || '',
-      it.eerr?.razonSocial || '',
-      it.eerr?.referenciaInterna || it.eerr?.glosa || '',
-      it.eerr?.montoClp ?? '',
-      it.estado,
-      it.diferenciaClp,
-      it.explicacionIa || '',
-      it.cuota?.opportunityName || '',
-      it.cuota?.cuenta || '',
-      it.cuota?.rutEmpresa || '',
-      it.cuota?.numeroCuota ?? '',
-      it.cuota?.fechaPago || '',
-      it.cuota?.montoClp ?? '',
-      it.cuota?.esCuentaComercial ? 'SÍ' : 'NO',
-    ]);
-
-    const csvContent =
-      '\uFEFF' +
-      [headers.map(escapeCsv).join(';'), ...rows.map((r) => r.map(escapeCsv).join(';'))].join('\r\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute(
-      'download',
-      `Conciliacion_${selectedDivision}_Mes${selectedMes}_${selectedAnio}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
   };
 
-  // Si está cargando usuario o no es superadmin
-  if (loadingUser) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
-          <p className="text-xs text-slate-500 font-medium">Validando privilegios de acceso...</p>
-        </div>
-      </div>
-    );
-  }
-
-  const isSuperAdmin = user && (isSuperAdminRole(user.role) || user.profileId === 'superadmin');
-
-  if (!isSuperAdmin) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex flex-col">
-        <Navbar />
-        <main className="flex-1 max-w-3xl w-full mx-auto p-6 flex items-center justify-center">
-          <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm text-center space-y-4">
-            <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center mx-auto">
-              <ShieldAlert className="w-8 h-8" />
-            </div>
-            <h2 className="text-xl font-bold text-slate-900">Acceso Restringido a Administrador / Soporte</h2>
-            <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-              El módulo <strong>Conciliador de Ingresos (EERR vs Salesforce)</strong> se encuentra actualmente en fase de prueba controlada y está reservado exclusivamente para la cuenta de <strong>Administración y Soporte</strong>.
-            </p>
-            <div className="pt-2">
-              <Link
-                href="/ventas"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-colors"
-              >
-                Volver a Ventas
-              </Link>
-            </div>
-          </div>
-        </main>
-      </div>
-    );
-  }
+  if (loadingUser) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col text-slate-800">
+    <div className="min-h-screen bg-slate-100/80 text-slate-900">
       <Navbar />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-        {/* Cabecera Principal */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 mb-1">
-              <Link href="/ventas" className="hover:text-red-700 transition-colors">
-                Ventas
-              </Link>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-              <span className="text-indigo-600 font-bold">Conciliador de Ingresos</span>
-              <span className="bg-purple-100 text-purple-800 text-[10px] font-black px-2 py-0.5 rounded-full border border-purple-200">
-                Solo Soporte
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">
-              <Scale className="w-8 h-8 text-indigo-600" />
-              <span>Conciliador EERR vs Salesforce</span>
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-3xl">
-              Comparación uno a uno entre la facturación y traspasos internos efectivamente realizados según el Departamento de Gestión y las cuotas de facturación reportadas en Salesforce.
-            </p>
-          </div>
+      <main className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 space-y-5">
+        <ConciliadorHeaderBalance
+          mes={mes}
+          anio={anio}
+          division={division}
+          sourceMode={sourceMode}
+          filtroCuentaComercial={filtroCuentaComercial}
+          incluirTraspasosInternos={incluirTraspasosInternos}
+          loading={loading}
+          resumen={resumen}
+          stagingCount={stagedActions.length}
+          customFileName={
+            uploadedSession
+              ? `${uploadedSession.nombreArchivoEerr || ''} ${
+                  uploadedSession.nombreArchivoSf || ''
+                }`.trim()
+              : null
+          }
+          onChangeMes={setMes}
+          onChangeAnio={setAnio}
+          onChangeDivision={setDivision}
+          onChangeSourceMode={setSourceMode}
+          onChangeFiltroCuentaComercial={setFiltroCuentaComercial}
+          onToggleTraspasosInternos={setIncluirTraspasosInternos}
+          onRefresh={fetchData}
+          onOpenUploadModal={() => setShowUploadModal(true)}
+          onOpenStagingModal={() => setShowStagingModal(true)}
+        />
 
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Input oculto para selección de hasta 2 archivos juntos */}
-            <input
-              type="file"
-              ref={fileInputBothRef}
-              accept=".xlsx,.xls"
-              multiple
-              onChange={handleMultipleFilesSelected}
-              className="hidden"
-            />
-            <button
-              onClick={() => setShowUploadModal(true)}
-              disabled={isUploadingFiles}
-              className="px-3.5 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-              title="Cargar hasta 2 archivos Excel (EERR y Cuotas Salesforce)"
-            >
-              <Upload className="w-3.5 h-3.5 text-indigo-600" />
-              <span>{isUploadingFiles ? 'Analizando...' : 'Cargar Archivos (EERR / Cuotas)'}</span>
-            </button>
-
-            <button
-              onClick={() => (uploadedSession ? handleResetSession() : fetchData())}
-              disabled={loading}
-              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              <span>{uploadedSession ? 'Restablecer a Datos Base' : 'Recargar Conciliación'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Barra de Filtros de Período y Fuentes de Datos */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Selector de Mes */}
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-slate-400" />
-              <span className="text-xs font-bold text-slate-700">Mes:</span>
-              <select
-                value={selectedMes}
-                onChange={(e) => setSelectedMes(parseInt(e.target.value, 10))}
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                {MESES.map((m) => (
-                  <option key={m.num} value={m.num}>
-                    {m.nombre} {mesesConDatos.includes(m.num) ? '✓' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Selector de Año */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-700">Año:</span>
-              <select
-                value={selectedAnio}
-                onChange={(e) => setSelectedAnio(parseInt(e.target.value, 10))}
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value={2026}>2026</option>
-                <option value={2025}>2025</option>
-              </select>
-            </div>
-
-            {/* Selector de División */}
-            <div className="flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-slate-400" />
-              <span className="text-xs font-bold text-slate-700">División:</span>
-              <select
-                value={selectedDivision}
-                onChange={(e) => setSelectedDivision(e.target.value)}
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-indigo-700 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="DGL">DGL (Geotecnia Laboratorio)</option>
-                <option value="DAC">DAC</option>
-                <option value="DCO">DCO</option>
-                <option value="DDA">DDA</option>
-                <option value="DEP">DEP</option>
-                <option value="DES">DES</option>
-                <option value="DGI">DGI</option>
-                <option value="DHC">DHC</option>
-                <option value="DHI">DHI</option>
-                <option value="DIC">DIC</option>
-                <option value="DIO">DIO</option>
-                <option value="DPR">DPR</option>
-                <option value="DTC">DTC</option>
-                <option value="TODAS">Todas las Divisiones</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Selector de Origen Salesforce y Filtro Cuenta Comercial */}
-          <div className="flex flex-wrap items-center gap-3 text-xs">
-            {/* Filtro Cuenta Comercial Salesforce */}
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-700 flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-purple-600 inline-block"></span>
-                <span>Cuenta Comercial SF:</span>
-              </span>
-              <div className="inline-flex rounded-xl p-0.5 bg-slate-100 border border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setFiltroCuentaComercial('todas')}
-                  className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
-                    filtroCuentaComercial === 'todas'
-                      ? 'bg-white text-slate-900 shadow-2xs font-bold'
-                      : 'text-slate-500 hover:text-slate-900'
-                  }`}
-                  title="Incluir todas las cuotas de Salesforce en el análisis"
-                >
-                  Todas
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFiltroCuentaComercial('excluir')}
-                  className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-                    filtroCuentaComercial === 'excluir'
-                      ? 'bg-purple-700 text-white shadow-2xs font-bold'
-                      : 'text-purple-800 hover:text-purple-950'
-                  }`}
-                  title="Excluir del análisis las cuotas que contengan 'Cuenta Comercial Salesforce'"
-                >
-                  <span>🚫 Excluir</span>
-                  {typeof resumen?.conteoCuentaComercial === 'number' && resumen.conteoCuentaComercial > 0 && (
-                    <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                        filtroCuentaComercial === 'excluir'
-                          ? 'bg-purple-900 text-purple-100'
-                          : 'bg-purple-200 text-purple-900'
-                      }`}
-                    >
-                      {resumen.conteoCuentaComercial}
-                    </span>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFiltroCuentaComercial('solo')}
-                  className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
-                    filtroCuentaComercial === 'solo'
-                      ? 'bg-purple-800 text-white shadow-2xs font-bold'
-                      : 'text-slate-500 hover:text-slate-900'
-                  }`}
-                  title="Analizar únicamente las cuotas que contengan 'Cuenta Comercial Salesforce'"
-                >
-                  Solo Comercial
-                </button>
-              </div>
-            </div>
-
-            {/* Selector de Origen Salesforce */}
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
-              <span className="font-bold text-slate-600">Fuente SF:</span>
-              <div className="inline-flex rounded-xl p-0.5 bg-slate-100 border border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setSfSource('excel')}
-                  className={`px-3 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
-                    sfSource === 'excel'
-                      ? 'bg-white text-slate-900 shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-900'
-                  }`}
-                >
-                  Hoja Excel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSfSource('salesforce_live')}
-                  className={`px-3 py-1 rounded-lg font-semibold flex items-center gap-1 transition-all cursor-pointer ${
-                    sfSource === 'salesforce_live'
-                      ? 'bg-indigo-600 text-white shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-900'
-                  }`}
-                >
-                  <span>⚡ API en Vivo</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Notificación explicativa de Filtro de Cuenta Comercial Activo */}
-        {filtroCuentaComercial === 'excluir' && resumen?.conteoCuentaComercial ? (
-          <div className="bg-purple-50/90 border border-purple-200 text-purple-950 px-4 py-2.5 rounded-2xl text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-2xs animate-in fade-in">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-purple-800 flex items-center gap-1">
-                <span>🚫</span> Filtro de Exclusión Aplicado:
-              </span>
-              <span>
-                Se han excluido <strong>{resumen.conteoCuentaComercial} cuota(s)</strong> con texto <em>"Cuenta Comercial Salesforce"</em> por un total de{' '}
-                <strong>${(resumen.montoCuentaComercialClp || 0).toLocaleString('es-CL')} CLP</strong> del análisis comparativo y de los totales de Salesforce.
-              </span>
-            </div>
-            <button
-              onClick={() => setFiltroCuentaComercial('todas')}
-              className="text-[11px] font-bold text-purple-800 hover:text-purple-950 underline cursor-pointer shrink-0"
-            >
-              Restablecer a todas las cuotas
-            </button>
-          </div>
-        ) : filtroCuentaComercial === 'solo' ? (
-          <div className="bg-purple-50/90 border border-purple-200 text-purple-950 px-4 py-2.5 rounded-2xl text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-2xs animate-in fade-in">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-purple-800 flex items-center gap-1">
-                <span>🏷️</span> Modo Especial Solo Cuenta Comercial SF:
-              </span>
-              <span>
-                Se están auditando únicamente las oportunidades y cuotas que contienen <em>"Cuenta Comercial Salesforce"</em> ({sfItems.length} cuotas activas).
-              </span>
-            </div>
-            <button
-              onClick={() => setFiltroCuentaComercial('todas')}
-              className="text-[11px] font-bold text-purple-800 hover:text-purple-950 underline cursor-pointer shrink-0"
-            >
-              Ver todas las cuotas
-            </button>
-          </div>
-        ) : null}
-
-        {/* Banner de Validación y Detección Automática de Período */}
-        {uploadedSession && (
-          <div
-            className={`p-4 rounded-2xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-xs transition-all ${
-              uploadedSession.coincidePeriodo
-                ? 'bg-emerald-50/90 border-emerald-300 text-emerald-950'
-                : 'bg-amber-50/90 border-amber-300 text-amber-950'
-            }`}
-          >
-            <div className="flex items-start sm:items-center gap-3.5">
-              <div
-                className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${
-                  uploadedSession.coincidePeriodo
-                    ? 'bg-emerald-100 text-emerald-700 border border-emerald-300 shadow-2xs'
-                    : 'bg-amber-100 text-amber-700 border border-amber-300 shadow-2xs'
-                }`}
-              >
-                {uploadedSession.coincidePeriodo ? (
-                  <CheckCircle2 className="w-6 h-6" />
-                ) : (
-                  <AlertTriangle className="w-6 h-6" />
-                )}
-              </div>
-              <div className="space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-extrabold text-xs uppercase tracking-wider">
-                    {uploadedSession.coincidePeriodo
-                      ? 'Período Validado con Éxito'
-                      : 'Alerta: Discrepancia de Período en Documentos'}
-                  </span>
-                  <span
-                    className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
-                      uploadedSession.coincidePeriodo
-                        ? 'bg-emerald-200 text-emerald-900 border border-emerald-300'
-                        : 'bg-amber-200 text-amber-900 border border-amber-300'
-                    }`}
-                  >
-                    {MESES.find((m) => m.num === uploadedSession.mesDetectado)?.nombre || 'Mes ' + uploadedSession.mesDetectado}{' '}
-                    {uploadedSession.anioDetectado}
-                  </span>
-                  <span className="text-[10px] font-bold text-slate-500 bg-white/80 px-2 py-0.5 rounded-md border border-slate-200">
-                    División: {uploadedSession.divisionDetectada}
-                  </span>
-                </div>
-
-                <p className="text-xs font-medium leading-relaxed">
-                  {uploadedSession.mensajePeriodo}
-                </p>
-
-                <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-600 pt-0.5">
-                  {uploadedSession.nombreArchivoEerr && (
-                    <span className="flex items-center gap-1">
-                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>
-                        EERR: <strong>{uploadedSession.nombreArchivoEerr}</strong> ({eerrItems.length} comprobantes desplegados)
-                      </span>
-                    </span>
-                  )}
-                  {uploadedSession.nombreArchivoSf && (
-                    <span className="flex items-center gap-1">
-                      <Scale className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>
-                        Cuotas: <strong>{uploadedSession.nombreArchivoSf}</strong> ({sfItems.length} cuotas programadas)
-                      </span>
-                    </span>
-                  )}
-                  <span className="font-semibold text-indigo-900">
-                    • Total: {items.length} filas analizadas en comparativa
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 self-end md:self-center shrink-0">
-              <button
-                onClick={() => setShowUploadModal(true)}
-                className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer"
-              >
-                Cambiar Archivos
-              </button>
-              <button
-                onClick={handleResetSession}
-                className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer"
-              >
-                Restablecer Datos Base
-              </button>
-            </div>
+        {errorMsg && (
+          <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800">
+            {errorMsg}
           </div>
         )}
 
-        {/* Control Macroeconómico Oficial de Gestión si está disponible */}
-        {resumen?.consolidadoDivisionActual && (
-          <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-4 rounded-2xl shadow-sm border border-indigo-900/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center shrink-0">
-                <Building2 className="w-5 h-5 text-indigo-300" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-black uppercase tracking-wider text-indigo-300">
-                    Control Macroeconómico EERR (BBDD Gestión)
-                  </span>
-                  <span className="bg-indigo-500/30 text-indigo-200 text-[10px] font-bold px-2 py-0.5 rounded-full border border-indigo-400/20">
-                    División {resumen.consolidadoDivisionActual.division}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-300 mt-0.5">
-                  Cifras oficiales consolidadas de facturación y traspasos entregadas por el área de Gestión.
-                </p>
-              </div>
+        <ConciliadorStepperTabs
+          activeStage={activeStage}
+          onChangeStage={setActiveStage}
+          groups={groups}
+          oportunidadesClientes={oportunidadesClientes}
+          mesActual={mes}
+          anioActual={anio}
+          incluirTraspasosInternos={incluirTraspasosInternos}
+          stagedActions={stagedActions}
+          aiLoading={aiLoading}
+          aiSuggestions={aiSuggestions}
+          onStageActions={handleStageActions}
+          onManualLinkGroups={handleManualLinkGroups}
+          onRunAiBatch={handleRunAiBatch}
+        />
+      </main>
+
+      <StagingPreFlightModal
+        isOpen={showStagingModal}
+        onClose={() => setShowStagingModal(false)}
+        stagedActions={stagedActions}
+        groups={groups}
+        currentForecastSfClp={
+          resumen?.totalSfVentaExternaClp ?? resumen?.totalSalesforceClp ?? 0
+        }
+        currentEerrClp={
+          resumen?.totalEerrVentaExternaClp ?? resumen?.totalEerrClp ?? 0
+        }
+        mes={mes}
+        anio={anio}
+        division={division}
+        applying={applying}
+        executionLogs={executionLogs}
+        onRemoveAction={(id) =>
+          setStagedActions((prev) => prev.filter((a) => a.id !== id))
+        }
+        onClearAll={() => setStagedActions([])}
+        onExecuteStaging={handleExecuteStaging}
+      />
+
+      {/* Modal ligero de Carga Dual Excel */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-lg p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                Cargar Planillas EERR y Cuotas Salesforce
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowUploadModal(false)}
+                className="p-1 text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 text-xs">
-              <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
-                <span className="text-[10px] text-slate-300 block">Facturación EERR</span>
-                <span className="font-black text-xs sm:text-sm text-white">
-                  ${resumen.consolidadoDivisionActual.facturacionEerrClp.toLocaleString('es-CL')}
-                </span>
+            <div className="space-y-3 text-xs">
+              <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5">
+                <label className="font-bold text-slate-700 block">
+                  1. Planilla EERR / Facturaciones (.xlsx / .csv)
+                </label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={(e) => setFileEerr(e.target.files?.[0] || null)}
+                  className="w-full text-xs text-slate-600"
+                />
               </div>
-              <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
-                <span className="text-[10px] text-slate-300 block">Traspasos EERR</span>
-                <span className="font-black text-xs sm:text-sm text-amber-300">
-                  ${resumen.consolidadoDivisionActual.traspasosEerrClp.toLocaleString('es-CL')}
-                </span>
-              </div>
-              <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
-                <span className="text-[10px] text-slate-300 block">Total EERR (Fact + TI)</span>
-                <span className="font-black text-xs sm:text-sm text-emerald-300">
-                  ${resumen.consolidadoDivisionActual.totalIngresosEerrClp.toLocaleString('es-CL')}
-                </span>
-              </div>
-              <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
-                <span className="text-[10px] text-slate-300 block">Backlog Salesforce</span>
-                <span className="font-black text-xs sm:text-sm text-indigo-200">
-                  ${resumen.consolidadoDivisionActual.backlogSalesforceClp.toLocaleString('es-CL')}
-                </span>
-              </div>
-              <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/10">
-                <span className="text-[10px] text-slate-300 block">Brecha Control</span>
-                <span className="font-black text-xs sm:text-sm text-purple-200">
-                  ${resumen.consolidadoDivisionActual.diferenciaClp.toLocaleString('es-CL')}
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* Resumen Ejecutivo de Cuadratura (KPI Cards) */}
-        {resumen && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* KPI 1: EERR Real */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                Total Facturado EERR
-              </span>
-              <div className="mt-1 flex items-baseline justify-between">
-                <span className="text-xl font-black text-slate-900">
-                  ${resumen.totalEerrClp.toLocaleString('es-CL')}
-                </span>
-                <span className="text-xs font-bold text-slate-500">
-                  ~{resumen.totalEerrUf.toFixed(1)} UF
-                </span>
-              </div>
-              <span className="text-[10px] text-slate-400 mt-1 block">
-                {eerrItems.length} comprobantes / facturas
-              </span>
-            </div>
-
-            {/* KPI 2: Salesforce Proyectado */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                Total Cuotas Salesforce
-              </span>
-              <div className="mt-1 flex items-baseline justify-between">
-                <span className="text-xl font-black text-indigo-950">
-                  ${resumen.totalSalesforceClp.toLocaleString('es-CL')}
-                </span>
-                <span className="text-xs font-bold text-indigo-600">
-                  ~{resumen.totalSalesforceUf.toFixed(1)} UF
-                </span>
-              </div>
-              <span className="text-[10px] text-slate-400 mt-1 block">
-                {sfItems.length} cuotas programadas
-              </span>
-            </div>
-
-            {/* KPI 3: Diferencia Neta */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                Diferencia Neta (EERR - SF)
-              </span>
-              <div className="mt-1 flex items-baseline justify-between">
-                <span
-                  className={`text-xl font-black ${
-                    Math.abs(resumen.diferenciaNetaClp) <= 2000
-                      ? 'text-emerald-600'
-                      : resumen.diferenciaNetaClp > 0
-                      ? 'text-blue-600'
-                      : 'text-amber-600'
-                  }`}
-                >
-                  {resumen.diferenciaNetaClp > 0 ? '+' : ''}$
-                  {resumen.diferenciaNetaClp.toLocaleString('es-CL')}
-                </span>
-                <span className="text-xs font-bold text-slate-500">
-                  {resumen.diferenciaNetaUf > 0 ? '+' : ''}
-                  {resumen.diferenciaNetaUf.toFixed(1)} UF
-                </span>
-              </div>
-              <span className="text-[10px] text-slate-400 mt-1 block">
-                {Math.abs(resumen.diferenciaNetaClp) <= 2000 ? 'Cuadratura perfecta' : 'Desfase pendiente de cuadre'}
-              </span>
-            </div>
-
-            {/* KPI 4: Cuadratura y Casos */}
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                Cuadratura Operativa
-              </span>
-              <div className="mt-1 flex items-baseline justify-between">
-                <span className="text-2xl font-black text-emerald-700">
-                  {resumen.porcentajeCuadratura}%
-                </span>
-                <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                  {resumen.conteoConciliados} / {eerrItems.length} ok
-                </span>
-              </div>
-              <div className="w-full bg-slate-100 rounded-full h-1.5 mt-2 overflow-hidden">
-                <div
-                  className="bg-emerald-500 h-1.5 rounded-full transition-all duration-300"
-                  style={{ width: `${Math.min(resumen.porcentajeCuadratura, 100)}%` }}
+              <div className="p-3 rounded-xl border border-slate-200 bg-slate-50 space-y-1.5">
+                <label className="font-bold text-slate-700 block">
+                  2. Reporte Cuotas Salesforce (.xlsx / .csv)
+                </label>
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  onChange={(e) => setFileSf(e.target.files?.[0] || null)}
+                  className="w-full text-xs text-slate-600"
                 />
               </div>
             </div>
-          </div>
-        )}
 
-        {/* Barra de Búsqueda Asistida por IA */}
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-4 text-white shadow-md">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600/50 flex items-center justify-center text-indigo-300 shrink-0">
-                <Sparkles className="w-4 h-4" />
-              </div>
-              <div>
-                <h3 className="text-xs font-bold tracking-wide">
-                  Asistente IA de Búsqueda y Cruce Heurístico (Gemini)
-                </h3>
-                <p className="text-[11px] text-slate-300">
-                  Pregunta por empresa, proyecto, código o monto aproximado para encontrar cuotas difíciles.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 flex-1 sm:max-w-md">
-              <input
-                type="text"
-                value={aiQuery}
-                onChange={(e) => setAiQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleAskAi();
-                }}
-                placeholder="ej: '¿Dónde está la factura de Minera Los Pelambres?'..."
-                className="w-full px-3 py-1.5 rounded-xl bg-white/10 border border-white/20 text-xs text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              />
-              <button
-                onClick={() => handleAskAi()}
-                disabled={loadingAi || !aiQuery.trim()}
-                className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
-              >
-                {loadingAi ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
-                <span>Consultar</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Barra de Filtros Rápidos de Estado */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              onClick={() => setFiltroEstado('todos')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                filtroEstado === 'todos'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-              }`}
-            >
-              Todos ({items.length})
-            </button>
-            <button
-              onClick={() => setFiltroEstado('conciliado')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                filtroEstado === 'conciliado'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'bg-white text-emerald-800 hover:bg-emerald-50 border border-emerald-200'
-              }`}
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Match Exacto ({resumen?.conteoConciliados || 0})</span>
-            </button>
-            <button
-              onClick={() => setFiltroEstado('diferencia_monto')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                filtroEstado === 'diferencia_monto'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-white text-amber-800 hover:bg-amber-50 border border-amber-200'
-              }`}
-            >
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span>Diferencia de Monto ({resumen?.conteoDiferenciaMonto || 0})</span>
-            </button>
-            <button
-              onClick={() => setFiltroEstado('desfase_temporal')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                filtroEstado === 'desfase_temporal'
-                  ? 'bg-orange-600 text-white shadow-xs'
-                  : 'bg-white text-orange-800 hover:bg-orange-50 border border-orange-200'
-              }`}
-            >
-              <Clock className="w-3.5 h-3.5" />
-              <span>Desfase de Mes ({resumen?.conteoDesfaseTemporal || 0})</span>
-            </button>
-            <button
-              onClick={() => setFiltroEstado('no_proyectado')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                filtroEstado === 'no_proyectado'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'bg-white text-blue-800 hover:bg-blue-50 border border-blue-200'
-              }`}
-            >
-              <PlusCircle className="w-3.5 h-3.5" />
-              <span>No Proyectados ({resumen?.conteoNoProyectados || 0})</span>
-            </button>
-            <button
-              onClick={() => setFiltroEstado('no_facturado')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                filtroEstado === 'no_facturado'
-                  ? 'bg-red-600 text-white shadow-xs'
-                  : 'bg-white text-red-800 hover:bg-red-50 border border-red-200'
-              }`}
-            >
-              <XCircle className="w-3.5 h-3.5" />
-              <span>No Facturados ({resumen?.conteoNoFacturados || 0})</span>
-            </button>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
-            <div className="relative w-full sm:w-60">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar RUT, cliente, doc, monto..."
-                className="w-full pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-
-            {/* Selector de Modo de Visualización: Planilla Excel vs Tarjetas */}
-            <div className="inline-flex rounded-xl p-0.5 bg-slate-100 border border-slate-200 text-xs">
-              <button
-                type="button"
-                onClick={() => setTipoVista('excel')}
-                className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                  tipoVista === 'excel'
-                    ? 'bg-emerald-600 text-white shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-                title="Vista en columnas de Excel (Planilla tabular completa)"
-              >
-                <Table className="w-3.5 h-3.5" />
-                <span>Columnas Excel</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setTipoVista('tarjetas')}
-                className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                  tipoVista === 'tarjetas'
-                    ? 'bg-slate-900 text-white shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-                title="Vista comparativa en tarjetas divididas"
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                <span>Tarjetas</span>
-              </button>
-            </div>
-
-            {/* Botón de Exportación Rápida a Excel CSV */}
-            <button
-              type="button"
-              onClick={handleExportarExcelCsv}
-              className="px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-300 rounded-xl text-xs font-bold shadow-2xs flex items-center gap-1.5 transition-colors cursor-pointer"
-              title="Descargar datos actuales directamente en formato Excel (.csv delimitado por punto y coma)"
-            >
-              <Download className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Exportar Excel</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Tabla Comparativa: Vista Excel (Columnas) o Vista Tarjetas */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-          {loading ? (
-            <div className="py-20 text-center text-slate-400 flex flex-col items-center gap-3">
-              <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
-              <span className="text-xs font-medium">Analizando y conciliando registros de {selectedDivision}...</span>
-            </div>
-          ) : filteredItems.length === 0 ? (
-            <div className="py-20 text-center text-slate-400">
-              <Scale className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <p className="text-xs font-bold text-slate-700">No se encontraron registros con los filtros seleccionados</p>
-              <p className="text-[11px] text-slate-400 mt-1">Intenta cambiando el mes o limpiando el filtro de búsqueda.</p>
-            </div>
-          ) : tipoVista === 'excel' ? (
-            /* VISTA EN COLUMNAS DE EXCEL (PLANILLA COMPLETA) */
-            <div className="overflow-x-auto max-h-[760px] overflow-y-auto">
-              <table className="w-full text-left text-[11px] border-collapse bg-white font-sans whitespace-nowrap">
-                <thead className="sticky top-0 z-20 shadow-xs">
-                  {/* Fila 1: Grupos Principales de Columnas */}
-                  <tr className="text-[10px] font-black uppercase tracking-wider text-white">
-                    <th colSpan={8} className="bg-slate-800 py-2 px-3 text-center border-r border-slate-700">
-                      Facturación Real EERR (Departamento de Gestión)
-                    </th>
-                    <th colSpan={3} className="bg-indigo-900 py-2 px-3 text-center border-r border-indigo-800">
-                      Cuadratura & Brecha
-                    </th>
-                    <th colSpan={6} className="bg-slate-900 py-2 px-3 text-center">
-                      Cuota Proyectada Salesforce ({selectedDivision})
-                    </th>
-                  </tr>
-
-                  {/* Fila 2: Cabeceras Individuales de Columnas */}
-                  <tr className="bg-slate-100 text-slate-700 font-extrabold text-[10px] uppercase border-b border-slate-300">
-                    <th className="py-2 px-2 text-center border-r border-slate-200 w-10">#</th>
-                    <th className="py-2 px-2 text-center border-r border-slate-200">Tipo</th>
-                    <th className="py-2 px-2 text-center border-r border-slate-200">N° Doc</th>
-                    <th className="py-2 px-2 text-center border-r border-slate-200">Fecha EERR</th>
-                    <th className="py-2 px-2 text-center border-r border-slate-200">RUT EERR</th>
-                    <th className="py-2 px-3 text-left border-r border-slate-200 min-w-[200px] max-w-[280px]">Razón Social (EERR)</th>
-                    <th className="py-2 px-3 text-left border-r border-slate-200 min-w-[180px] max-w-[260px]">Referencia / Glosa</th>
-                    <th className="py-2 px-3 text-right border-r-2 border-slate-400 min-w-[110px] bg-slate-200/50 text-slate-900 font-black">Monto EERR</th>
-
-                    <th className="py-2 px-2.5 text-center border-r border-slate-200 min-w-[110px]">Estado Match</th>
-                    <th className="py-2 px-2.5 text-right border-r border-slate-200 min-w-[100px]">Diferencia ($)</th>
-                    <th className="py-2 px-2 text-center border-r-2 border-slate-400 min-w-[130px]">Acción</th>
-
-                    <th className="py-2 px-3 text-left border-r border-slate-200 min-w-[200px] max-w-[280px]">Oportunidad SF</th>
-                    <th className="py-2 px-3 text-left border-r border-slate-200 min-w-[180px] max-w-[240px]">Cliente SF</th>
-                    <th className="py-2 px-2 text-center border-r border-slate-200">RUT SF</th>
-                    <th className="py-2 px-2 text-center border-r border-slate-200 w-14">Cuota</th>
-                    <th className="py-2 px-2 text-center border-r border-slate-200">Fecha Pago</th>
-                    <th className="py-2 px-3 text-right min-w-[110px] bg-indigo-50 text-indigo-950 font-black">Monto SF</th>
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-200 font-normal">
-                  {filteredItems.map((it, idx) => {
-                    const esConciliado = it.estado === 'conciliado';
-                    const esDiferencia = it.estado === 'diferencia_monto';
-                    const esDesfase = it.estado === 'desfase_temporal';
-                    const esNoProy = it.estado === 'no_proyectado';
-                    const esNoFact = it.estado === 'no_facturado';
-
-                    return (
-                      <tr
-                        key={it.id}
-                        className={`transition-colors text-[11px] ${
-                          it.accionAplicada
-                            ? 'bg-emerald-50/70'
-                            : esConciliado
-                            ? 'hover:bg-emerald-50/30'
-                            : esDiferencia
-                            ? 'hover:bg-amber-50/40 bg-amber-50/10'
-                            : esDesfase
-                            ? 'hover:bg-orange-50/40 bg-orange-50/10'
-                            : esNoProy
-                            ? 'hover:bg-blue-50/40 bg-blue-50/10'
-                            : 'hover:bg-red-50/40 bg-red-50/10'
-                        } ${idx % 2 === 1 ? 'bg-slate-50/60' : 'bg-white'}`}
-                      >
-                        {/* 1. # */}
-                        <td className="py-2 px-2 text-center text-slate-400 font-mono border-r border-slate-200">
-                          {idx + 1}
-                        </td>
-
-                        {/* 2. Tipo Doc */}
-                        <td className="py-2 px-2 text-center border-r border-slate-200">
-                          {it.eerr ? (
-                            <span
-                              className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${
-                                it.eerr.tipo === 'traspaso_interno'
-                                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                                  : 'bg-blue-100 text-blue-900 border border-blue-200'
-                              }`}
-                            >
-                              {it.eerr.tipo === 'traspaso_interno' ? 'Traspaso' : 'Factura'}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">-</span>
-                          )}
-                        </td>
-
-                        {/* 3. N° Doc */}
-                        <td className="py-2 px-2 text-center font-mono font-bold text-slate-800 border-r border-slate-200">
-                          {it.eerr?.referenciaExterna ? `Doc: ${it.eerr.referenciaExterna}` : it.eerr?.comprobante ? `C: ${it.eerr.comprobante}` : '-'}
-                        </td>
-
-                        {/* 4. Fecha EERR */}
-                        <td className="py-2 px-2 text-center font-mono text-slate-600 border-r border-slate-200">
-                          {it.eerr?.fecha || '-'}
-                        </td>
-
-                        {/* 5. RUT EERR */}
-                        <td className="py-2 px-2 text-center font-mono text-slate-600 border-r border-slate-200">
-                          {it.eerr?.rut || '-'}
-                        </td>
-
-                        {/* 6. Razón Social (EERR) */}
-                        <td
-                          className="py-2 px-3 text-left font-semibold text-slate-900 border-r border-slate-200 max-w-[280px] truncate"
-                          title={it.eerr?.razonSocial || ''}
-                        >
-                          {it.eerr?.razonSocial || <span className="text-slate-300 italic">(Sin EERR)</span>}
-                        </td>
-
-                        {/* 7. Referencia / Glosa */}
-                        <td
-                          className="py-2 px-3 text-left text-slate-600 border-r border-slate-200 max-w-[260px] truncate text-[10px]"
-                          title={it.eerr?.referenciaInterna || it.eerr?.glosa || ''}
-                        >
-                          {it.eerr?.referenciaInterna || it.eerr?.glosa || '-'}
-                        </td>
-
-                        {/* 8. Monto EERR */}
-                        <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 border-r-2 border-slate-400 bg-slate-50/70">
-                          {it.eerr ? (
-                            <span>${it.eerr.montoClp.toLocaleString('es-CL')}</span>
-                          ) : (
-                            <span className="text-slate-300 font-normal">-</span>
-                          )}
-                        </td>
-
-                        {/* 9. Estado Match */}
-                        <td className="py-2 px-2.5 text-center border-r border-slate-200">
-                          {esConciliado && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600 shrink-0" />
-                              <span>Match 100%</span>
-                            </span>
-                          )}
-                          {esDiferencia && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
-                              <AlertTriangle className="w-2.5 h-2.5 text-amber-600 shrink-0" />
-                              <span>Dif. Monto</span>
-                            </span>
-                          )}
-                          {esDesfase && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-orange-100 text-orange-900 border border-orange-200">
-                              <Clock className="w-2.5 h-2.5 text-orange-600 shrink-0" />
-                              <span>Desfase Mes</span>
-                            </span>
-                          )}
-                          {esNoProy && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-100 text-blue-900 border border-blue-200">
-                              <PlusCircle className="w-2.5 h-2.5 text-blue-600 shrink-0" />
-                              <span>No Proy. SF</span>
-                            </span>
-                          )}
-                          {esNoFact && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-red-100 text-red-900 border border-red-200">
-                              <XCircle className="w-2.5 h-2.5 text-red-600 shrink-0" />
-                              <span>No Fact. EERR</span>
-                            </span>
-                          )}
-                        </td>
-
-                        {/* 10. Diferencia ($) */}
-                        <td className="py-2 px-2.5 text-right font-mono font-bold border-r border-slate-200">
-                          {it.diferenciaClp !== 0 ? (
-                            <span className={it.diferenciaClp > 0 ? 'text-blue-700' : 'text-red-700'}>
-                              {it.diferenciaClp > 0 ? '+' : ''}${it.diferenciaClp.toLocaleString('es-CL')}
-                            </span>
-                          ) : (
-                            <span className="text-emerald-600 font-mono font-semibold">$0</span>
-                          )}
-                        </td>
-
-                        {/* 11. Acción & Detalle IA */}
-                        <td className="py-2 px-2 text-center border-r-2 border-slate-400">
-                          <div className="flex items-center justify-center gap-1">
-                            {esConciliado && (
-                              <button
-                                onClick={() => handleSeleccionarAccion(it, 'aceptar_match')}
-                                disabled={it.accionAplicada === 'aceptar_match'}
-                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-100 disabled:text-emerald-800 text-white rounded-md text-[9px] font-bold transition-colors cursor-pointer"
-                                title="Confirmar conciliación exacta"
-                              >
-                                {it.accionAplicada === 'aceptar_match' ? '✓ Ok' : 'Cuadrar'}
-                              </button>
-                            )}
-
-                            {esDiferencia && (
-                              <button
-                                onClick={() =>
-                                  handleSeleccionarAccion(it, 'ajustar_cuota', {
-                                    nuevoMontoClp: it.eerr?.montoClp,
-                                  })
-                                }
-                                className="px-2 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-[9px] font-bold transition-colors cursor-pointer"
-                                title={`Ajustar cuota a $${(it.eerr?.montoClp || 0).toLocaleString('es-CL')}`}
-                              >
-                                Ajustar $
-                              </button>
-                            )}
-
-                            {esDesfase && (
-                              <button
-                                onClick={() => handleSeleccionarAccion(it, 'mover_cuota')}
-                                className="px-2 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded-md text-[9px] font-bold transition-colors cursor-pointer"
-                                title="Mover cuota a este mes"
-                              >
-                                Mover Mes
-                              </button>
-                            )}
-
-                            {esNoProy && (
-                              <button
-                                onClick={() => handleSeleccionarAccion(it, 'crear_cuota')}
-                                className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-[9px] font-bold transition-colors cursor-pointer"
-                                title="Crear cuota en Salesforce"
-                              >
-                                + Crear SF
-                              </button>
-                            )}
-
-                            {esNoFact && (
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={() => handleSeleccionarAccion(it, 'postergar_mes')}
-                                  className="px-1.5 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded-md text-[9px] font-bold cursor-pointer"
-                                  title="Postergar al mes siguiente"
-                                >
-                                  Postergar
-                                </button>
-                                <button
-                                  onClick={() => handleSeleccionarAccion(it, 'eliminar_cuota')}
-                                  className="px-1.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md text-[9px] font-bold cursor-pointer"
-                                  title="Eliminar cuota"
-                                >
-                                  Eliminar
-                                </button>
-                              </div>
-                            )}
-
-                            {it.explicacionIa && (
-                              <button
-                                onClick={() => setDetalleItemModal(it)}
-                                className="p-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors cursor-pointer"
-                                title={`Diagnóstico IA: ${it.explicacionIa}`}
-                              >
-                                <Sparkles className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* 12. Oportunidad SF */}
-                        <td className="py-2 px-3 text-left border-r border-slate-200 max-w-[280px]">
-                          {it.cuota ? (
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-semibold text-slate-900 truncate" title={it.cuota.opportunityName}>
-                                {it.cuota.opportunityName}
-                              </span>
-                              {it.cuota.esCuentaComercial && (
-                                <span
-                                  className="shrink-0 text-[8px] font-black px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-800 border border-purple-200"
-                                  title="Cuenta Comercial Salesforce"
-                                >
-                                  SF Comercial
-                                </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-slate-300 italic">(Sin cuota en SF)</span>
-                          )}
-                        </td>
-
-                        {/* 13. Cliente SF */}
-                        <td
-                          className="py-2 px-3 text-left border-r border-slate-200 max-w-[240px] truncate"
-                          title={it.cuota?.cuenta || ''}
-                        >
-                          {it.cuota ? (
-                            <span className={it.cuota.esCuentaComercial ? 'text-purple-900 font-extrabold' : 'text-slate-800'}>
-                              {it.cuota.cuenta}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">-</span>
-                          )}
-                        </td>
-
-                        {/* 14. RUT SF */}
-                        <td className="py-2 px-2 text-center font-mono text-slate-600 border-r border-slate-200">
-                          {it.cuota?.rutEmpresa || '-'}
-                        </td>
-
-                        {/* 15. Cuota # */}
-                        <td className="py-2 px-2 text-center font-mono font-bold text-indigo-700 border-r border-slate-200">
-                          {it.cuota?.numeroCuota != null ? `#${it.cuota.numeroCuota}` : '-'}
-                        </td>
-
-                        {/* 16. Fecha Pago SF */}
-                        <td className="py-2 px-2 text-center font-mono text-slate-600 border-r border-slate-200">
-                          {it.cuota?.fechaPago || '-'}
-                        </td>
-
-                        {/* 17. Monto SF */}
-                        <td className="py-2 px-3 text-right font-mono font-bold text-indigo-950 bg-indigo-50/50">
-                          {it.cuota ? (
-                            <span>${it.cuota.montoClp.toLocaleString('es-CL')}</span>
-                          ) : (
-                            <span className="text-slate-300 font-normal">-</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-
-                {/* Fila Inferior: Totales de Columnas al estilo Excel */}
-                <tfoot className="sticky bottom-0 bg-slate-100 font-bold border-t-2 border-slate-400 z-10 text-[11px] shadow-xs">
-                  <tr>
-                    <td colSpan={7} className="py-2.5 px-3 text-right font-extrabold text-slate-700 uppercase">
-                      Total Facturado EERR ({filteredItems.filter((i) => i.eerr).length} items):
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-black text-slate-900 bg-slate-200/80 border-r-2 border-slate-400">
-                      ${totalEerrVisible.toLocaleString('es-CL')}
-                    </td>
-                    <td className="py-2.5 px-2 text-center text-slate-500 font-bold">
-                      Dif. Neta:
-                    </td>
-                    <td
-                      className={`py-2.5 px-2.5 text-right font-mono font-black ${
-                        Math.abs(totalDifVisible) <= 2000
-                          ? 'text-emerald-700'
-                          : totalDifVisible > 0
-                          ? 'text-blue-700'
-                          : 'text-red-700'
-                      }`}
-                    >
-                      {totalDifVisible > 0 ? '+' : ''}${totalDifVisible.toLocaleString('es-CL')}
-                    </td>
-                    <td className="py-2.5 px-2 border-r-2 border-slate-400"></td>
-                    <td colSpan={5} className="py-2.5 px-3 text-right font-extrabold text-indigo-900 uppercase">
-                      Total Proyectado Salesforce ({filteredItems.filter((i) => i.cuota).length} cuotas):
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-black text-indigo-950 bg-indigo-100/90">
-                      ${totalSfVisible.toLocaleString('es-CL')}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          ) : (
-            /* VISTA CLÁSICA EN TARJETAS */
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                  <tr>
-                    <th className="py-3 px-4 w-[38%]">Facturación Real EERR (Gestión)</th>
-                    <th className="py-3 px-4 w-[24%] text-center">Estado y Diagnóstico IA</th>
-                    <th className="py-3 px-4 w-[38%]">Cuota Proyectada (Salesforce DGL)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredItems.map((it) => {
-                    const esConciliado = it.estado === 'conciliado';
-                    const esDiferencia = it.estado === 'diferencia_monto';
-                    const esDesfase = it.estado === 'desfase_temporal';
-                    const esNoProy = it.estado === 'no_proyectado';
-                    const esNoFact = it.estado === 'no_facturado';
-
-                    return (
-                      <tr
-                        key={it.id}
-                        className={`transition-colors hover:bg-slate-50/80 ${
-                          it.accionAplicada
-                            ? 'bg-emerald-50/30'
-                            : esConciliado
-                            ? 'bg-emerald-50/10'
-                            : esDiferencia
-                            ? 'bg-amber-50/20'
-                            : esDesfase
-                            ? 'bg-orange-50/20'
-                            : esNoProy
-                            ? 'bg-blue-50/20'
-                            : 'bg-red-50/20'
-                        }`}
-                      >
-                        {/* LADO IZQUIERDO: EERR */}
-                        <td className="py-3.5 px-4 align-top">
-                          {it.eerr ? (
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`text-[9px] font-bold px-1.5 py-0.2 rounded uppercase ${
-                                    it.eerr.tipo === 'traspaso_interno'
-                                      ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                                      : 'bg-blue-100 text-blue-900 border border-blue-200'
-                                  }`}
-                                >
-                                  {it.eerr.tipo === 'traspaso_interno' ? 'Traspaso Interno' : 'Factura'}
-                                </span>
-                                <span className="font-mono text-xs font-bold text-slate-800">
-                                  {it.eerr.referenciaExterna ? `Doc: ${it.eerr.referenciaExterna}` : 'Sin N° Doc'}
-                                </span>
-                                <span className="text-[10px] text-slate-400">
-                                  {it.eerr.fecha}
-                                </span>
-                              </div>
-
-                              <p className="font-bold text-slate-900 leading-snug">
-                                {it.eerr.razonSocial}
-                              </p>
-
-                              {it.eerr.rut && (
-                                <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-1 py-0.2 rounded">
-                                  RUT: {it.eerr.rut}
-                                </span>
-                              )}
-
-                              <p className="text-[11px] text-slate-600 line-clamp-2 italic">
-                                {it.eerr.referenciaInterna || it.eerr.glosa}
-                              </p>
-
-                              <div className="pt-1 flex items-baseline gap-2">
-                                <span className="font-mono font-bold text-slate-900 text-sm">
-                                  ${it.eerr.montoClp.toLocaleString('es-CL')} CLP
-                                </span>
-                                <span className="text-[10px] font-semibold text-slate-500">
-                                  (~{it.eerr.montoUfAprox} UF)
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="py-4 text-center text-slate-400 border border-dashed border-slate-200 rounded-xl">
-                              <span className="text-xs italic font-medium">
-                                (Sin registro en el EERR este mes)
-                              </span>
-                            </div>
-                          )}
-                        </td>
-
-                        {/* CENTRO: ESTADO, DIFERENCIA Y SUGERENCIA IA */}
-                        <td className="py-3.5 px-4 align-top text-center border-x border-slate-100 bg-slate-50/40">
-                          <div className="flex flex-col items-center gap-1.5">
-                            {/* Badge de Estado */}
-                            {esConciliado && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                <span>Match 100%</span>
-                              </span>
-                            )}
-                            {esDiferencia && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
-                                <AlertTriangle className="w-3 h-3 text-amber-600" />
-                                <span>Diferencia Monto</span>
-                              </span>
-                            )}
-                            {esDesfase && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-900 border border-orange-200">
-                                <Clock className="w-3 h-3 text-orange-600" />
-                                <span>Desfase de Mes</span>
-                              </span>
-                            )}
-                            {esNoProy && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-900 border border-blue-200">
-                                <PlusCircle className="w-3 h-3 text-blue-600" />
-                                <span>No Proyectado en SF</span>
-                              </span>
-                            )}
-                            {esNoFact && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-900 border border-red-200">
-                                <XCircle className="w-3 h-3 text-red-600" />
-                                <span>No Facturado en EERR</span>
-                              </span>
-                            )}
-
-                            {/* Monto diferencial */}
-                            {it.diferenciaClp !== 0 && (
-                              <div className="font-mono text-[11px] font-bold">
-                                <span className={it.diferenciaClp > 0 ? 'text-blue-700' : 'text-red-700'}>
-                                  {it.diferenciaClp > 0 ? '+' : ''}$
-                                  {it.diferenciaClp.toLocaleString('es-CL')}
-                                </span>
-                              </div>
-                            )}
-
-                            {/* Sugerencia IA si aplica */}
-                            {it.explicacionIa && (
-                              <div className="p-2 bg-indigo-50/80 border border-indigo-200/60 rounded-xl text-[10px] text-indigo-900 text-left w-full space-y-1">
-                                <div className="flex items-center gap-1 font-bold text-indigo-700">
-                                  <Sparkles className="w-3 h-3" />
-                                  <span>IA ({it.confianzaIa}% certeza):</span>
-                                </div>
-                                <p className="leading-snug">{it.explicacionIa}</p>
-                              </div>
-                            )}
-
-                            {/* Botones de Acción Contextual */}
-                            <div className="pt-2 w-full flex flex-col gap-1">
-                              {esConciliado && (
-                                <button
-                                  onClick={() => handleSeleccionarAccion(it, 'aceptar_match')}
-                                  disabled={it.accionAplicada === 'aceptar_match'}
-                                  className="w-full py-1 px-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-100 disabled:text-emerald-800 text-white rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
-                                >
-                                  {it.accionAplicada === 'aceptar_match' ? '✓ Conciliado' : 'Aceptar Cuadre'}
-                                </button>
-                              )}
-
-                              {esDiferencia && (
-                                <button
-                                  onClick={() =>
-                                    handleSeleccionarAccion(it, 'ajustar_cuota', {
-                                      nuevoMontoClp: it.eerr?.montoClp,
-                                    })
-                                  }
-                                  className="w-full py-1 px-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
-                                >
-                                  Ajustar Cuota a ${((it.eerr?.montoClp || 0)).toLocaleString('es-CL')}
-                                </button>
-                              )}
-
-                              {esDesfase && (
-                                <button
-                                  onClick={() => handleSeleccionarAccion(it, 'mover_cuota')}
-                                  className="w-full py-1 px-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
-                                >
-                                  Mover Cuota a este Mes
-                                </button>
-                              )}
-
-                              {esNoProy && (
-                                <button
-                                  onClick={() => handleSeleccionarAccion(it, 'crear_cuota')}
-                                  className="w-full py-1 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
-                                >
-                                  + Crear Cuota en SF
-                                </button>
-                              )}
-
-                              {esNoFact && (
-                                <div className="grid grid-cols-2 gap-1 w-full">
-                                  <button
-                                    onClick={() => handleSeleccionarAccion(it, 'postergar_mes')}
-                                    className="py-1 px-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-[9px] font-bold cursor-pointer"
-                                    title="Postergar al mes siguiente"
-                                  >
-                                    Postergar Mes
-                                  </button>
-                                  <button
-                                    onClick={() => handleSeleccionarAccion(it, 'eliminar_cuota')}
-                                    className="py-1 px-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-[9px] font-bold cursor-pointer"
-                                    title="Eliminar cuota de Salesforce"
-                                  >
-                                    Eliminar Cuota
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* LADO DERECHO: SALESFORCE */}
-                        <td className="py-3.5 px-4 align-top">
-                          {it.cuota ? (
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between flex-wrap gap-1">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="font-mono text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                                    Cuota #{it.cuota.numeroCuota}
-                                  </span>
-                                  {it.cuota.esCuentaComercial && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-purple-100 text-purple-800 border border-purple-200">
-                                      🏷️ Cuenta Comercial SF
-                                    </span>
-                                  )}
-                                </div>
-                                <span className="text-[10px] text-slate-400">
-                                  Fecha Pago: {it.cuota.fechaPago}
-                                </span>
-                              </div>
-
-                              <p className="font-bold text-slate-900 leading-snug">
-                                {it.cuota.opportunityName}
-                              </p>
-
-                              <p className="text-[11px] text-slate-600">
-                                Cliente:{' '}
-                                <strong className={it.cuota.esCuentaComercial ? 'text-purple-900 font-extrabold' : ''}>
-                                  {it.cuota.cuenta}
-                                </strong>
-                                {it.cuota.rutEmpresa && ` (RUT: ${it.cuota.rutEmpresa})`}
-                              </p>
-
-                              <div className="pt-1 flex items-baseline gap-2">
-                                <span className="font-mono font-bold text-indigo-950 text-sm">
-                                  ${it.cuota.montoClp.toLocaleString('es-CL')} CLP
-                                </span>
-                                <span className="text-[10px] font-semibold text-indigo-600">
-                                  ({it.cuota.montoUf} UF)
-                                </span>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="py-4 text-center text-slate-400 border border-dashed border-slate-200 rounded-xl">
-                              <span className="text-xs italic font-medium">
-                                (Sin cuota programada en Salesforce)
-                              </span>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Modal de Detalle Completo de Fila y Diagnóstico IA */}
-        {detalleItemModal && (
-          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2">
-                  <span className="p-2 rounded-xl bg-indigo-50 text-indigo-700">
-                    <Sparkles className="w-5 h-5" />
-                  </span>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">
-                      Detalle y Diagnóstico del Registro
-                    </h3>
-                    <span className="text-[11px] text-slate-400">
-                      Criterio de Cruce: {detalleItemModal.criterioMatch}
-                    </span>
-                  </div>
-                </div>
+            <div className="flex items-center justify-between pt-2">
+              {uploadedSession ? (
                 <button
-                  onClick={() => setDetalleItemModal(null)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+                  type="button"
+                  onClick={() => {
+                    setUploadedSession(null);
+                    setShowUploadModal(false);
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-600 hover:text-rose-700"
                 >
-                  <XCircle className="w-5 h-5" />
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Restaurar datos base
                 </button>
-              </div>
-
-              {/* Contenido Comparativo */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                {/* Lado EERR */}
-                <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1.5">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Facturación EERR</span>
-                  {detalleItemModal.eerr ? (
-                    <>
-                      <p className="font-bold text-slate-900">{detalleItemModal.eerr.razonSocial}</p>
-                      <p className="text-slate-600">RUT: <span className="font-mono">{detalleItemModal.eerr.rut}</span></p>
-                      <p className="text-slate-600">Doc: <span className="font-mono">{detalleItemModal.eerr.referenciaExterna || detalleItemModal.eerr.comprobante}</span></p>
-                      <p className="text-slate-600">Fecha: {detalleItemModal.eerr.fecha}</p>
-                      <p className="text-slate-500 italic text-[11px]">{detalleItemModal.eerr.referenciaInterna || detalleItemModal.eerr.glosa}</p>
-                      <p className="font-mono font-bold text-slate-900 text-sm pt-1">
-                        ${detalleItemModal.eerr.montoClp.toLocaleString('es-CL')} CLP
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-slate-400 italic">No hay documento asociado en EERR este mes.</p>
-                  )}
-                </div>
-
-                {/* Lado Salesforce */}
-                <div className="bg-indigo-50/50 p-3.5 rounded-2xl border border-indigo-100 space-y-1.5">
-                  <span className="text-[10px] font-bold text-indigo-700 uppercase block">Cuota Salesforce</span>
-                  {detalleItemModal.cuota ? (
-                    <>
-                      <p className="font-bold text-slate-900">{detalleItemModal.cuota.opportunityName}</p>
-                      <p className="text-slate-600">Cliente: <strong>{detalleItemModal.cuota.cuenta}</strong></p>
-                      <p className="text-slate-600">RUT SF: <span className="font-mono">{detalleItemModal.cuota.rutEmpresa || '-'}</span></p>
-                      <p className="text-slate-600">Cuota: #{detalleItemModal.cuota.numeroCuota} (Fecha: {detalleItemModal.cuota.fechaPago})</p>
-                      {detalleItemModal.cuota.esCuentaComercial && (
-                        <span className="inline-block px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-100 text-purple-800">
-                          🏷️ Cuenta Comercial Salesforce
-                        </span>
-                      )}
-                      <p className="font-mono font-bold text-indigo-950 text-sm pt-1">
-                        ${detalleItemModal.cuota.montoClp.toLocaleString('es-CL')} CLP
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-slate-400 italic">No hay cuota programada en Salesforce.</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Explicación IA */}
-              {detalleItemModal.explicacionIa && (
-                <div className="bg-indigo-50 border border-indigo-200 p-3.5 rounded-2xl text-xs text-indigo-900 space-y-1">
-                  <div className="flex items-center gap-1.5 font-bold text-indigo-800">
-                    <Sparkles className="w-4 h-4 text-indigo-600" />
-                    <span>Diagnóstico Heurístico & IA (Certeza: {detalleItemModal.confianzaIa || 85}%):</span>
-                  </div>
-                  <p className="leading-relaxed">{detalleItemModal.explicacionIa}</p>
-                </div>
-              )}
-
-              <div className="flex justify-end pt-2">
-                <button
-                  onClick={() => setDetalleItemModal(null)}
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                >
-                  Cerrar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Barra Flotante de Cambios Preparados para Salesforce */}
-        {colaAcciones.length > 0 && (
-          <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-3.5 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-4 z-40 animate-in fade-in slide-in-from-bottom-2 duration-200">
-            <div>
-              <span className="text-xs font-bold block">
-                {colaAcciones.length} cambio(s) preparado(s) para sincronizar en Salesforce
-              </span>
-              <span className="text-[11px] text-slate-400">
-                Se ajustarán cuotas, fechas o montos de venta según lo seleccionado.
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setColaAcciones([])}
-                className="px-3 py-1.5 text-xs text-slate-300 hover:text-white cursor-pointer"
-              >
-                Limpiar
-              </button>
-              <button
-                onClick={() => setShowApplyModal(true)}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
-              >
-                Revisar y Aplicar en Salesforce
-              </button>
-            </div>
-          </div>
-        )}
-      </main>
-
-      {/* Modal Confirmación y Sincronización en Salesforce */}
-      {showApplyModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 max-h-[85vh] flex flex-col animate-in fade-in zoom-in-95 duration-150">
-            <h3 className="text-lg font-bold text-slate-900 mb-1 flex items-center gap-2">
-              <Scale className="w-5 h-5 text-indigo-600" />
-              <span>Aplicar Conciliación en Salesforce</span>
-            </h3>
-            <p className="text-xs text-slate-500 mb-3">
-              Revisa las acciones que se enviarán en lote hacia la API de Salesforce:
-            </p>
-
-            {applyResultMsg && (
-              <div className="mb-3 p-3 bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-xl text-xs">
-                {applyResultMsg}
-              </div>
-            )}
-
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1 my-2">
-              {colaAcciones.map((c, idx) => (
-                <div key={idx} className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs flex items-center justify-between">
-                  <div>
-                    <span className="font-bold text-slate-800 block">{c.titulo}</span>
-                    <span className="text-[10px] text-slate-500 uppercase">{c.accion}</span>
-                  </div>
-                  <span className="text-xs font-bold text-indigo-700">✓ Listo</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                onClick={() => setShowApplyModal(false)}
-                disabled={isApplying}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-              >
-                Cerrar
-              </button>
-              <button
-                onClick={handleEjecutarSincronizacion}
-                disabled={isApplying || colaAcciones.length === 0}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer"
-              >
-                {isApplying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                <span>{isApplying ? 'Sincronizando...' : 'Confirmar y Enviar a Salesforce'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Respuesta Asistente IA */}
-      {showAiModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-indigo-600" />
-                <h3 className="text-sm font-bold text-slate-900">Respuesta del Asistente IA</h3>
-              </div>
-              <button
-                onClick={() => setShowAiModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="py-2 min-h-[120px]">
-              {loadingAi ? (
-                <div className="py-8 flex flex-col items-center justify-center gap-2 text-indigo-600">
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                  <span className="text-xs text-slate-500 font-medium">Analizando cruce semántico y montos...</span>
-                </div>
               ) : (
-                <div className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                  {aiResponse}
-                </div>
+                <span />
               )}
-            </div>
-
-            <div className="pt-3 border-t border-slate-100 flex justify-end">
-              <button
-                onClick={() => setShowAiModal(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Carga de Documentos (EERR y Cuotas Salesforce) */}
-      {showUploadModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-slate-200 flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-600 flex items-center justify-center">
-                  <Upload className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-extrabold text-slate-900">
-                    Carga de Archivos de Conciliación
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    Sube hasta 2 archivos: el Estado de Resultados (EERR) y el Informe de Cuotas de Salesforce.
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowUploadModal(false)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Dos slots de carga */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Slot 1: EERR */}
-              <div
-                className={`p-4 rounded-2xl border-2 border-dashed transition-all flex flex-col justify-between ${
-                  fileEerr
-                    ? 'border-emerald-400 bg-emerald-50/30'
-                    : 'border-slate-200 bg-slate-50/50 hover:border-indigo-300'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
-                      Archivo 1: EERR
-                    </span>
-                    {fileEerr && (
-                      <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
-                        Listo ✓
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs font-bold text-slate-800">
-                    Facturación y Traspasos Internos
-                  </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Reporte del Depto. de Gestión (ej: <code>FACTURACIONES DGL.xlsx</code>).
-                  </p>
-
-                  {fileEerr && (
-                    <div className="mt-3 p-2.5 bg-white rounded-xl border border-emerald-200 flex items-center justify-between">
-                      <div className="truncate pr-2">
-                        <p className="text-xs font-bold text-slate-900 truncate">{fileEerr.name}</p>
-                        <p className="text-[10px] text-slate-400">{(fileEerr.size / 1024).toFixed(1)} KB</p>
-                      </div>
-                      <button
-                        onClick={() => setFileEerr(null)}
-                        className="text-slate-400 hover:text-red-600 text-xs font-bold cursor-pointer"
-                      >
-                        Quitar
-                      </button>
-                    </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowUploadModal(false)}
+                  className="px-3.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={uploadingFiles || (!fileEerr && !fileSf)}
+                  onClick={handleUploadExcelFiles}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-xs font-bold text-white"
+                >
+                  {uploadingFiles ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="w-3.5 h-3.5" />
                   )}
-                </div>
-
-                <div className="mt-4">
-                  <input
-                    type="file"
-                    ref={fileInputEerrRef}
-                    accept=".xlsx,.xls"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) setFileEerr(f);
-                    }}
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputEerrRef.current?.click()}
-                    className="w-full py-2 px-3 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-slate-500" />
-                    <span>{fileEerr ? 'Cambiar EERR' : 'Seleccionar Excel EERR'}</span>
-                  </button>
-                </div>
+                  Procesar Archivos
+                </button>
               </div>
-
-              {/* Slot 2: Cuotas Salesforce */}
-              <div
-                className={`p-4 rounded-2xl border-2 border-dashed transition-all flex flex-col justify-between ${
-                  fileSf
-                    ? 'border-indigo-400 bg-indigo-50/30'
-                    : 'border-slate-200 bg-slate-50/50 hover:border-indigo-300'
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
-                      Archivo 2: Cuotas SF
-                    </span>
-                    {fileSf && (
-                      <span className="text-[10px] font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">
-                        Listo ✓
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs font-bold text-slate-800">
-                    Informe de Cuotas Salesforce
-                  </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Reporte de cuotas de facturación del mes (Opcional si el EERR ya incluye cuotas).
-                  </p>
-
-                  {fileSf && (
-                    <div className="mt-3 p-2.5 bg-white rounded-xl border border-indigo-200 flex items-center justify-between">
-                      <div className="truncate pr-2">
-                        <p className="text-xs font-bold text-slate-900 truncate">{fileSf.name}</p>
-                        <p className="text-[10px] text-slate-400">{(fileSf.size / 1024).toFixed(1)} KB</p>
-                      </div>
-                      <button
-                        onClick={() => setFileSf(null)}
-                        className="text-slate-400 hover:text-red-600 text-xs font-bold cursor-pointer"
-                      >
-                        Quitar
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-4">
-                  <input
-                    type="file"
-                    ref={fileInputSfRef}
-                    accept=".xlsx,.xls"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) setFileSf(f);
-                    }}
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputSfRef.current?.click()}
-                    className="w-full py-2 px-3 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    <Scale className="w-3.5 h-3.5 text-slate-500" />
-                    <span>{fileSf ? 'Cambiar Cuotas' : 'Seleccionar Cuotas SF'}</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Barra informativa de detección automática */}
-            <div className="p-3 bg-indigo-50/70 rounded-2xl border border-indigo-100 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-xs text-indigo-950 font-medium">
-                <Info className="w-4 h-4 text-indigo-600 shrink-0" />
-                <span>
-                  <strong>Validación Automática de Mes:</strong> La plataforma detectará el período de los documentos y verificará en pantalla que ambos coincidan.
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => fileInputBothRef.current?.click()}
-                className="text-indigo-700 hover:text-indigo-900 text-xs font-bold underline shrink-0 cursor-pointer"
-              >
-                Elegir ambos a la vez
-              </button>
-            </div>
-
-            {errorMsg && (
-              <div className="p-4 bg-red-50 border border-red-200 text-red-900 rounded-2xl text-xs space-y-2 animate-in fade-in">
-                <div className="flex items-center gap-2 font-bold text-red-800">
-                  <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-                  <span>Detalle del Error al Procesar Documentos</span>
-                </div>
-                <div className="whitespace-pre-wrap font-sans text-xs bg-white/80 p-3 rounded-xl border border-red-200/80 text-red-800 leading-relaxed max-h-48 overflow-y-auto font-medium">
-                  {errorMsg}
-                </div>
-              </div>
-            )}
-
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-end gap-3">
-              <button
-                onClick={() => setShowUploadModal(false)}
-                disabled={isUploadingFiles}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => handleProcessUploadedFiles()}
-                disabled={isUploadingFiles || (!fileEerr && !fileSf)}
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all flex items-center gap-2 cursor-pointer"
-              >
-                {isUploadingFiles ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Procesando y Validando Período...</span>
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-4 h-4" />
-                    <span>Cargar y Desplegar Conciliación</span>
-                  </>
-                )}
-              </button>
             </div>
           </div>
         </div>
@@ -2358,4 +497,3 @@ export default function ConciliadorPage() {
     </div>
   );
 }
-

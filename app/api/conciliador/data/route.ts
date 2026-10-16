@@ -7,7 +7,9 @@ import {
   conciliarPeriodo,
   detectPredominantPeriod,
   esCuentaComercialSalesforce,
+  ejecutarSugerenciasIaOnDemand,
 } from '@/lib/conciliador-service';
+import { FiltroCuentaComercial, EerrRegistro, SalesforceCuotaRegistro } from '@/lib/conciliador-types';
 import sampleData from '@/data/conciliador-sample.json';
 import path from 'path';
 import fs from 'fs';
@@ -20,14 +22,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'No autenticado' }, { status: 401 });
   }
 
-  // RESTRICCIÓN SOLICITADA: Solo visible por el administrador Soporte
   const isAuthorized =
     isSuperAdminRole(currentUser.role) || currentUser.profileId === 'superadmin';
   if (!isAuthorized) {
     return NextResponse.json(
       {
         error:
-          'Acceso denegado: El módulo Conciliador está temporalmente restringido de forma exclusiva para el rol Administrador / Soporte.',
+          'Acceso denegado: El módulo Conciliador está restringido para el rol Administrador / Soporte.',
       },
       { status: 403 }
     );
@@ -38,15 +39,19 @@ export async function GET(req: NextRequest) {
   const anio = parseInt(searchParams.get('anio') || '2026', 10);
   const division = searchParams.get('division') || 'DGL';
   const source = searchParams.get('source') || 'excel'; // 'excel' | 'salesforce_live'
-  const filtroCuentaComercial = (searchParams.get('filtroCuentaComercial') as any) || 'todas';
+  const filtroCuentaComercial = (searchParams.get('filtroCuentaComercial') as FiltroCuentaComercial) || 'todas';
 
   try {
-    let eerrItems: any[] = [];
-    let sfExcelItems: any[] = [];
+    let eerrItems: EerrRegistro[] = [];
+    let sfExcelItems: SalesforceCuotaRegistro[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let consolidadoDivisiones: any = (sampleData as any)?.consolidadoDivisiones || {};
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (sampleData && Array.isArray((sampleData as any).eerrItems) && (sampleData as any).eerrItems.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       eerrItems = (sampleData as any).eerrItems;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       sfExcelItems = (sampleData as any).sfItems || [];
     } else {
       const facturacionesDglPath = path.join(process.cwd(), 'FACTURACIONES DGL.xlsx');
@@ -75,29 +80,33 @@ export async function GET(req: NextRequest) {
         if (liveItems.length > 0) {
           finalSfItems = liveItems;
         }
-      } catch (sfErr: any) {
+      } catch (sfErr: unknown) {
         console.warn('Fallo consultando Salesforce en vivo, usando datos de Excel:', sfErr);
-        liveError = sfErr?.message || 'Error conectando con Salesforce API. Usando datos de respaldo.';
+        liveError =
+          sfErr instanceof Error
+            ? sfErr.message
+            : 'Error conectando con Salesforce API. Usando datos de respaldo.';
       }
     }
 
-    const { items, resumen } = await conciliarPeriodo({
+    const { groups, oportunidadesClientes, items, resumen } = await conciliarPeriodo({
       eerrItems,
       sfItems: finalSfItems,
       mes,
       anio,
       division,
-      usarIaGemini: true,
+      usarIaGemini: false,
       consolidadoDivisiones,
       filtroCuentaComercial,
     });
 
-    // Detectar meses disponibles en el dataset
     const mesesConDatos = Array.from(new Set(eerrItems.map((e) => e.mes))).sort((a, b) => a - b);
     const divisionesConDatos = Array.from(new Set(eerrItems.map((e) => e.division))).sort();
 
     return NextResponse.json({
       resumen,
+      groups,
+      oportunidadesClientes,
       items,
       eerrItems: eerrItems.filter(
         (e) => e.mes === mes && e.anio === anio && (division === 'TODAS' || e.division === division)
@@ -116,10 +125,10 @@ export async function GET(req: NextRequest) {
       sourceUtilizado: source === 'salesforce_live' && !liveError ? 'salesforce_live' : 'excel',
       liveError,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Error en /api/conciliador/data:', err);
     return NextResponse.json(
-      { error: err?.message || 'Error al procesar la conciliación' },
+      { error: err instanceof Error ? err.message : 'Error al procesar la conciliación' },
       { status: 500 }
     );
   }
@@ -143,16 +152,26 @@ export async function POST(req: NextRequest) {
     }
 
     if (req.headers.get('content-type')?.includes('application/json')) {
-      etapaActual = '2. Procesamiento de recálculo en memoria JSON';
+      etapaActual = '2. Procesamiento de solicitud JSON';
       const body = await req.json();
+
+      // Fase 4 On-Demand: Sugerencias IA Gemini bajo demanda para huérfanos
+      if (body.action === 'ai_batch_orphan_match') {
+        const sugerencias = await ejecutarSugerenciasIaOnDemand({
+          orphanEerr: body.orphanEerr || [],
+          orphanSf: body.orphanSf || [],
+        });
+        return NextResponse.json({ success: true, sugerencias });
+      }
+
       const mesFinal = Number(body.mes) || 1;
       const anioFinal = Number(body.anio) || 2026;
       const divisionFinal = String(body.division || 'DGL');
-      const filtroCuentaComercial = body.filtroCuentaComercial || 'todas';
-      const allEerrItems = body.allEerrItems || body.eerrItems || [];
-      const allSfItems = body.allSfItems || body.sfItems || [];
+      const filtroCuentaComercial: FiltroCuentaComercial = body.filtroCuentaComercial || 'todas';
+      const allEerrItems: EerrRegistro[] = body.allEerrItems || body.eerrItems || [];
+      const allSfItems: SalesforceCuotaRegistro[] = body.allSfItems || body.sfItems || [];
 
-      const { items, resumen } = await conciliarPeriodo({
+      const { groups, oportunidadesClientes, items, resumen } = await conciliarPeriodo({
         eerrItems: allEerrItems,
         sfItems: allSfItems,
         mes: mesFinal,
@@ -164,10 +183,10 @@ export async function POST(req: NextRequest) {
       });
 
       const filteredEerr = allEerrItems.filter(
-        (e: any) => e.mes === mesFinal && e.anio === anioFinal && (divisionFinal === 'TODAS' || (e.division || 'DGL') === divisionFinal)
+        (e) => e.mes === mesFinal && e.anio === anioFinal && (divisionFinal === 'TODAS' || (e.division || 'DGL') === divisionFinal)
       );
       const filteredSf = allSfItems.filter(
-        (s: any) =>
+        (s) =>
           s.mes === mesFinal &&
           s.anio === anioFinal &&
           (divisionFinal === 'TODAS' || (s.division || 'DGL') === divisionFinal) &&
@@ -182,6 +201,8 @@ export async function POST(req: NextRequest) {
         anioDetectado: anioFinal,
         divisionDetectada: divisionFinal,
         resumen,
+        groups,
+        oportunidadesClientes,
         items,
         eerrItems: filteredEerr,
         sfItems: filteredSf,
@@ -190,7 +211,7 @@ export async function POST(req: NextRequest) {
 
     etapaActual = '2. Recepción de FormData y archivos';
     const formData = await req.formData();
-    const filtroCuentaComercial = (formData.get('filtroCuentaComercial') as any) || 'todas';
+    const filtroCuentaComercial = (formData.get('filtroCuentaComercial') as FiltroCuentaComercial) || 'todas';
 
     let fileEerr = (formData.get('fileEerr') || formData.get('file')) as File | null;
     let fileSf = (formData.get('fileSf') || formData.get('fileCuotas')) as File | null;
@@ -212,7 +233,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Detección e intercambio inteligente de archivos si el usuario los invirtió
     const isEerrLikeName = (n: string) => /facturaci[oó]n|eerr|hoja1/i.test(n);
     const isSfLikeName = (n: string) => /cuota|salesforce|vta/i.test(n);
 
@@ -227,13 +247,13 @@ export async function POST(req: NextRequest) {
       fileEerr = null;
     }
 
-    let eerrItems: any[] = [];
-    let sfItems: any[] = [];
+    let eerrItems: EerrRegistro[] = [];
+    let sfItems: SalesforceCuotaRegistro[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let consolidadoDivisiones: any = undefined;
     let nombreArchivoEerr: string | undefined = undefined;
     let nombreArchivoSf: string | undefined = undefined;
 
-    // 3. Procesamiento de EERR
     etapaActual = '3. Procesamiento y extracción del archivo EERR';
     const isKnownDgl =
       useOfficialEerr ||
@@ -245,8 +265,11 @@ export async function POST(req: NextRequest) {
 
     if (isKnownDgl) {
       nombreArchivoEerr = nombreOficialParam || fileEerr?.name || 'FACTURACIONES DGL.xlsx';
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (sampleData && Array.isArray((sampleData as any).eerrItems) && (sampleData as any).eerrItems.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         eerrItems = (sampleData as any).eerrItems;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         consolidadoDivisiones = (sampleData as any).consolidadoDivisiones;
       } else {
         const localPath = path.join(process.cwd(), 'FACTURACIONES DGL.xlsx');
@@ -257,63 +280,62 @@ export async function POST(req: NextRequest) {
         }
       }
     } else if (fileEerr) {
-      try {
-        const buf1 = Buffer.from(await fileEerr.arrayBuffer());
-        const p1 = await parseLibroEerr(buf1);
+      const buf1 = Buffer.from(await fileEerr.arrayBuffer());
+      const p1 = await parseLibroEerr(buf1);
 
-        if (p1.eerrItems.length > 0) {
-          eerrItems = p1.eerrItems;
-          nombreArchivoEerr = fileEerr.name;
-          if (p1.consolidadoDivisiones) consolidadoDivisiones = p1.consolidadoDivisiones;
-        }
+      if (p1.eerrItems.length > 0) {
+        eerrItems = p1.eerrItems;
+        nombreArchivoEerr = fileEerr.name;
+        if (p1.consolidadoDivisiones) consolidadoDivisiones = p1.consolidadoDivisiones;
+      }
 
-        if (p1.sfItems.length > 0) {
-          sfItems = p1.sfItems;
-          if (!nombreArchivoSf) nombreArchivoSf = fileEerr.name;
-        }
+      if (p1.sfItems.length > 0) {
+        sfItems = p1.sfItems;
+        if (!nombreArchivoSf) nombreArchivoSf = fileEerr.name;
+      }
 
-        if (p1.eerrItems.length === 0 && p1.sfItems.length > 0) {
-          sfItems = p1.sfItems;
-          nombreArchivoSf = fileEerr.name;
-          nombreArchivoEerr = undefined;
-        }
-      } catch (parseErr: any) {
-        console.warn('Fallo parseando fileEerr con exceljs:', parseErr);
-        throw new Error(`Error en el formato o lectura del archivo EERR (${fileEerr.name}): ${parseErr?.message || 'Formato no soportado'}`);
+      if (p1.eerrItems.length === 0 && p1.sfItems.length > 0) {
+        sfItems = p1.sfItems;
+        nombreArchivoSf = fileEerr.name;
+        nombreArchivoEerr = undefined;
       }
     }
 
-    // 4. Procesamiento de Cuotas Salesforce
     etapaActual = '4. Procesamiento y extracción del archivo de Cuotas Salesforce';
     if (fileSf) {
-      try {
-        const buf2 = Buffer.from(await fileSf.arrayBuffer());
-        const p2 = await parseLibroEerr(buf2);
+      const buf2 = Buffer.from(await fileSf.arrayBuffer());
+      const p2 = await parseLibroEerr(buf2);
 
-        if (p2.sfItems.length > 0) {
-          sfItems = p2.sfItems;
-          nombreArchivoSf = fileSf.name;
-        }
+      if (p2.sfItems.length > 0) {
+        sfItems = p2.sfItems;
+        nombreArchivoSf = fileSf.name;
+      }
 
-        if (p2.eerrItems.length > 0 && eerrItems.length === 0) {
-          eerrItems = p2.eerrItems;
-          nombreArchivoEerr = fileSf.name;
-          if (p2.consolidadoDivisiones) consolidadoDivisiones = p2.consolidadoDivisiones;
-        }
-      } catch (parseErr: any) {
-        console.warn('Fallo parseando fileSf:', parseErr);
-        throw new Error(`Error en el formato o lectura del archivo de Cuotas (${fileSf.name}): ${parseErr?.message || 'Formato no soportado'}`);
+      if (p2.eerrItems.length > 0 && eerrItems.length === 0) {
+        eerrItems = p2.eerrItems;
+        nombreArchivoEerr = fileSf.name;
+        if (p2.consolidadoDivisiones) consolidadoDivisiones = p2.consolidadoDivisiones;
       }
     }
 
-    // 5. Detección automática del período predominante en los datos
     etapaActual = '5. Detección automática del período predominante';
     const periodoEerr = detectPredominantPeriod(eerrItems);
     const periodoSf = detectPredominantPeriod(sfItems);
 
     const MESES_NOMBRES = [
-      '', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+      '',
+      'Enero',
+      'Febrero',
+      'Marzo',
+      'Abril',
+      'Mayo',
+      'Junio',
+      'Julio',
+      'Agosto',
+      'Septiembre',
+      'Octubre',
+      'Noviembre',
+      'Diciembre',
     ];
 
     let mesFinal = 1;
@@ -342,7 +364,9 @@ export async function POST(req: NextRequest) {
       coincidePeriodo = true;
       mensajePeriodo = `✅ Período detectado en EERR: ${MESES_NOMBRES[mesFinal]} ${anioFinal} (${nombreArchivoEerr}). Cuotas de Salesforce asociadas para el mismo mes.`;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (sfItems.length === 0 && sampleData && Array.isArray((sampleData as any).sfItems)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         sfItems = (sampleData as any).sfItems;
       }
     } else if (periodoSf) {
@@ -351,7 +375,9 @@ export async function POST(req: NextRequest) {
       coincidePeriodo = true;
       mensajePeriodo = `✅ Período detectado en Cuotas Salesforce: ${MESES_NOMBRES[mesFinal]} ${anioFinal} (${nombreArchivoSf}). EERR asociado para el mismo mes.`;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (eerrItems.length === 0 && sampleData && Array.isArray((sampleData as any).eerrItems)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         eerrItems = (sampleData as any).eerrItems;
       }
     } else {
@@ -369,20 +395,19 @@ export async function POST(req: NextRequest) {
         ? divisionesEnEerr[0]
         : divisionParam;
 
-    // 6. Ejecución del algoritmo de conciliación
-    etapaActual = '6. Ejecución del algoritmo de conciliación uno a uno';
-    const { items, resumen } = await conciliarPeriodo({
+    etapaActual = '6. Ejecución del motor de conciliación 2.0 (N:M + Scoring)';
+    const { groups, oportunidadesClientes, items, resumen } = await conciliarPeriodo({
       eerrItems,
       sfItems,
       mes: mesFinal,
       anio: anioFinal,
       division: divisionFinal,
-      usarIaGemini: true,
+      usarIaGemini: false,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       consolidadoDivisiones: consolidadoDivisiones || (sampleData as any)?.consolidadoDivisiones,
       filtroCuentaComercial,
     });
 
-    // 7. Preparación de respuesta JSON ligera
     etapaActual = '7. Serialización y retorno de datos JSON';
     const filteredEerr = eerrItems.filter(
       (e) => e.mes === mesFinal && e.anio === anioFinal && (divisionFinal === 'TODAS' || (e.division || 'DGL') === divisionFinal)
@@ -410,24 +435,26 @@ export async function POST(req: NextRequest) {
       nombreArchivoEerr,
       nombreArchivoSf,
       resumen,
+      groups,
+      oportunidadesClientes,
       items,
       eerrItems: filteredEerr,
       sfItems: filteredSf,
-      allEerrItems: filteredEerr,
-      allSfItems: filteredSf,
+      allEerrItems: eerrItems,
+      allSfItems: sfItems,
       mesesConDatos,
       divisionesConDatos,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error(`Error en POST /api/conciliador/data [${etapaActual}]:`, err);
+    const msg = err instanceof Error ? err.message : 'Error no especificado';
     return NextResponse.json(
       {
-        error: `Error en ${etapaActual}: ${err?.message || 'Error no especificado'}`,
+        error: `Error en ${etapaActual}: ${msg}`,
         etapa: etapaActual,
-        detalle: err?.message || String(err),
+        detalle: msg,
       },
       { status: 500 }
     );
   }
 }
-

@@ -13,11 +13,29 @@ export interface VersionRegistro {
 
 export const HISTORIAL_VERSIONES: VersionRegistro[] = [
   {
+    version: '2.5.0',
+    tag: 'v2.5.0',
+    fecha: '2026-10-16',
+    fechaFormato: '16 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Conciliador EERR vs Salesforce v2.0: Motor Multicriterio N:M, Mesa de Cirugía 50/50 y Staging Auditable',
+    modulos: ['Conciliador v2.0', 'Salesforce API', 'Control de Gestión', 'Arquitectura Modular'],
+    descripcion:
+      'Refactorización profunda (Versión 2.0) del Módulo de Conciliación EERR vs Salesforce de IDIEM (DGL): soporte nativo para relaciones N:M, aislamiento de Traspasos Internos (TI) y Notas de Crédito (NC), solver Subset-Sum para clientes corporativos, matriz de scoring ponderado con penalización de colisión de proyectos, Workbench 50/50 y Pre-Flight Check con blindaje de Oportunidad__c obligatorio.',
+    detalles: [
+      'Motor Multicriterio Determinista v2.0: Fase 0 de higiene contable (aislamiento TI y neteo NC), extractor Regex tolerante de código completo y núcleo de proyecto, Fase 1 de Pre-Clustering N:M por RUT + Núcleo, Fase 2 con solver Subset-Sum (±2.5% UF) y Fase 3 con matriz de scoring (0-100 pts) y penalización crítica (-100 pts) ante códigos de proyecto distintos en holdings mineros.',
+      'Arquitectura UI Modular Inbox Zero: Descomposición del monolito en 4 componentes especializados (ConciliadorHeaderBalance, ConciliadorStepperTabs, TabMesaCirugiaSplit y StagingPreFlightModal) y orquestador limpio (< 350 líneas).',
+      'Mesa de Cirugía Split-Screen 50/50: Vinculación manual N:M interactiva con auto-filtrado por RUT, sugerencias Top 3 con ScoreBreakdown, postergación masiva de cuotas por comercial y análisis IA Gemini On-Demand en batch.',
+      'Blindaje de Integridad Salesforce (Pre-Flight Check): Carrito de acciones tipado con uniones discriminadas (UPDATE_MONTO, UPDATE_FECHA, CREATE_CUOTA), validación estricta de opportunityId obligatorio, exportación previa a CSV/Excel y log auditable valorAnterior -> valorNuevo.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
     version: '2.4.6',
     tag: 'v2.4.6',
     fecha: '2026-10-16',
     fechaFormato: '16 de Octubre, 2026',
-    estado: 'activa',
+    estado: 'previa',
     titulo: 'Tema Oscuro Inspirado en Jira Software (Atlassian Design System)',
     modulos: ['UI / Tema', 'Cotizador', 'Accesibilidad', 'Dashboard'],
     descripcion:

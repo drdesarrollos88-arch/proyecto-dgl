@@ -109,25 +109,25 @@ export async function GET(
   const showSummaryUnitWeight =
     showSummaryUnitParam !== null
       ? showSummaryUnitParam === 'true'
-      : targetCotizacion.showSummaryUnitWeight !== false;
+      : Boolean(targetCotizacion.showSummaryUnitWeight);
 
   const showSummaryTotalParam = req.nextUrl.searchParams.get('showSummaryTotalWeight');
   const showSummaryTotalWeight =
     showSummaryTotalParam !== null
       ? showSummaryTotalParam === 'true'
-      : targetCotizacion.showSummaryTotalWeight !== false;
+      : Boolean(targetCotizacion.showSummaryTotalWeight);
 
   const showTableFootParam = req.nextUrl.searchParams.get('showTableFootWeight');
   const showTableFootWeight =
     showTableFootParam !== null
       ? showTableFootParam === 'true'
-      : targetCotizacion.showTableFootWeight !== false;
+      : Boolean(targetCotizacion.showTableFootWeight);
 
   const showObservationsParam = req.nextUrl.searchParams.get('showObservationsWeight');
   const showObservationsWeight =
     showObservationsParam !== null
       ? showObservationsParam === 'true'
-      : targetCotizacion.showObservationsWeight !== false;
+      : Boolean(targetCotizacion.showObservationsWeight);
 
   const doc = generateCotizacionPdf(targetCotizacion, logoBase64, formato, {
     isDraft,

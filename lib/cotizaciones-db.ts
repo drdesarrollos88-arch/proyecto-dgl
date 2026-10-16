@@ -75,8 +75,15 @@ export function mapSupabaseToCotizacion(row: any): Cotizacion {
     projectId: row.project_id || undefined,
     city: row.project_address || 'Santiago',
     paymentCondition: row.payment_terms || '50% AL CONTADO Y 50% CONTRA ENTREGA',
-    centroCosto: row.centro_costo || '1817',
-    seccion: row.seccion || row.ai_chat_state?.projectMeta?.seccion || getDGLInfoByCC(row.centro_costo || row.code || '2340').seccion,
+    centroCosto:
+      row.centro_costo ||
+      row.ai_chat_state?.projectMeta?.centroCosto ||
+      getDGLInfoByCC(row.code || '2340').unitCode ||
+      '2340',
+    seccion:
+      row.seccion ||
+      row.ai_chat_state?.projectMeta?.seccion ||
+      getDGLInfoByCC(row.centro_costo || row.code || '2340').seccion,
     sectorProyecto: row.sector_proyecto || row.ai_chat_state?.projectMeta?.sectorProyecto || 'Inmobiliario',
     subsectorProyecto: row.subsector_proyecto || row.ai_chat_state?.projectMeta?.subsectorProyecto || 'No Aplica',
     zonaProyecto: row.zona_proyecto || row.ai_chat_state?.projectMeta?.zonaProyecto || 'Región Metropolitana',
@@ -103,22 +110,22 @@ export function mapSupabaseToCotizacion(row: any): Cotizacion {
       row.show_summary_unit_weight ??
       row.showSummaryUnitWeight ??
       row.ai_chat_state?.showSummaryUnitWeight ??
-      true,
+      false,
     showSummaryTotalWeight:
       row.show_summary_total_weight ??
       row.showSummaryTotalWeight ??
       row.ai_chat_state?.showSummaryTotalWeight ??
-      true,
+      false,
     showTableFootWeight:
       row.show_table_foot_weight ??
       row.showTableFootWeight ??
       row.ai_chat_state?.showTableFootWeight ??
-      true,
+      false,
     showObservationsWeight:
       row.show_observations_weight ??
       row.showObservationsWeight ??
       row.ai_chat_state?.showObservationsWeight ??
-      true,
+      false,
     observations: Array.isArray(row.observations) ? row.observations : [],
     status: (row.status as any) || 'Borrador',
     version: row.version || 1,
@@ -190,7 +197,7 @@ export function mapCotizacionToSupabase(c: Partial<Cotizacion>): any {
     contact_phone: c.clientPhone || null,
     project_name: c.projectName || null,
     project_address: c.city || null,
-    centro_costo: c.centroCosto || '1817',
+    centro_costo: c.centroCosto || getDGLInfoByCC(c.code || '2340').unitCode || '2340',
     user_id: c.createdById || 'usr-1',
     user_name: c.commercialName || c.createdBy || 'Diego Román',
     user_email: c.commercialEmail || 'diego.roman@idiem.cl',
@@ -217,16 +224,17 @@ export function mapCotizacionToSupabase(c: Partial<Cotizacion>): any {
     ai_chat_state: {
       ...(c.aiChatState || {}),
       commercialTitle: c.commercialTitle,
-      showTotalWeightPerItem: c.showTotalWeightPerItem,
-      showSummaryUnitWeight: c.showSummaryUnitWeight,
-      showSummaryTotalWeight: c.showSummaryTotalWeight,
-      showTableFootWeight: c.showTableFootWeight,
-      showObservationsWeight: c.showObservationsWeight,
+      showTotalWeightPerItem: c.showTotalWeightPerItem ?? true,
+      showSummaryUnitWeight: c.showSummaryUnitWeight ?? false,
+      showSummaryTotalWeight: c.showSummaryTotalWeight ?? false,
+      showTableFootWeight: c.showTableFootWeight ?? false,
+      showObservationsWeight: c.showObservationsWeight ?? false,
       totalUnitWeightKg: c.totalUnitWeightKg,
       cierreNegocio: c.cierreNegocio || c.aiChatState?.cierreNegocio || undefined,
       versionHistory: c.versionHistory || [],
       projectMeta: {
         seccion: c.seccion || getDGLInfoByCC(c.centroCosto || c.code || '2340').seccion,
+        centroCosto: c.centroCosto || getDGLInfoByCC(c.code || '2340').unitCode || '2340',
         sectorProyecto: c.sectorProyecto || 'Inmobiliario',
         subsectorProyecto: c.subsectorProyecto || 'No Aplica',
         zonaProyecto: c.zonaProyecto || 'Región Metropolitana',

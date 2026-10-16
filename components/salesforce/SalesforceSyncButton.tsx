@@ -60,12 +60,23 @@ export default function SalesforceSyncButton({
   const targetUrl = cotizacion.salesforceQuoteUrl || cotizacion.salesforceOpportunityUrl;
 
   // Form values editable in modal
-  const defaultDgl = getDGLInfoByCC(cotizacion.centroCosto || cotizacion.code || '2340');
-  const [seccion, setSeccion] = useState<string>(cotizacion.seccion || defaultDgl.seccion);
-  const [centroCosto, setCentroCosto] = useState<string>(cotizacion.centroCosto || defaultDgl.unitCode);
+  const getCleanUnitCode = (rawCc?: string, code?: string) => {
+    const match = (rawCc || '').match(/^(\d{4})/);
+    if (match) return match[1];
+    return getDGLInfoByCC(rawCc || code || '2340').unitCode || '2340';
+  };
+
+  const initialUnitCode = getCleanUnitCode(cotizacion.centroCosto, cotizacion.code);
+  const initialDgl = getDGLInfoByCC(initialUnitCode);
+  const initialSeccion = cotizacion.seccion || initialDgl.seccion;
+
+  const [seccion, setSeccion] = useState<string>(initialSeccion);
+  const [centroCosto, setCentroCosto] = useState<string>(initialUnitCode);
   const [sectorProyecto, setSectorProyecto] = useState<string>(cotizacion.sectorProyecto || 'Inmobiliario');
   const [subsectorProyecto, setSubsectorProyecto] = useState<string>(cotizacion.subsectorProyecto || 'No Aplica');
   const [zonaProyecto, setZonaProyecto] = useState<string>(cotizacion.zonaProyecto || 'Región Metropolitana');
+
+  const availableUnits = DGL_UNIDADES.filter((u) => u.seccion === seccion);
 
   const handleOpenModal = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -77,10 +88,12 @@ export default function SalesforceSyncButton({
       return;
     }
 
-    // Refresh default values based on current quote
-    const dgl = getDGLInfoByCC(cotizacion.centroCosto || cotizacion.code || '2340');
-    setSeccion(cotizacion.seccion || dgl.seccion);
-    setCentroCosto(cotizacion.centroCosto || dgl.unitCode);
+    // Refresh default values strictly based on current saved quote
+    const currentCode = getCleanUnitCode(cotizacion.centroCosto, cotizacion.code);
+    const dgl = getDGLInfoByCC(currentCode);
+    const sec = cotizacion.seccion || dgl.seccion;
+    setSeccion(sec);
+    setCentroCosto(currentCode);
     setSectorProyecto(cotizacion.sectorProyecto || 'Inmobiliario');
     setSubsectorProyecto(cotizacion.subsectorProyecto || 'No Aplica');
     setZonaProyecto(cotizacion.zonaProyecto || 'Región Metropolitana');
@@ -97,9 +110,12 @@ export default function SalesforceSyncButton({
 
   const handleSeccionChange = (newSec: string) => {
     setSeccion(newSec);
-    const matchingUnit = DGL_UNIDADES.find((u) => u.seccion === newSec);
-    if (matchingUnit) {
-      setCentroCosto(matchingUnit.code);
+    const matchingUnits = DGL_UNIDADES.filter((u) => u.seccion === newSec);
+    if (matchingUnits.length > 0) {
+      const alreadyMatches = matchingUnits.some((u) => u.code === centroCosto);
+      if (!alreadyMatches) {
+        setCentroCosto(matchingUnits[0].code);
+      }
     }
   };
 
@@ -377,7 +393,7 @@ export default function SalesforceSyncButton({
                         onChange={(e) => handleUnitChange(e.target.value)}
                         className="w-full max-w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono truncate"
                       >
-                        {DGL_UNIDADES.map((u) => (
+                        {availableUnits.map((u) => (
                           <option key={u.code} value={u.code}>
                             {u.code} - {u.name}
                           </option>

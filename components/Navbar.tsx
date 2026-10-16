@@ -37,6 +37,8 @@ import {
   BookOpen,
   Trophy,
   Scale,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import CierreOportunidadModal from '@/components/salesforce/CierreOportunidadModal';
 
@@ -50,7 +52,26 @@ export default function Navbar() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showFormatoModal, setShowFormatoModal] = useState(false);
   const [showCierreModal, setShowCierreModal] = useState(false);
+  const [isDark, setIsDark] = useState(false);
   const closeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const isDarkMode = document.documentElement.classList.contains('dark');
+    setIsDark(isDarkMode);
+  }, []);
+
+  const toggleTheme = () => {
+    const nextDark = !isDark;
+    setIsDark(nextDark);
+    if (nextDark) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('dgl-theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('dgl-theme', 'light');
+    }
+    window.dispatchEvent(new CustomEvent('dgl-theme-changed', { detail: { theme: nextDark ? 'dark' : 'light' } }));
+  };
 
   useEffect(() => {
     // Fetch current user
@@ -798,6 +819,24 @@ export default function Navbar() {
           <div className="flex items-center gap-3">
             {user ? (
               <div className="flex items-center gap-2">
+                {/* Switch Minimalista de Tema Claro / Oscuro */}
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  title={isDark ? 'Cambiar a Tema Claro' : 'Cambiar a Tema Oscuro'}
+                  aria-label="Alternar modo claro u oscuro"
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer text-slate-600 dark:text-slate-300 shadow-2xs"
+                >
+                  {isDark ? (
+                    <Sun className="w-3.5 h-3.5 text-amber-400" />
+                  ) : (
+                    <Moon className="w-3.5 h-3.5 text-slate-600" />
+                  )}
+                  <span className="text-[10px] font-bold hidden xl:inline-block">
+                    {isDark ? 'Oscuro' : 'Claro'}
+                  </span>
+                </button>
+
                 {/* Clickable user profile button */}
                 <button
                   onClick={() => setShowProfileModal(true)}

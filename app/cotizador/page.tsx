@@ -338,10 +338,10 @@ function CotizadorContent() {
 
   const [showIndicatorsInPdf, setShowIndicatorsInPdf] = useState<boolean>(true);
   const [showTotalWeightPerItem, setShowTotalWeightPerItem] = useState<boolean>(true);
-  const [showSummaryUnitWeight, setShowSummaryUnitWeight] = useState<boolean>(true);
-  const [showSummaryTotalWeight, setShowSummaryTotalWeight] = useState<boolean>(true);
-  const [showTableFootWeight, setShowTableFootWeight] = useState<boolean>(true);
-  const [showObservationsWeight, setShowObservationsWeight] = useState<boolean>(true);
+  const [showSummaryUnitWeight, setShowSummaryUnitWeight] = useState<boolean>(false);
+  const [showSummaryTotalWeight, setShowSummaryTotalWeight] = useState<boolean>(false);
+  const [showTableFootWeight, setShowTableFootWeight] = useState<boolean>(false);
+  const [showObservationsWeight, setShowObservationsWeight] = useState<boolean>(false);
 
   // Items in current quotation
   const [items, setItems] = useState<CotizacionItem[]>([]);
@@ -4348,10 +4348,40 @@ function CotizadorContent() {
                   <p className="text-[10px] text-slate-500">Active o desactive los elementos y ubicaciones de muestra según requiera presentar al cliente:</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5 flex-wrap">
                 <span className="text-[10px] font-mono text-slate-600 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
                   Total: <strong className="text-amber-950">{totals.totalWeight.toFixed(1)} kg</strong> | Unitaria (1 c/u): <strong className="text-blue-900">{totals.totalUnitWeight.toFixed(1)} kg</strong>
                 </span>
+                <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border border-slate-300 bg-slate-100 hover:bg-slate-200 cursor-pointer select-none transition shadow-2xs">
+                  <input
+                    type="checkbox"
+                    checked={
+                      showTotalWeightPerItem &&
+                      showSummaryUnitWeight &&
+                      showSummaryTotalWeight &&
+                      showTableFootWeight &&
+                      showObservationsWeight
+                    }
+                    onChange={(e) => {
+                      const val = e.target.checked;
+                      setShowTotalWeightPerItem(val);
+                      setShowSummaryUnitWeight(val);
+                      setShowSummaryTotalWeight(val);
+                      setShowTableFootWeight(val);
+                      setShowObservationsWeight(val);
+                    }}
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                  />
+                  <span className="text-slate-800 text-[11px]">
+                    {showTotalWeightPerItem &&
+                    showSummaryUnitWeight &&
+                    showSummaryTotalWeight &&
+                    showTableFootWeight &&
+                    showObservationsWeight
+                      ? 'Desactivar todo'
+                      : 'Activar todo'}
+                  </span>
+                </label>
               </div>
             </div>
 

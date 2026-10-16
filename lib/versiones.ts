@@ -13,11 +13,30 @@ export interface VersionRegistro {
 
 export const HISTORIAL_VERSIONES: VersionRegistro[] = [
   {
+    version: '2.4.4',
+    tag: 'v2.4.4',
+    fecha: '2026-10-16',
+    fechaFormato: '16 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Estructura Jerárquica en Salesforce, Configuración de Masa y Tema Oscuro Minimalista',
+    modulos: ['Salesforce', 'Cotizador', 'Formatos', 'UI / Tema'],
+    descripcion:
+      'Carga estricta y jerárquica de datos guardados hacia Salesforce (filtrado contextual de Centros de Costo según Sección DGL), nuevos valores predeterminados para visualización de muestras con control maestro de activación y diseño minimalista con soporte para Tema Claro y Tema Oscuro.',
+    detalles: [
+      'Sincronización jerárquica con Salesforce: el modal de envío a Salesforce carga con precisión los datos guardados en la cotización y filtra los Centros de Costo en función de la Sección DGL seleccionada (SGL, SLGP, Sin Sección).',
+      'Persistencia de clasificación DGL: normalización de códigos de centros de costo (4 dígitos) evitando desajustes y fallbacks obsoletos en bases de datos.',
+      'Configuración de Masa (kg): las notas de material y observaciones técnicas vienen desactivadas por defecto, manteniendo activada únicamente la columna de masa individual por ensayo.',
+      'Control maestro de activación de masa: incorporación de un switch global "Activar todo / Desactivar todo" para alternar con un solo clic los 5 controles de kilos de muestra.',
+      'Tema Claro y Oscuro Minimalista: interruptor toggle compacto integrado en la barra superior junto al perfil de usuario, con persistencia local y soporte visual refinado.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
     version: '2.4.3',
     tag: 'v2.4.3',
     fecha: '2026-10-16',
     fechaFormato: '16 de Octubre, 2026',
-    estado: 'activa',
+    estado: 'previa',
     titulo: 'Cargo Comercial Dinámico por Perfil y Asignación Directa de Ensayos a Partidas',
     modulos: ['Cotizador', 'PDF Oficial', 'Usuarios / Perfil', 'Base de Datos'],
     descripcion:

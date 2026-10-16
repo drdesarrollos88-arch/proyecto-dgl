@@ -87,9 +87,11 @@ export async function POST(req: NextRequest) {
         : userProfile?.name || currentUser.name;
 
     const commercialTitle =
-      isAdminRole(currentUser.role) && data.commercialTitle !== undefined
+      data.commercialTitle &&
+      data.commercialTitle !== 'Asesor Comercial DGL' &&
+      data.commercialTitle !== 'Analista Comercial'
         ? data.commercialTitle
-        : userProfile?.commercialTitle || data.commercialTitle || '';
+        : userProfile?.commercialTitle || data.commercialTitle || 'Asesor Comercial DGL';
 
     const commercialInitials =
       isAdminRole(currentUser.role) && data.commercialInitials !== undefined

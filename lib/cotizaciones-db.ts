@@ -82,7 +82,10 @@ export function mapSupabaseToCotizacion(row: any): Cotizacion {
     zonaProyecto: row.zona_proyecto || row.ai_chat_state?.projectMeta?.zonaProyecto || 'Región Metropolitana',
     currency: (row.currency as 'UF' | 'USD' | 'CLP') || 'UF',
     commercialName: row.user_name || 'Diego Román',
-    commercialTitle: 'Asesor Comercial DGL',
+    commercialTitle:
+      row.commercial_title ||
+      row.ai_chat_state?.commercialTitle ||
+      'Asesor Comercial DGL',
     commercialInitials: row.user_initials || 'DRA',
     ufValue: ufVal,
     dollarValue: 950,
@@ -213,6 +216,7 @@ export function mapCotizacionToSupabase(c: Partial<Cotizacion>): any {
     zona_proyecto: c.zonaProyecto || 'Región Metropolitana',
     ai_chat_state: {
       ...(c.aiChatState || {}),
+      commercialTitle: c.commercialTitle,
       showTotalWeightPerItem: c.showTotalWeightPerItem,
       showSummaryUnitWeight: c.showSummaryUnitWeight,
       showSummaryTotalWeight: c.showSummaryTotalWeight,

@@ -13,11 +13,31 @@ export interface VersionRegistro {
 
 export const HISTORIAL_VERSIONES: VersionRegistro[] = [
   {
+    version: '2.4.3',
+    tag: 'v2.4.3',
+    fecha: '2026-10-16',
+    fechaFormato: '16 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Cargo Comercial Dinámico por Perfil y Asignación Directa de Ensayos a Partidas',
+    modulos: ['Cotizador', 'PDF Oficial', 'Usuarios / Perfil', 'Base de Datos'],
+    descripcion:
+      'Resolución de asignación dinámica de cargo comercial según el perfil del usuario emisor (evitando fallbacks hardcodeados en cotizaciones y PDF), e incorporación de un sistema ergonómico para buscar y agregar ensayos directamente a una partida o subdivisión específica.',
+    detalles: [
+      'Cargo Comercial Dinámico: el cargo del usuario emisor se obtiene directamente de su perfil configurado (ej. "Jefe División Geotecnia Laboratorio") tanto en la cabecera como en la firma del PDF Oficial y Cotizador.',
+      'Persistencia de cargo en base de datos: corrección en la deserialización y persistencia de cotizaciones para evitar sobrescrituras con valores genéricos predeterminados.',
+      'Asignación directa de ensayos a partidas: nuevo selector de destino integrado en la barra de búsqueda ("Destino: [Partida X / Al final]") para dirigir las búsquedas de tarifario.',
+      'Acceso contextual en cada partida: botón "+ Agregar ensayo aquí" en la cabecera de cada partida y al pie de sus subtotales, enfocando automáticamente el buscador y preseleccionando esa sección.',
+      'Inserción inteligente y renumeración: los ensayos se insertan exactamente al final de la partida seleccionada (antes de la siguiente) recalculando en tiempo real la numeración jerárquica (1.1.X.Y).',
+      'Despliegue automático: si la partida destino se encontraba colapsada, se expande automáticamente al agregar el ensayo para confirmación visual inmediata del usuario.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
     version: '2.4.2',
     tag: 'v2.4.2',
     fecha: '2026-10-15',
     fechaFormato: '15 de Octubre, 2026',
-    estado: 'activa',
+    estado: 'previa',
     titulo: 'Cálculo y Visualización Opcional de Masa de Muestras en Cotizaciones y PDF',
     modulos: ['Cotizador', 'Formatos', 'PDF Oficial'],
     descripcion:

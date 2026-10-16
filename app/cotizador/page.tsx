@@ -400,7 +400,9 @@ function CotizadorContent() {
   const [aiSearching, setAiSearching] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<Array<{ code: string; explicacion: string }>>([]);
   const [reglasAprendidas, setReglasAprendidas] = useState<ReglaAprendida[]>([]);
+  const [selectedTargetDividerId, setSelectedTargetDividerId] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Client search and selection states
   const [selectedClient, setSelectedClient] = useState<Cliente | null>(null);
@@ -694,7 +696,9 @@ function CotizadorContent() {
           if (c.zonaProyecto) setZonaProyecto(c.zonaProyecto as ZonaProyecto);
           if (c.currency) setCurrency(c.currency);
           if (c.commercialName) setCommercialName(c.commercialName);
-          if (c.commercialTitle) setCommercialTitle(c.commercialTitle);
+          if (c.commercialTitle && c.commercialTitle !== 'Asesor Comercial DGL' && c.commercialTitle !== 'Analista Comercial') {
+            setCommercialTitle(c.commercialTitle);
+          }
           if (c.commercialInitials) setCommercialInitials(c.commercialInitials);
           if (c.commercialSignature) setCommercialSignature(c.commercialSignature);
           if (c.ufValue) setUfValue(c.ufValue);
@@ -1164,7 +1168,28 @@ function CotizadorContent() {
       sku: tarifarioItem.sku,
     };
 
-    setItems((prev) => recalculateItemNumbers([...prev, newItem]));
+    setItems((prev) => {
+      if (selectedTargetDividerId) {
+        const targetIndex = prev.findIndex((it) => it.id === selectedTargetDividerId);
+        if (targetIndex !== -1) {
+          let insertIndex = prev.length;
+          for (let i = targetIndex + 1; i < prev.length; i++) {
+            if (prev[i].isDivider) {
+              insertIndex = i;
+              break;
+            }
+          }
+          const updated = [...prev];
+          updated.splice(insertIndex, 0, newItem);
+          return recalculateItemNumbers(updated);
+        }
+      }
+      return recalculateItemNumbers([...prev, newItem]);
+    });
+
+    if (selectedTargetDividerId) {
+      setCollapsedDividers((prev) => ({ ...prev, [selectedTargetDividerId]: false }));
+    }
 
     // Reforzar aprendizaje de equivalencia por selección directa en el buscador
     const currentQuery = searchQuery.trim();
@@ -3249,7 +3274,7 @@ function CotizadorContent() {
             </div>
 
             {/* Acciones y Buscador inteligente de Ensayos */}
-            <div className="flex items-center gap-2 w-full md:w-auto">
+            <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
               <button
                 type="button"
                 onClick={handleAddDivider}
@@ -3281,12 +3306,42 @@ function CotizadorContent() {
                 </button>
               )}
 
+              {/* Selector de Partida Destino para agregar ensayos */}
+              {items.some((it) => it.isDivider) && (
+                <div className="flex items-center gap-1.5 bg-blue-50/80 border border-blue-200 rounded-lg px-2.5 py-1 shadow-2xs">
+                  <span className="text-[11px] font-bold text-blue-900 whitespace-nowrap flex items-center gap-1">
+                    <FolderPlus className="w-3 h-3 text-blue-600" />
+                    <span>Destino:</span>
+                  </span>
+                  <select
+                    value={selectedTargetDividerId || 'end'}
+                    onChange={(e) => setSelectedTargetDividerId(e.target.value === 'end' ? null : e.target.value)}
+                    className="text-xs font-semibold text-slate-800 bg-white border border-blue-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500 shadow-2xs max-w-[170px] sm:max-w-[210px] truncate cursor-pointer"
+                    title="Selecciona a qué partida se añadirán los nuevos ensayos que busques"
+                  >
+                    <option value="end">📌 Al final de la cotización</option>
+                    {items
+                      .filter((it) => it.isDivider)
+                      .map((div) => (
+                        <option key={div.id} value={div.id}>
+                          📁 {div.itemNumber} {div.dividerTitle || div.designation || 'Partida'}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
               <div ref={searchRef} className="relative w-full md:w-[460px]">
                 <div className="relative flex items-center">
-                  <Search className="w-3.5 h-3.5 text-blue-600 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Search className={`w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none ${selectedTargetDividerId ? 'text-emerald-600' : 'text-blue-600'}`} />
                   <input
+                    ref={searchInputRef}
                     type="text"
-                    placeholder="Buscar 'triaxial 15x30', 'corte 30x30' o con IA..."
+                    placeholder={
+                      selectedTargetDividerId
+                        ? `Buscar ensayo para agregar a ${items.find((it) => it.id === selectedTargetDividerId)?.itemNumber || 'partida seleccionada'}...`
+                        : "Buscar 'triaxial 15x30', 'corte 30x30' o con IA..."
+                    }
                     value={searchQuery}
                     onFocus={() => setDropdownOpen(true)}
                     onChange={(e) => {
@@ -3300,7 +3355,11 @@ function CotizadorContent() {
                         handleTriggerAiSearch();
                       }
                     }}
-                    className="w-full pl-8 pr-28 py-1.5 text-xs rounded-lg border border-blue-200 focus:border-blue-600 focus:outline-none bg-blue-50/20 text-slate-800 placeholder-slate-400 font-medium"
+                    className={`w-full pl-8 pr-28 py-1.5 text-xs rounded-lg border focus:outline-none placeholder-slate-400 font-medium transition ${
+                      selectedTargetDividerId
+                        ? 'border-emerald-400 focus:border-emerald-600 bg-emerald-50/30 text-slate-800 ring-1 ring-emerald-200'
+                        : 'border-blue-200 focus:border-blue-600 bg-blue-50/20 text-slate-800'
+                    }`}
                   />
                   {/* Action buttons inside search bar */}
                   <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -3661,6 +3720,25 @@ function CotizadorContent() {
                                           <span>Ocultar ({partidaCount})</span>
                                         </>
                                       )}
+                                    </button>
+
+                                    {/* Botón directo para seleccionar esta partida como destino de ensayos */}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedTargetDividerId(item.id);
+                                        if (isCollapsed) toggleCollapseDivider(item.id);
+                                        searchInputRef.current?.focus();
+                                      }}
+                                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer border select-none ${
+                                        selectedTargetDividerId === item.id
+                                          ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs ring-2 ring-emerald-300'
+                                          : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 shadow-2xs'
+                                      }`}
+                                      title={`Buscar y agregar ensayos directamente a la partida ${item.itemNumber}`}
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                      <span>{selectedTargetDividerId === item.id ? 'Partida activa' : '+ Agregar ensayo aquí'}</span>
                                     </button>
 
                                     {/* Badge con el Subtotal cuando la partida está colapsada para visualización inmediata */}
@@ -4129,7 +4207,19 @@ function CotizadorContent() {
                           {isLastItemOfSection && activeDividerForThisItem && pTotal && pTotal.count > 0 && (
                             <tr className="bg-slate-100/90 border-b-2 border-slate-300 font-semibold text-slate-800 text-xs">
                               <td colSpan={showTotalWeightPerItem ? 9 : 8} className="py-2.5 px-3 text-right">
-                                <div className="flex items-center justify-end gap-1.5">
+                                <div className="flex items-center justify-end gap-2.5 flex-wrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedTargetDividerId(activeDividerForThisItem.id);
+                                      searchInputRef.current?.focus();
+                                    }}
+                                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 bg-white hover:bg-emerald-50 border border-emerald-300 px-2.5 py-0.5 rounded shadow-2xs cursor-pointer transition active:scale-95"
+                                    title={`Buscar y agregar otro ensayo a la partida ${activeDividerForThisItem.itemNumber}`}
+                                  >
+                                    <Plus className="w-3 h-3 text-emerald-600" />
+                                    <span>+ Agregar ensayo a {activeDividerForThisItem.itemNumber}</span>
+                                  </button>
                                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
                                     Subtotal {activeDividerForThisItem.itemNumber} ({activeDividerForThisItem.dividerTitle || activeDividerForThisItem.designation}):
                                   </span>

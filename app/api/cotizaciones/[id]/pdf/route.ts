@@ -23,19 +23,30 @@ export async function GET(
     return NextResponse.json({ error: 'Cotización no encontrada' }, { status: 404 });
   }
 
-  // Ensure valid signature from creator user profile if missing or placeholder
+  // Ensure valid signature and commercial title from creator user profile if missing or placeholder
   const finalCotizacion = { ...cotizacion };
-  if (!finalCotizacion.commercialSignature || finalCotizacion.commercialSignature.length < 200) {
-    const allUsers = getUsers();
-    const creatorUser = allUsers.find(
-      (u) =>
-        u.name === cotizacion.commercialName ||
-        u.name === cotizacion.createdBy ||
-        u.commercialInitials === cotizacion.commercialInitials ||
-        u.id === currentUser.id
-    );
-    if (creatorUser?.signature && creatorUser.signature.length > 200) {
-      finalCotizacion.commercialSignature = creatorUser.signature;
+  const allUsers = getUsers();
+  const creatorUser = allUsers.find(
+    (u) =>
+      u.name === cotizacion.commercialName ||
+      u.name === cotizacion.createdBy ||
+      u.commercialInitials === cotizacion.commercialInitials ||
+      u.id === currentUser.id
+  );
+
+  if (creatorUser) {
+    if (!finalCotizacion.commercialSignature || finalCotizacion.commercialSignature.length < 200) {
+      if (creatorUser.signature && creatorUser.signature.length > 200) {
+        finalCotizacion.commercialSignature = creatorUser.signature;
+      }
+    }
+    if (
+      creatorUser.commercialTitle &&
+      (!finalCotizacion.commercialTitle ||
+        finalCotizacion.commercialTitle === 'Asesor Comercial DGL' ||
+        finalCotizacion.commercialTitle === 'Analista Comercial')
+    ) {
+      finalCotizacion.commercialTitle = creatorUser.commercialTitle;
     }
   }
 

@@ -215,6 +215,36 @@ export function getSavedSalesforceOportunidades(): OportunidadCRM[] {
 }
 
 /**
+ * Obtiene la lista de años disponibles creados en el archivo de metas comerciales
+ */
+export function getAniosDisponiblesEnMetas(division = 'DGL'): number[] {
+  let list: MetaComercialPeriodo[] = [];
+  try {
+    if (fs.existsSync(METAS_FILE)) {
+      const raw = fs.readFileSync(METAS_FILE, 'utf-8');
+      list = JSON.parse(raw);
+    }
+  } catch {}
+
+  const yearsSet = new Set<number>();
+  if (Array.isArray(list)) {
+    for (const m of list) {
+      if (m.anio && (division === 'TODAS' || m.division === division)) {
+        yearsSet.add(m.anio);
+      }
+    }
+  }
+
+  if (yearsSet.size === 0) {
+    yearsSet.add(2026);
+    const base2026 = getMetasComerciales(2026, division);
+    saveMetasComerciales(base2026);
+  }
+
+  return Array.from(yearsSet).sort((a, b) => b - a);
+}
+
+/**
  * Sincroniza e importa en vivo desde Salesforce todas las oportunidades del año especificado vía SOQL
  */
 export async function syncSalesforceOportunidades(
@@ -223,12 +253,31 @@ export async function syncSalesforceOportunidades(
 ): Promise<{ count: number; items: OportunidadCRM[] }> {
   const { accessToken, instanceUrl } = await getValidSalesforceClient();
 
+  // Consulta limpia de Opportunity en Salesforce sin subconsultas inválidas
   const soql = encodeURIComponent(
-    `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Rut__c, (SELECT Id, Numero_de_cuota__c, Fecha_de_Pago__c, Monto__c FROM Cuotas_de_facturacion__r) FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} ORDER BY CloseDate DESC LIMIT 2000`
+    `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Rut__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} ORDER BY CloseDate DESC LIMIT 2000`
   );
 
   const res = await sfRequest(instanceUrl, accessToken, `query?q=${soql}`);
   const records = res?.records || [];
+
+  // Mapeo opcional de cuotas por Oportunidad
+  const cuotasByOppId = new Map<string, number>();
+  try {
+    const cuotasSoql = encodeURIComponent(
+      `SELECT Id, Oportunidad__c FROM Cuota_de_facturacion__c WHERE CALENDAR_YEAR(Fecha_de_Pago__c) = ${anio} LIMIT 2000`
+    );
+    const cuotasRes = await sfRequest(instanceUrl, accessToken, `query?q=${cuotasSoql}`);
+    if (Array.isArray(cuotasRes?.records)) {
+      for (const c of cuotasRes.records) {
+        if (c.Oportunidad__c) {
+          cuotasByOppId.set(c.Oportunidad__c, (cuotasByOppId.get(c.Oportunidad__c) || 0) + 1);
+        }
+      }
+    }
+  } catch (cErr) {
+    console.warn('Consulta de cuotas opcionales omitida:', cErr);
+  }
 
   const syncedItems: OportunidadCRM[] = records.map((rec: any, idx: number) => {
     const oppName = rec.Name || 'Oportunidad sin nombre';
@@ -238,8 +287,8 @@ export async function syncSalesforceOportunidades(
     const d = new Date(closeDateStr);
     const mes = !isNaN(d.getMonth()) ? d.getMonth() + 1 : 1;
     const codInfo = extractProyectoCodigos(oppName);
-    const etapa = rec.StageName || 'En Negociación';
-    const cuotas = rec.Cuotas_de_facturacion__r?.records || [];
+    const etapa = rec.StageName || 'Propuesta enviada';
+    const estado = clasificarEstadoOportunidad(etapa);
 
     return {
       id: `sf-${rec.Id || idx}`,
@@ -250,8 +299,8 @@ export async function syncSalesforceOportunidades(
       cliente: rec.Account?.Name || 'Empresa sin razón social',
       rut: rec.Account?.Rut__c || '',
       etapa,
-      estado: clasificarEstadoOportunidad(etapa),
-      probabilidadPct: Number(rec.Probability) || (clasificarEstadoOportunidad(etapa) === 'ganada' ? 100 : 50),
+      estado,
+      probabilidadPct: Number(rec.Probability) || (estado === 'ganada' ? 100 : estado === 'perdida' ? 0 : 60),
       montoClp,
       montoUf,
       fechaCierre: closeDateStr,
@@ -259,7 +308,7 @@ export async function syncSalesforceOportunidades(
       anio,
       comercial: rec.Owner?.Name || 'Comercial Salesforce',
       division,
-      cuotasCount: cuotas.length > 0 ? cuotas.length : 1,
+      cuotasCount: cuotasByOppId.get(rec.Id) || 1,
       salesforceId: rec.Id,
       createdAt: closeDateStr,
       updatedAt: closeDateStr,
@@ -366,6 +415,7 @@ export async function getConsolidadoOportunidades(params: {
       montoGanadoClp: number;
       enCursoCount: number;
       montoEnCursoClp: number;
+      cotizadoTotalClp: number;
     }
   >();
 
@@ -396,8 +446,10 @@ export async function getConsolidadoOportunidades(params: {
       montoGanadoClp: 0,
       enCursoCount: 0,
       montoEnCursoClp: 0,
+      cotizadoTotalClp: 0,
     };
     comData.totalOpps++;
+    comData.cotizadoTotalClp += o.montoClp;
     if (o.estado === 'ganada') {
       comData.ganadasCount++;
       comData.montoGanadoClp += o.montoClp;
@@ -438,7 +490,7 @@ export async function getConsolidadoOportunidades(params: {
     conteoGanadas > 0 ? Math.round(montoGanadoClp / conteoGanadas) : 0;
   const ticketPromedioUf = Number((ticketPromedioClp / UF_DEFAULT).toFixed(2));
 
-  // Evolución mensual de los 12 meses del año
+  // Evolución mensual de los 12 meses del año (Ventas y Cotizaciones)
   const evolucionMeses = [];
   for (let m = 1; m <= 12; m++) {
     const monthOpps = yearItems.filter((o) => o.mes === m);
@@ -448,9 +500,15 @@ export async function getConsolidadoOportunidades(params: {
     const mEnCurso = monthOpps
       .filter((o) => o.estado === 'en_curso')
       .reduce((acc, o) => acc + o.montoClp, 0);
+    const mCotizadoTotal = monthOpps.reduce((acc, o) => acc + o.montoClp, 0);
+
     const targetMeta = metas.find((meta) => meta.mes === m);
     const mMetaClp = targetMeta?.metaVentaClp || 0;
-    const mCumplimiento = mMetaClp > 0 ? Math.round((mGanado / mMetaClp) * 100) : 0;
+    const mCumplimientoVenta = mMetaClp > 0 ? Math.round((mGanado / mMetaClp) * 100) : 0;
+
+    const mMetaCotizacionClp = targetMeta?.metaCotizacionClp || 0;
+    const mCumplimientoCotizacion =
+      mMetaCotizacionClp > 0 ? Math.round((mCotizadoTotal / mMetaCotizacionClp) * 100) : 0;
 
     evolucionMeses.push({
       mes: m,
@@ -461,7 +519,12 @@ export async function getConsolidadoOportunidades(params: {
       enCursoUf: Number((mEnCurso / UF_DEFAULT).toFixed(1)),
       metaVentaClp: mMetaClp,
       metaVentaUf: Number((mMetaClp / UF_DEFAULT).toFixed(1)),
-      cumplimientoPct: mCumplimiento,
+      cumplimientoVentaPct: mCumplimientoVenta,
+      cotizadoTotalClp: mCotizadoTotal,
+      cotizadoTotalUf: Number((mCotizadoTotal / UF_DEFAULT).toFixed(1)),
+      metaCotizacionClp: mMetaCotizacionClp,
+      metaCotizacionUf: Number((mMetaCotizacionClp / UF_DEFAULT).toFixed(1)),
+      cumplimientoCotizacionPct: mCumplimientoCotizacion,
     });
   }
 
@@ -490,6 +553,7 @@ export async function getConsolidadoOportunidades(params: {
     metaCotizacionUf,
     cumplimientoCotizacionPct,
     gapCotizacionClp,
+    aniosDisponibles: getAniosDisponiblesEnMetas(division),
     porComercial: Array.from(comercialMap.values()).map((c) => ({
       ...c,
       montoGanadoUf: Number((c.montoGanadoClp / UF_DEFAULT).toFixed(1)),

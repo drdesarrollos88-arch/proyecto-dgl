@@ -13,11 +13,29 @@ export interface VersionRegistro {
 
 export const HISTORIAL_VERSIONES: VersionRegistro[] = [
   {
+    version: '2.6.2',
+    tag: 'v2.6.2',
+    fecha: '2026-10-16',
+    fechaFormato: '16 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Dashboard Dual 50/50 (Ventas vs Cotizaciones), Metas Multi-Año y Fix Salesforce SOQL',
+    modulos: ['Oportunidades & CRM', 'Metas Comerciales', 'Salesforce SOQL', 'Dashboard Dual'],
+    descripcion:
+      'Refactorización profunda del módulo de Oportunidades: división fija en DGL, selector de año sincronizado con años presupuestados creados, creación dinámica de años futuros para asignación de metas, dashboard dual 50/50 (mitad Ventas Ganadas vs mitad Cotizaciones/Pipeline) con gráficos de 12 meses y rankings independientes, y corrección en SOQL de Salesforce para importación masiva sin errores.',
+    detalles: [
+      'División DGL Exclusiva: Se removieron los selectores de otras divisiones, anclando el CRM exclusivamente a la División DGL.',
+      'Dashboard Dual 50/50: Panel izquierdo especializado en Ventas Facturadas/Ganadas (KPIs, cumplimiento de meta de venta, evolución 12 meses y ranking de vendedores) y panel derecho especializado en Cotizaciones & Pipeline (KPIs de emisión, meta de cotización, evolución 12 meses y ranking de cotizadores).',
+      'Gestión Dinámica de Años Presupuestarios: Capacidad de añadir nuevos años de objetivos (ej. 2027, 2028), desplegando inmediatamente los 12 meses para definir metas y sincronizando el selector global superior.',
+      'Fix de Consulta SOQL en Salesforce: Eliminada la relación inválida Cuotas_de_facturacion__r para importar oportunidades limpiamente y mapearlas en Cerradas ganadas, Propuesta enviada y Cerradas perdidas.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
     version: '2.6.1',
     tag: 'v2.6.1',
     fecha: '2026-10-16',
     fechaFormato: '16 de Octubre, 2026',
-    estado: 'activa',
+    estado: 'previa',
     titulo: 'Conexión Directa del Pipeline con Supabase (Paridad Total con Histórico)',
     modulos: ['Oportunidades & CRM', 'Base de Datos', 'Supabase'],
     descripcion:

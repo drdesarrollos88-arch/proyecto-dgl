@@ -77,6 +77,7 @@ export interface KpisOportunidades {
     montoGanadoUf: number;
     enCursoCount: number;
     montoEnCursoClp: number;
+    cotizadoTotalClp: number;
   }>;
   // Desglose por Etapa
   porEtapa: Array<{
@@ -86,7 +87,9 @@ export interface KpisOportunidades {
     montoClp: number;
     montoUf: number;
   }>;
-  // Evolución Mes a Mes del Año
+  // Años disponibles creados en metas
+  aniosDisponibles: number[];
+  // Evolución Mes a Mes del Año para Ventas y Cotizaciones
   evolucionMeses: Array<{
     mes: number;
     nombreMes: string;
@@ -96,7 +99,12 @@ export interface KpisOportunidades {
     enCursoUf: number;
     metaVentaClp: number;
     metaVentaUf: number;
-    cumplimientoPct: number;
+    cumplimientoVentaPct: number;
+    cotizadoTotalClp: number;
+    cotizadoTotalUf: number;
+    metaCotizacionClp: number;
+    metaCotizacionUf: number;
+    cumplimientoCotizacionPct: number;
   }>;
 }
 

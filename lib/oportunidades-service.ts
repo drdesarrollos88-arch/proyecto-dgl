@@ -110,24 +110,59 @@ export function saveMetasComerciales(metasToSave: MetaComercialPeriodo[]): void 
   fs.writeFileSync(METAS_FILE, JSON.stringify(existing, null, 2), 'utf-8');
 }
 
+import { getCotizacionesAsync } from './cotizaciones-db';
+
 /**
- * Carga las cotizaciones del portal local y las transforma en OportunidadCRM (source: 'WEB_DGL')
+ * Parsea de manera segura fechas en formatos DD-MM-YYYY, YYYY-MM-DD o ISO
+ */
+export function parseSafeFecha(rawDate?: string): { anio: number; mes: number; fechaIso: string } {
+  if (!rawDate) {
+    const now = new Date();
+    return { anio: now.getFullYear(), mes: now.getMonth() + 1, fechaIso: now.toISOString().slice(0, 10) };
+  }
+  const str = String(rawDate).trim();
+  // Formato DD-MM-YYYY o DD/MM/YYYY
+  const dmy = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (dmy) {
+    const day = dmy[1].padStart(2, '0');
+    const month = dmy[2].padStart(2, '0');
+    const year = parseInt(dmy[3], 10);
+    return { anio: year, mes: parseInt(month, 10), fechaIso: `${year}-${month}-${day}` };
+  }
+  // Formato YYYY-MM-DD
+  const ymd = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (ymd) {
+    const year = parseInt(ymd[1], 10);
+    const month = ymd[2].padStart(2, '0');
+    const day = ymd[3].padStart(2, '0');
+    return { anio: year, mes: parseInt(month, 10), fechaIso: `${year}-${month}-${day}` };
+  }
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    return { anio: d.getFullYear(), mes: d.getMonth() + 1, fechaIso: d.toISOString().slice(0, 10) };
+  }
+  const now = new Date();
+  return { anio: now.getFullYear(), mes: now.getMonth() + 1, fechaIso: now.toISOString().slice(0, 10) };
+}
+
+/**
+ * Carga las cotizaciones reales del sistema (Supabase) y las transforma en OportunidadCRM (source: 'WEB_DGL')
  */
 export async function getLocalCotizacionesAsOportunidades(): Promise<OportunidadCRM[]> {
-  const localList: Cotizacion[] = [];
+  let localList: Cotizacion[] = [];
 
   try {
-    const raw = (initialDbData as any)?.cotizaciones || [];
-    if (Array.isArray(raw)) localList.push(...raw);
+    localList = await getCotizacionesAsync(false);
   } catch (err) {
-    console.warn('Fallo cargando cotizaciones de db.json:', err);
+    console.warn('Fallo cargando cotizaciones desde Supabase / BD:', err);
+    try {
+      const raw = (initialDbData as any)?.cotizaciones || [];
+      if (Array.isArray(raw)) localList.push(...raw);
+    } catch {}
   }
 
   return localList.map((c) => {
-    const rawDate = c.createdAt || c.date || new Date().toISOString();
-    const d = new Date(rawDate);
-    const anio = !isNaN(d.getFullYear()) ? d.getFullYear() : 2026;
-    const mes = !isNaN(d.getMonth()) ? d.getMonth() + 1 : 1;
+    const { anio, mes, fechaIso } = parseSafeFecha(c.date || c.createdAt);
     const codInfo = extractProyectoCodigos(c.code || c.projectName || '');
 
     const montoClp = c.totalClp || Math.round((c.totalUf || 0) * (c.ufValue || UF_DEFAULT));
@@ -139,7 +174,7 @@ export async function getLocalCotizacionesAsOportunidades(): Promise<Oportunidad
       source: 'WEB_DGL',
       codigo: c.code || 'S/C',
       codigoNucleo: codInfo.codigoNucleo,
-      nombre: c.projectName || `Cotización ${c.code}`,
+      nombre: c.projectName || c.reference || `Cotización ${c.code}`,
       cliente: c.clientName || 'Cliente Particular',
       rut: c.clientRut || '',
       etapa: c.status || 'Enviada',
@@ -147,18 +182,18 @@ export async function getLocalCotizacionesAsOportunidades(): Promise<Oportunidad
       probabilidadPct: estado === 'ganada' ? 100 : estado === 'perdida' ? 0 : 60,
       montoClp,
       montoUf,
-      fechaCierre: rawDate.slice(0, 10),
+      fechaCierre: fechaIso,
       mes,
       anio,
-      comercial: c.commercialName || 'Asesor Comercial DGL',
+      comercial: c.commercialName || 'Diego Román',
       division: 'DGL',
       seccion: c.seccion || (c.centroCosto ? c.centroCosto.slice(0, 4) : '2340'),
       centroCosto: c.centroCosto,
       cuotasCount: c.cierreNegocio?.cuotasFacturacion || 1,
       salesforceId: (c as any).salesforceOpportunityId,
       cotizacionDglId: c.id,
-      createdAt: c.createdAt || rawDate,
-      updatedAt: c.updatedAt || rawDate,
+      createdAt: c.createdAt || fechaIso,
+      updatedAt: c.updatedAt || fechaIso,
     };
   });
 }
@@ -302,7 +337,7 @@ export async function getConsolidadoOportunidades(params: {
       );
     }
     return true;
-  });
+  }).sort((a, b) => new Date(b.fechaCierre).getTime() - new Date(a.fechaCierre).getTime());
 
   // 4. Calcular KPIs para el período (mes específico o acumulado del año)
   const targetPeriodItems = yearItems.filter((o) => (mes === 0 ? true : o.mes === mes));

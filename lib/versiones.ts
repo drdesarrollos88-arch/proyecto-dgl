@@ -13,11 +13,28 @@ export interface VersionRegistro {
 
 export const HISTORIAL_VERSIONES: VersionRegistro[] = [
   {
+    version: '2.6.1',
+    tag: 'v2.6.1',
+    fecha: '2026-10-16',
+    fechaFormato: '16 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Conexión Directa del Pipeline con Supabase (Paridad Total con Histórico)',
+    modulos: ['Oportunidades & CRM', 'Base de Datos', 'Supabase'],
+    descripcion:
+      'Alineación 1 a 1 entre el nuevo Pipeline Comercial y el Histórico de Cotizaciones: el servicio de oportunidades ahora lee directamente desde Supabase en tiempo real (getCotizacionesAsync), eliminando registros residuales o de prueba y aplicando un parser tolerante de fechas (DD-MM-YYYY y YYYY-MM-DD) con ordenamiento cronológico descendente.',
+    detalles: [
+      'Fuente única de verdad: El pipeline comercial ahora consulta directamente la tabla de cotizaciones en Supabase, garantizando paridad absoluta con el histórico oficial.',
+      'Normalización de fechas: Detección y normalización de formatos DD-MM-YYYY para asignación precisa de mes y año en los filtros y métricas YTD.',
+      'Ordenamiento cronológico: Las cotizaciones más recientes de 2026 aparecen inmediatamente al tope del pipeline.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
     version: '2.6.0',
     tag: 'v2.6.0',
     fecha: '2026-10-16',
     fechaFormato: '16 de Octubre, 2026',
-    estado: 'activa',
+    estado: 'previa',
     titulo: 'Módulo Principal de Oportunidades & Pipeline Comercial (CRM Unificado)',
     modulos: ['Oportunidades & CRM', 'Salesforce Sync', 'Control de Gestión', 'Metas Comerciales'],
     descripcion:

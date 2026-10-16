@@ -61,6 +61,10 @@ body {
   color: #f0f0f0 !important;
 }
 
+.dark .min-h-screen {
+  background-color: #1e1e1f !important;
+}
+
 .dark .bg-white {
   background-color: #252526 !important;
 }
@@ -91,6 +95,7 @@ body {
   border-color: #333335 !important;
 }
 
+/* Tipografía estándar en modo oscuro para canvas y tarjetas oscuras */
 .dark .text-slate-900,
 .dark .text-slate-800 {
   color: #f0f0f0 !important;
@@ -104,6 +109,134 @@ body {
 .dark .text-slate-500,
 .dark .text-slate-400 {
   color: #9d9d9f !important;
+}
+
+/* ==========================================================================
+   ALTO CONTRASTE: Elementos y casillas con fondos grises en modo oscuro
+   Cualquier casilla, tarjeta o contenedor con tonalidades grises (slate/gray/zinc
+   con o sin opacidad) debe mostrar sus textos y etiquetas en color oscuro (#0f172a)
+   para que no se confundan con el fondo y sean 100% legibles.
+   ========================================================================== */
+.dark [class*="bg-slate-50"]:not(.min-h-screen),
+.dark [class*="bg-slate-100"],
+.dark [class*="bg-slate-200"],
+.dark [class*="bg-gray-50"]:not(.min-h-screen),
+.dark [class*="bg-gray-100"],
+.dark [class*="bg-gray-200"],
+.dark [class*="bg-zinc-100"],
+.dark [class*="bg-zinc-200"] {
+  color: #0f172a;
+}
+
+/* Etiquetas, encabezados y textos dentro de casillas grises */
+.dark [class*="bg-slate-50"]:not(.min-h-screen) label,
+.dark [class*="bg-slate-100"] label,
+.dark [class*="bg-slate-200"] label,
+.dark [class*="bg-gray-50"]:not(.min-h-screen) label,
+.dark [class*="bg-gray-100"] label,
+.dark [class*="bg-gray-200"] label,
+.dark [class*="bg-slate-50"]:not(.min-h-screen) span:not(.font-mono):not([class*="bg-"]):not([class*="text-blue-"]):not([class*="text-emerald-"]):not([class*="text-red-"]):not([class*="text-amber-"]):not([class*="text-purple-"]),
+.dark [class*="bg-slate-100"] span:not(.font-mono):not([class*="bg-"]):not([class*="text-blue-"]):not([class*="text-emerald-"]):not([class*="text-red-"]):not([class*="text-amber-"]):not([class*="text-purple-"]),
+.dark [class*="bg-slate-200"] span:not(.font-mono):not([class*="bg-"]):not([class*="text-blue-"]):not([class*="text-emerald-"]):not([class*="text-red-"]):not([class*="text-amber-"]):not([class*="text-purple-"]),
+.dark [class*="bg-slate-50"]:not(.min-h-screen) p,
+.dark [class*="bg-slate-100"] p,
+.dark [class*="bg-slate-200"] p,
+.dark [class*="bg-slate-50"]:not(.min-h-screen) h1,
+.dark [class*="bg-slate-50"]:not(.min-h-screen) h2,
+.dark [class*="bg-slate-50"]:not(.min-h-screen) h3,
+.dark [class*="bg-slate-50"]:not(.min-h-screen) h4,
+.dark [class*="bg-slate-100"] h1,
+.dark [class*="bg-slate-100"] h2,
+.dark [class*="bg-slate-100"] h3,
+.dark [class*="bg-slate-100"] h4,
+.dark [class*="bg-slate-50"]:not(.min-h-screen) th,
+.dark [class*="bg-slate-100"] th,
+.dark [class*="bg-slate-200"] th,
+.dark [class*="bg-slate-50"]:not(.min-h-screen) td,
+.dark [class*="bg-slate-100"] td,
+.dark [class*="bg-slate-200"] td {
+  color: #0f172a !important;
+}
+
+/* Forzar contraste para clases text-slate-X dentro de casillas grises */
+.dark [class*="bg-slate-50"]:not(.min-h-screen) .text-slate-900,
+.dark [class*="bg-slate-50"]:not(.min-h-screen) .text-slate-800,
+.dark [class*="bg-slate-50"]:not(.min-h-screen) .text-slate-700,
+.dark [class*="bg-slate-50"]:not(.min-h-screen) .text-slate-600,
+.dark [class*="bg-slate-100"] .text-slate-900,
+.dark [class*="bg-slate-100"] .text-slate-800,
+.dark [class*="bg-slate-100"] .text-slate-700,
+.dark [class*="bg-slate-100"] .text-slate-600,
+.dark [class*="bg-slate-200"] .text-slate-900,
+.dark [class*="bg-slate-200"] .text-slate-800,
+.dark [class*="bg-slate-200"] .text-slate-700,
+.dark [class*="bg-slate-200"] .text-slate-600,
+.dark [class*="bg-gray-100"] .text-slate-900,
+.dark [class*="bg-gray-100"] .text-slate-800,
+.dark [class*="bg-gray-100"] .text-slate-700,
+.dark [class*="bg-gray-100"] .text-slate-600,
+.dark [class*="bg-gray-200"] .text-slate-900,
+.dark [class*="bg-gray-200"] .text-slate-800,
+.dark [class*="bg-gray-200"] .text-slate-700,
+.dark [class*="bg-gray-200"] .text-slate-600 {
+  color: #0f172a !important;
+  font-weight: 600;
+}
+
+.dark [class*="bg-slate-50"]:not(.min-h-screen) .text-slate-500,
+.dark [class*="bg-slate-50"]:not(.min-h-screen) .text-slate-400,
+.dark [class*="bg-slate-100"] .text-slate-500,
+.dark [class*="bg-slate-100"] .text-slate-400,
+.dark [class*="bg-slate-200"] .text-slate-500,
+.dark [class*="bg-slate-200"] .text-slate-400,
+.dark [class*="bg-gray-100"] .text-slate-500,
+.dark [class*="bg-gray-100"] .text-slate-400,
+.dark [class*="bg-gray-200"] .text-slate-500,
+.dark [class*="bg-gray-200"] .text-slate-400 {
+  color: #1e293b !important;
+}
+
+/* Casillas o badges que directamente tienen la clase de fondo gris */
+.dark span[class*="bg-slate-50"]:not([class*="text-"]),
+.dark span[class*="bg-slate-100"]:not([class*="text-"]),
+.dark span[class*="bg-slate-200"]:not([class*="text-"]),
+.dark span[class*="bg-gray-100"]:not([class*="text-"]),
+.dark span[class*="bg-gray-200"]:not([class*="text-"]),
+.dark label[class*="bg-slate-100"],
+.dark label[class*="bg-slate-200"] {
+  color: #0f172a !important;
+}
+
+/* Preservar tipografía clara en tarjetas oscuras anidadas (.bg-white -> #252526) dentro de los bloques grises */
+.dark [class*="bg-slate-50"] .bg-white,
+.dark [class*="bg-slate-100"] .bg-white,
+.dark [class*="bg-slate-200"] .bg-white {
+  background-color: #252526 !important;
+}
+
+.dark [class*="bg-slate-50"] .bg-white label,
+.dark [class*="bg-slate-50"] .bg-white span,
+.dark [class*="bg-slate-50"] .bg-white div:not([class*="text-emerald"]):not([class*="text-blue"]):not([class*="text-green"]):not([class*="text-amber"]),
+.dark [class*="bg-slate-50"] .bg-white p,
+.dark [class*="bg-slate-100"] .bg-white label,
+.dark [class*="bg-slate-100"] .bg-white span,
+.dark [class*="bg-slate-100"] .bg-white div:not([class*="text-emerald"]):not([class*="text-blue"]):not([class*="text-green"]):not([class*="text-amber"]),
+.dark [class*="bg-slate-100"] .bg-white p {
+  color: #f0f0f0 !important;
+}
+
+.dark [class*="bg-slate-50"] .bg-white .text-slate-500,
+.dark [class*="bg-slate-50"] .bg-white .text-slate-400,
+.dark [class*="bg-slate-100"] .bg-white .text-slate-500,
+.dark [class*="bg-slate-100"] .bg-white .text-slate-400 {
+  color: #9d9d9f !important;
+}
+
+/* Cifras destacadas de UF y finanzas en tarjetas oscuras */
+.dark .text-emerald-900,
+.dark .text-emerald-800,
+.dark .text-emerald-700 {
+  color: #34d399 !important;
 }
 
 .dark input:not([type='checkbox']):not([type='radio']),

@@ -13,11 +13,29 @@ export interface VersionRegistro {
 
 export const HISTORIAL_VERSIONES: VersionRegistro[] = [
   {
+    version: '2.4.5',
+    tag: 'v2.4.5',
+    fecha: '2026-10-16',
+    fechaFormato: '16 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Alto Contraste y Legibilidad en Casillas Grises para Modo Oscuro',
+    modulos: ['UI / Tema', 'Cotizador', 'Accesibilidad'],
+    descripcion:
+      'Calibración de tipografía de alto contraste (#0f172a / #1e293b) en todas las casillas, bloques y elementos con fondos o tonalidades grises en modo oscuro, garantizando máxima legibilidad en etiquetas de clasificación DGL, Salesforce, indicadores oficiales y tablas.',
+    detalles: [
+      'Contraste garantizado en bloques grises: todas las etiquetas (Sección DGL, Unidad/CC, Sector, Subsector, Zona), títulos y textos descriptivos sobre contenedores grises (slate/gray/zinc con o sin opacidad) ahora utilizan texto oscuro profundo de alto contraste (#0f172a).',
+      'Compatibilidad anidada: las tarjetas oscuras interiores (.bg-white -> #252526) e inputs/selects mantienen su tipografía clara y bordes minimalistas sin verse afectadas por las reglas del contenedor padre.',
+      'Indicadores económicos destacados: valores numéricos de UF y divisas en modo oscuro calibrados con tonos esmeralda brillantes (#34d399) para lectura inmediata.',
+      'Soporte transversal en todo el sistema: aplica automáticamente a casillas de cotizador, conciliador, opciones de muestras y encabezados de tablas.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
     version: '2.4.4',
     tag: 'v2.4.4',
     fecha: '2026-10-16',
     fechaFormato: '16 de Octubre, 2026',
-    estado: 'activa',
+    estado: 'previa',
     titulo: 'Estructura Jerárquica en Salesforce, Configuración de Masa y Tema Oscuro Minimalista',
     modulos: ['Salesforce', 'Cotizador', 'Formatos', 'UI / Tema'],
     descripcion:

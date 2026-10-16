@@ -10,10 +10,10 @@
 }
 
 .dark {
-  --background: #090d16;
-  --foreground: #f1f5f9;
-  --card-bg: #111827;
-  --card-border: #1e293b;
+  --background: #1e1e1f;
+  --foreground: #f0f0f0;
+  --card-bg: #252526;
+  --card-border: #333335;
   color-scheme: dark;
 }
 
@@ -35,7 +35,7 @@ body {
 }
 
 .dark ::-webkit-scrollbar-track {
-  background: #090d16;
+  background: #1e1e1f;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -44,7 +44,7 @@ body {
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #3e3e42;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -52,56 +52,81 @@ body {
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #4e4e52;
 }
 
-/* Minimalist Dark Mode Overrides for High Consistency */
+/* Minimalist Dark Mode Overrides (Antigravity Exact Charcoal Scheme) */
+.dark body {
+  background-color: #1e1e1f !important;
+  color: #f0f0f0 !important;
+}
+
 .dark .bg-white {
-  background-color: #111827 !important;
+  background-color: #252526 !important;
 }
 
 .dark .bg-slate-50 {
-  background-color: #0d121f !important;
+  background-color: #202021 !important;
 }
 
 .dark .bg-slate-100 {
-  background-color: #162032 !important;
+  background-color: #2a2a2c !important;
+}
+
+.dark .bg-slate-200 {
+  background-color: #333336 !important;
+}
+
+.dark .hover\:bg-slate-50:hover {
+  background-color: #2a2a2c !important;
+}
+
+.dark .hover\:bg-slate-100:hover {
+  background-color: #2f2f32 !important;
 }
 
 .dark .border-slate-200,
 .dark .border-slate-100,
 .dark .border-slate-300 {
-  border-color: #1e293b !important;
+  border-color: #333335 !important;
 }
 
 .dark .text-slate-900,
 .dark .text-slate-800 {
-  color: #f8fafc !important;
+  color: #f0f0f0 !important;
 }
 
 .dark .text-slate-700,
 .dark .text-slate-600 {
-  color: #cbd5e1 !important;
+  color: #cccccc !important;
 }
 
 .dark .text-slate-500,
 .dark .text-slate-400 {
-  color: #94a3b8 !important;
+  color: #9d9d9f !important;
 }
 
 .dark input:not([type='checkbox']):not([type='radio']),
 .dark select,
 .dark textarea {
-  background-color: #0f172a !important;
-  color: #f8fafc !important;
-  border-color: #334155 !important;
+  background-color: #1e1e1f !important;
+  color: #f0f0f0 !important;
+  border-color: #38383a !important;
 }
 
 .dark input:focus,
 .dark select:focus,
 .dark textarea:focus {
-  border-color: #3b82f6 !important;
+  border-color: #007acc !important;
   outline: none;
+}
+
+/* Antigravity Minimalist Dialogs & Dropdowns in Dark Mode */
+.dark [role="dialog"],
+.dark .shadow-2xl,
+.dark .shadow-xl {
+  background-color: #252526 !important;
+  border-color: #38383a !important;
 }
 
 @media print {

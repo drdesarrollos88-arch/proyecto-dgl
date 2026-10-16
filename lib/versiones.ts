@@ -27,7 +27,7 @@ export const HISTORIAL_VERSIONES: VersionRegistro[] = [
       'Persistencia de clasificación DGL: normalización de códigos de centros de costo (4 dígitos) evitando desajustes y fallbacks obsoletos en bases de datos.',
       'Configuración de Masa (kg): las notas de material y observaciones técnicas vienen desactivadas por defecto, manteniendo activada únicamente la columna de masa individual por ensayo.',
       'Control maestro de activación de masa: incorporación de un switch global "Activar todo / Desactivar todo" para alternar con un solo clic los 5 controles de kilos de muestra.',
-      'Tema Claro y Oscuro Minimalista: interruptor toggle compacto integrado en la barra superior junto al perfil de usuario, con persistencia local y soporte visual refinado.',
+      'Tema Claro y Oscuro Minimalista: interruptor toggle compacto integrado en la barra superior junto al perfil de usuario, con persistencia local y calibración exacta al esquema de color carbón/neutral de Antigravity (#1e1e1f, #252526, #333335).',
     ],
     autor: 'Equipo de Desarrollo DGL',
   },

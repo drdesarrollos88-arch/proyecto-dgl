@@ -13,11 +13,30 @@ export interface VersionRegistro {
 
 export const HISTORIAL_VERSIONES: VersionRegistro[] = [
   {
+    version: '2.6.0',
+    tag: 'v2.6.0',
+    fecha: '2026-10-16',
+    fechaFormato: '16 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Módulo Principal de Oportunidades & Pipeline Comercial (CRM Unificado)',
+    modulos: ['Oportunidades & CRM', 'Salesforce Sync', 'Control de Gestión', 'Metas Comerciales'],
+    descripcion:
+      'Lanzamiento del nuevo Módulo Principal de Oportunidades & Pipeline Comercial como pantalla de inicio del sistema (al ingresar y al pinchar Laboratorio Geotécnico DGL). Permite la importación y sincronización masiva de oportunidades históricas de Salesforce vía SOQL, listado unificado distinguiendo entre cotizaciones creadas en el portal y registros de Salesforce, dashboards mensuales y acumulados (YTD) y comparativa en tiempo real de metas presupuestadas vs ventas reales.',
+    detalles: [
+      'Punto de entrada principal: Redirección automática de la raíz y del branding superior "Laboratorio Geotécnico DGL" hacia el nuevo módulo /oportunidades.',
+      'Sincronización histórica con Salesforce: Extracción SOQL en vivo de oportunidades y cuotas de períodos y años anteriores con almacenamiento resiliente.',
+      'Doble distinción de origen: Identificación clara mediante badges [Web DGL] (con acceso a abrir la cotización técnica) y [Salesforce] (con identificador y cuotas).',
+      'Dashboards ejecutivos YTD: Indicadores de cumplimiento de ventas (% y gap), pipeline en curso, volumen cotizado, tasa de conversión y ticket promedio.',
+      'Metas y Presupuestos: Soporte para configurar y evaluar metas comerciales mensuales y acumuladas con gráfico de evolución de los 12 meses del año.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
     version: '2.5.0',
     tag: 'v2.5.0',
     fecha: '2026-10-16',
     fechaFormato: '16 de Octubre, 2026',
-    estado: 'activa',
+    estado: 'previa',
     titulo: 'Conciliador EERR vs Salesforce v2.0: Motor Multicriterio N:M, Mesa de Cirugía 50/50 y Staging Auditable',
     modulos: ['Conciliador v2.0', 'Salesforce API', 'Control de Gestión', 'Arquitectura Modular'],
     descripcion:

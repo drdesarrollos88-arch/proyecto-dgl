@@ -36,6 +36,7 @@ import {
   ShieldCheck,
   BookOpen,
   Trophy,
+  Target,
   Scale,
   Sun,
   Moon,
@@ -134,7 +135,7 @@ export default function Navbar() {
   };
 
   const isCotizacionActive = pathname.startsWith('/cotizador') || pathname.startsWith('/cotizaciones');
-  const isVentasActive = pathname.startsWith('/ventas') || showCierreModal;
+  const isVentasActive = pathname.startsWith('/ventas') || pathname.startsWith('/oportunidades') || showCierreModal;
   const isTarifarioActive = pathname.startsWith('/tarifario') || pathname === '/configuracion/tarifario';
   const isClientesActive = pathname.startsWith('/clientes');
   const isConfigActive =
@@ -173,9 +174,9 @@ export default function Navbar() {
       {/* Main Navbar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-14 items-center">
-          {/* Brand Logo & Name -> Links to /cotizaciones (Dashboard Home) */}
+          {/* Brand Logo & Name -> Links to /oportunidades (Dashboard Home) */}
           <div className="flex items-center gap-3">
-            <Link href="/cotizaciones" title="Inicio / Resumen Comercial" className="flex items-center gap-3 group">
+            <Link href="/oportunidades" title="Inicio / Oportunidades & Pipeline" className="flex items-center gap-3 group">
               <div className="relative h-10 flex items-center">
                 <Image
                   src="/logo_125.png"
@@ -319,6 +320,25 @@ export default function Navbar() {
                   onMouseLeave={handleMouseLeave}
                 >
                   <div className="py-1">
+                    <Link
+                      href="/oportunidades"
+                      onClick={() => setActiveDropdown(null)}
+                      className="flex items-start gap-2.5 px-3.5 py-2 hover:bg-amber-50 text-slate-700 hover:text-amber-800 transition-colors group"
+                    >
+                      <Target className="w-4 h-4 text-amber-600 mt-0.5 shrink-0 group-hover:scale-110 transition-transform" />
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold leading-snug text-slate-900 group-hover:text-amber-800 flex items-center gap-1.5">
+                          <span>Oportunidades & Pipeline</span>
+                          <span className="bg-amber-100 text-amber-800 text-[9px] font-bold px-1.5 py-0.2 rounded-full">
+                            Inicio
+                          </span>
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-normal">
+                          Historial CRM, metas y comparativas de venta
+                        </span>
+                      </div>
+                    </Link>
+
                     <button
                       type="button"
                       onClick={() => {
@@ -329,7 +349,7 @@ export default function Navbar() {
                     >
                       <Trophy className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0 group-hover:scale-110 transition-transform" />
                       <div className="flex flex-col">
-                        <span className="text-xs font-bold leading-snug text-slate-900 group-hover:text-emerald-800 flex items-center gap-1.5">
+                        <span className="text-xs font-semibold leading-snug text-slate-800 group-hover:text-emerald-800 flex items-center gap-1.5">
                           <span>Cierre de Oportunidad</span>
                           <span className="bg-emerald-100 text-emerald-800 text-[9px] font-bold px-1.5 py-0.2 rounded-full">
                             SF Directo

@@ -10,10 +10,10 @@
 }
 
 .dark {
-  --background: #1e1e1f;
-  --foreground: #f0f0f0;
-  --card-bg: #252526;
-  --card-border: #333335;
+  --background: #1d2125;
+  --foreground: #f1f2f4;
+  --card-bg: #22272b;
+  --card-border: #2c333a;
   color-scheme: dark;
 }
 
@@ -35,7 +35,7 @@ body {
 }
 
 .dark ::-webkit-scrollbar-track {
-  background: #1e1e1f;
+  background: #1d2125;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -44,7 +44,7 @@ body {
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: #3e3e42;
+  background: #333c44;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -52,214 +52,166 @@ body {
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: #4e4e52;
+  background: #454f59;
 }
 
-/* Minimalist Dark Mode Overrides (Antigravity Exact Charcoal Scheme) */
-.dark body {
-  background-color: #1e1e1f !important;
-  color: #f0f0f0 !important;
-}
-
+/* ==========================================================================
+   JIRA SOFTWARE DARK THEME (Atlassian Design System Official Dark Palette)
+   - Canvas / Surface: #1D2125 (Deep Slate)
+   - Sunken Containers (Columns, Sub-panels, Indicadores): #161A1D
+   - Raised Cards / Navbar / Modals: #22272B
+   - Borders: #2C333A / #3B444C
+   - Typography Primary: #F1F2F4 | Secondary: #9FADBC
+   - Brand Accent: #579DFF (Jira Blue)
+   ========================================================================== */
+.dark body,
 .dark .min-h-screen {
-  background-color: #1e1e1f !important;
+  background-color: #1d2125 !important;
+  color: #f1f2f4 !important;
 }
 
+/* Jira Raised Surfaces (Tarjetas principales, Navbar, Contenedores elevados) */
 .dark .bg-white {
-  background-color: #252526 !important;
+  background-color: #22272b !important;
 }
 
-.dark .bg-slate-50 {
-  background-color: #202021 !important;
+/* Jira Sunken Surfaces (Columnas tipo Kanban, Sub-bloques DGL, Indicadores, Secciones) */
+.dark .bg-slate-50,
+.dark [class*="bg-slate-50"]:not(.min-h-screen),
+.dark [class*="bg-gray-50"]:not(.min-h-screen) {
+  background-color: #161a1d !important;
 }
 
-.dark .bg-slate-100 {
-  background-color: #2a2a2c !important;
+.dark .bg-slate-100,
+.dark [class*="bg-slate-100"],
+.dark [class*="bg-gray-100"],
+.dark [class*="bg-zinc-100"] {
+  background-color: #1a1f24 !important;
 }
 
-.dark .bg-slate-200 {
-  background-color: #333336 !important;
+.dark .bg-slate-200,
+.dark [class*="bg-slate-200"],
+.dark [class*="bg-gray-200"] {
+  background-color: #282e33 !important;
 }
 
-.dark .hover\:bg-slate-50:hover {
-  background-color: #2a2a2c !important;
-}
-
+.dark .hover\:bg-slate-50:hover,
 .dark .hover\:bg-slate-100:hover {
-  background-color: #2f2f32 !important;
+  background-color: #2c333a !important;
 }
 
+/* Jira Borders (Sutiles y de alta definición) */
 .dark .border-slate-200,
 .dark .border-slate-100,
-.dark .border-slate-300 {
-  border-color: #333335 !important;
+.dark .border-slate-300,
+.dark [class*="border-slate-200"],
+.dark [class*="border-slate-100"] {
+  border-color: #2c333a !important;
 }
 
-/* Tipografía estándar en modo oscuro para canvas y tarjetas oscuras */
+/* Jira Typography & Hierarchy */
 .dark .text-slate-900,
-.dark .text-slate-800 {
-  color: #f0f0f0 !important;
+.dark .text-slate-800,
+.dark h1,
+.dark h2,
+.dark h3,
+.dark h4 {
+  color: #f1f2f4 !important;
 }
 
 .dark .text-slate-700,
 .dark .text-slate-600 {
-  color: #cccccc !important;
+  color: #dee4ea !important;
 }
 
 .dark .text-slate-500,
-.dark .text-slate-400 {
-  color: #9d9d9f !important;
+.dark .text-slate-400,
+.dark label {
+  color: #9fadbc !important;
 }
 
-/* ==========================================================================
-   ALTO CONTRASTE: Elementos y casillas con fondos grises en modo oscuro
-   Cualquier casilla, tarjeta o contenedor con tonalidades grises (slate/gray/zinc
-   con o sin opacidad) debe mostrar sus textos y etiquetas en color oscuro (#0f172a)
-   para que no se confundan con el fondo y sean 100% legibles.
-   ========================================================================== */
-.dark [class*="bg-slate-50"]:not(.min-h-screen),
-.dark [class*="bg-slate-100"],
-.dark [class*="bg-slate-200"],
-.dark [class*="bg-gray-50"]:not(.min-h-screen),
-.dark [class*="bg-gray-100"],
-.dark [class*="bg-gray-200"],
-.dark [class*="bg-zinc-100"],
-.dark [class*="bg-zinc-200"] {
-  color: #0f172a;
-}
-
-/* Etiquetas, encabezados y textos dentro de casillas grises */
-.dark [class*="bg-slate-50"]:not(.min-h-screen) label,
-.dark [class*="bg-slate-100"] label,
-.dark [class*="bg-slate-200"] label,
-.dark [class*="bg-gray-50"]:not(.min-h-screen) label,
-.dark [class*="bg-gray-100"] label,
-.dark [class*="bg-gray-200"] label,
-.dark [class*="bg-slate-50"]:not(.min-h-screen) span:not(.font-mono):not([class*="bg-"]):not([class*="text-blue-"]):not([class*="text-emerald-"]):not([class*="text-red-"]):not([class*="text-amber-"]):not([class*="text-purple-"]),
-.dark [class*="bg-slate-100"] span:not(.font-mono):not([class*="bg-"]):not([class*="text-blue-"]):not([class*="text-emerald-"]):not([class*="text-red-"]):not([class*="text-amber-"]):not([class*="text-purple-"]),
-.dark [class*="bg-slate-200"] span:not(.font-mono):not([class*="bg-"]):not([class*="text-blue-"]):not([class*="text-emerald-"]):not([class*="text-red-"]):not([class*="text-amber-"]):not([class*="text-purple-"]),
-.dark [class*="bg-slate-50"]:not(.min-h-screen) p,
-.dark [class*="bg-slate-100"] p,
-.dark [class*="bg-slate-200"] p,
-.dark [class*="bg-slate-50"]:not(.min-h-screen) h1,
-.dark [class*="bg-slate-50"]:not(.min-h-screen) h2,
-.dark [class*="bg-slate-50"]:not(.min-h-screen) h3,
-.dark [class*="bg-slate-50"]:not(.min-h-screen) h4,
-.dark [class*="bg-slate-100"] h1,
-.dark [class*="bg-slate-100"] h2,
-.dark [class*="bg-slate-100"] h3,
-.dark [class*="bg-slate-100"] h4,
-.dark [class*="bg-slate-50"]:not(.min-h-screen) th,
-.dark [class*="bg-slate-100"] th,
-.dark [class*="bg-slate-200"] th,
-.dark [class*="bg-slate-50"]:not(.min-h-screen) td,
-.dark [class*="bg-slate-100"] td,
-.dark [class*="bg-slate-200"] td {
-  color: #0f172a !important;
-}
-
-/* Forzar contraste para clases text-slate-X dentro de casillas grises */
-.dark [class*="bg-slate-50"]:not(.min-h-screen) .text-slate-900,
-.dark [class*="bg-slate-50"]:not(.min-h-screen) .text-slate-800,
-.dark [class*="bg-slate-50"]:not(.min-h-screen) .text-slate-700,
-.dark [class*="bg-slate-50"]:not(.min-h-screen) .text-slate-600,
-.dark [class*="bg-slate-100"] .text-slate-900,
-.dark [class*="bg-slate-100"] .text-slate-800,
-.dark [class*="bg-slate-100"] .text-slate-700,
-.dark [class*="bg-slate-100"] .text-slate-600,
-.dark [class*="bg-slate-200"] .text-slate-900,
-.dark [class*="bg-slate-200"] .text-slate-800,
-.dark [class*="bg-slate-200"] .text-slate-700,
-.dark [class*="bg-slate-200"] .text-slate-600,
-.dark [class*="bg-gray-100"] .text-slate-900,
-.dark [class*="bg-gray-100"] .text-slate-800,
-.dark [class*="bg-gray-100"] .text-slate-700,
-.dark [class*="bg-gray-100"] .text-slate-600,
-.dark [class*="bg-gray-200"] .text-slate-900,
-.dark [class*="bg-gray-200"] .text-slate-800,
-.dark [class*="bg-gray-200"] .text-slate-700,
-.dark [class*="bg-gray-200"] .text-slate-600 {
-  color: #0f172a !important;
-  font-weight: 600;
-}
-
-.dark [class*="bg-slate-50"]:not(.min-h-screen) .text-slate-500,
-.dark [class*="bg-slate-50"]:not(.min-h-screen) .text-slate-400,
-.dark [class*="bg-slate-100"] .text-slate-500,
-.dark [class*="bg-slate-100"] .text-slate-400,
-.dark [class*="bg-slate-200"] .text-slate-500,
-.dark [class*="bg-slate-200"] .text-slate-400,
-.dark [class*="bg-gray-100"] .text-slate-500,
-.dark [class*="bg-gray-100"] .text-slate-400,
-.dark [class*="bg-gray-200"] .text-slate-500,
-.dark [class*="bg-gray-200"] .text-slate-400 {
-  color: #1e293b !important;
-}
-
-/* Casillas o badges que directamente tienen la clase de fondo gris */
-.dark span[class*="bg-slate-50"]:not([class*="text-"]),
-.dark span[class*="bg-slate-100"]:not([class*="text-"]),
-.dark span[class*="bg-slate-200"]:not([class*="text-"]),
-.dark span[class*="bg-gray-100"]:not([class*="text-"]),
-.dark span[class*="bg-gray-200"]:not([class*="text-"]),
-.dark label[class*="bg-slate-100"],
-.dark label[class*="bg-slate-200"] {
-  color: #0f172a !important;
-}
-
-/* Preservar tipografía clara en tarjetas oscuras anidadas (.bg-white -> #252526) dentro de los bloques grises */
-.dark [class*="bg-slate-50"] .bg-white,
-.dark [class*="bg-slate-100"] .bg-white,
-.dark [class*="bg-slate-200"] .bg-white {
-  background-color: #252526 !important;
-}
-
-.dark [class*="bg-slate-50"] .bg-white label,
-.dark [class*="bg-slate-50"] .bg-white span,
-.dark [class*="bg-slate-50"] .bg-white div:not([class*="text-emerald"]):not([class*="text-blue"]):not([class*="text-green"]):not([class*="text-amber"]),
-.dark [class*="bg-slate-50"] .bg-white p,
-.dark [class*="bg-slate-100"] .bg-white label,
-.dark [class*="bg-slate-100"] .bg-white span,
-.dark [class*="bg-slate-100"] .bg-white div:not([class*="text-emerald"]):not([class*="text-blue"]):not([class*="text-green"]):not([class*="text-amber"]),
-.dark [class*="bg-slate-100"] .bg-white p {
-  color: #f0f0f0 !important;
-}
-
-.dark [class*="bg-slate-50"] .bg-white .text-slate-500,
-.dark [class*="bg-slate-50"] .bg-white .text-slate-400,
-.dark [class*="bg-slate-100"] .bg-white .text-slate-500,
-.dark [class*="bg-slate-100"] .bg-white .text-slate-400 {
-  color: #9d9d9f !important;
-}
-
-/* Cifras destacadas de UF y finanzas en tarjetas oscuras */
-.dark .text-emerald-900,
-.dark .text-emerald-800,
-.dark .text-emerald-700 {
-  color: #34d399 !important;
-}
-
+/* Jira Inputs, Dropdowns & Textareas */
 .dark input:not([type='checkbox']):not([type='radio']),
 .dark select,
 .dark textarea {
-  background-color: #1e1e1f !important;
-  color: #f0f0f0 !important;
-  border-color: #38383a !important;
+  background-color: #22272b !important;
+  color: #f1f2f4 !important;
+  border-color: #3b444c !important;
 }
 
 .dark input:focus,
 .dark select:focus,
 .dark textarea:focus {
-  border-color: #007acc !important;
+  border-color: #579dff !important;
+  box-shadow: 0 0 0 1px #579dff !important;
   outline: none;
 }
 
-/* Antigravity Minimalist Dialogs & Dropdowns in Dark Mode */
+/* Jira Badges & Status Pills (Como MAC OS, WINDOWS OS, etc.) */
+.dark .bg-blue-50,
+.dark .bg-blue-100 {
+  background-color: #1c2b41 !important;
+  color: #579dff !important;
+  border-color: #203c66 !important;
+}
+
+.dark .text-blue-700,
+.dark .text-blue-800,
+.dark .text-blue-900,
+.dark .text-blue-950 {
+  color: #579dff !important;
+}
+
+/* Verde / Esmeralda / Teal (Tag estilo MAC OS / UF) */
+.dark .bg-emerald-50,
+.dark .bg-emerald-100 {
+  background-color: #164547 !important;
+  color: #79e2f2 !important;
+  border-color: #205c60 !important;
+}
+
+.dark .text-emerald-700,
+.dark .text-emerald-800,
+.dark .text-emerald-900,
+.dark .text-emerald-950 {
+  color: #57d9a3 !important;
+}
+
+/* Ámbar / Dorado (Alertas, Kilos de muestra) */
+.dark .bg-amber-50,
+.dark .bg-amber-100 {
+  background-color: #382800 !important;
+  color: #f5cd47 !important;
+  border-color: #533f04 !important;
+}
+
+.dark .text-amber-700,
+.dark .text-amber-800,
+.dark .text-amber-900,
+.dark .text-amber-950 {
+  color: #f5cd47 !important;
+}
+
+/* Rojo / Coral (Tag estilo WINDOWS OS / Urgente) */
+.dark .bg-red-50,
+.dark .bg-red-100 {
+  background-color: #441c18 !important;
+  color: #fd9891 !important;
+  border-color: #60251f !important;
+}
+
+.dark .text-red-700,
+.dark .text-red-800,
+.dark .text-red-900 {
+  color: #ff8f73 !important;
+}
+
+/* Jira Overlays & Modales */
 .dark [role="dialog"],
 .dark .shadow-2xl,
 .dark .shadow-xl {
-  background-color: #252526 !important;
-  border-color: #38383a !important;
+  background-color: #282e33 !important;
+  border-color: #3b444c !important;
 }
 
 @media print {

@@ -13,11 +13,29 @@ export interface VersionRegistro {
 
 export const HISTORIAL_VERSIONES: VersionRegistro[] = [
   {
+    version: '2.4.6',
+    tag: 'v2.4.6',
+    fecha: '2026-10-16',
+    fechaFormato: '16 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Tema Oscuro Inspirado en Jira Software (Atlassian Design System)',
+    modulos: ['UI / Tema', 'Cotizador', 'Accesibilidad', 'Dashboard'],
+    descripcion:
+      'Reconfiguración completa de la paleta de modo oscuro adoptando la estética y profundidad oficial de Jira Software (Atlassian Design System): fondo deep slate #1D2125, columnas y sub-bloques sunken #161A1D, tarjetas elevadas #22272B, acento Jira Blue #579DFF y etiquetas nítidas #9FADBC.',
+    detalles: [
+      'Jerarquía visual de 3 capas Jira: Canvas base (#1D2125), contenedores y columnas tipo Kanban/DGL (#161A1D) y tarjetas elevadas con modales (#22272B).',
+      'Bordes y separadores de alta definición: trazos sutiles en #2C333A y #3B444C que delimitan con elegancia cada módulo sin saturar la vista.',
+      'Tipografía calibrada Atlassian: títulos y valores principales en blanco marfil (#F1F2F4) y etiquetas/subtextos en gris pizarra (#9FADBC).',
+      'Acentos y badges funcionales: azul Jira (#579DFF) para interactividad y botones clave, teal/verde (#164547/#57D9A3) estilo MAC OS para UF e indicadores, y ámbar (#382800/#F5CD47) para muestras.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
     version: '2.4.5',
     tag: 'v2.4.5',
     fecha: '2026-10-16',
     fechaFormato: '16 de Octubre, 2026',
-    estado: 'activa',
+    estado: 'previa',
     titulo: 'Alto Contraste y Legibilidad en Casillas Grises para Modo Oscuro',
     modulos: ['UI / Tema', 'Cotizador', 'Accesibilidad'],
     descripcion:

@@ -112,9 +112,26 @@ export const CENTROS_DE_COSTO = [
 export type CentroDeCosto = typeof CENTROS_DE_COSTO[number];
 
 /**
+ * Lista de prefijos de otras divisiones de IDIEM que NO corresponden a DGL.
+ * DGL (División Geotecnia y Laboratorio) es la única división válida para este sistema.
+ */
+const NON_DGL_DIVISION_REGEX = /\b(?:PR|PRE|OT|COT|PROY)[\s.\-_]+(DEP|DPR|DGI|DHC|DES|DHI|DTC|DCO|GCO|DIC|DIO|UCF|DAC|DOH|DDA|DMC|DAS|DCT|DED|DCL|DTI)\b/i;
+
+/**
+ * Centros de costo oficiales de la División DGL (Geotecnia y Laboratorio):
+ * 2340: Ensayos Básicos (UEB)
+ * 2341: Ensayos Geotécnicos Especiales (UGE)
+ * 2344: Geotecnia Antofagasta (UGA)
+ * 1817: Ensayos Geotécnicos Básicos (UGB)
+ * 2339: Ensayos Rocas (UER)
+ * 3340: Sondajes Menores (USM)
+ */
+export const DGL_CENTROS_COSTO_SET = new Set(['2340', '2341', '2344', '1817', '2339', '3340']);
+
+/**
  * Valida estrictamente si una oportunidad o cuota de Salesforce pertenece a la División DGL
- * (División Geotecnia y Laboratorio de IDIEM), descartando cualquier registro de otras divisiones
- * (como Estructuras, Civil, Materiales, Asfaltos, etc.).
+ * (División Geotecnia y Laboratorio de IDIEM), descartando taxativamente cualquier registro de otras divisiones
+ * (como Estructuras, Civil, Pavimentos, Hidráulica, Procesos, Materiales, Asfaltos, etc.).
  */
 export function isOportunidadDgl(item?: {
   Name?: string | null;
@@ -126,40 +143,62 @@ export function isOportunidadDgl(item?: {
   Seccion__c?: string | null;
   seccion?: string | null;
   centroCosto?: string | null;
+  source?: string | null;
+  id?: string | null;
 } | null): boolean {
   if (!item) return false;
 
-  const rawDivision = String(item.Division__c || item.division || '').trim().toUpperCase();
   const rawName = String(item.Name || item.name || item.codigo || '').trim().toUpperCase();
+  const rawDivisionSf = String(item.Division__c || '').trim().toUpperCase();
   const rawUnidad = String(item.Unidad__c || item.centroCosto || '').trim().toUpperCase();
   const rawSeccion = String(item.Seccion__c || item.seccion || '').trim().toUpperCase();
+  const source = String(item.source || '').trim().toUpperCase();
 
-  const dglCentrosCosto = ['2340', '2341', '2344', '1817', '2339', '3340'];
-  const hasDglCc = dglCentrosCosto.some(
-    (cc) => rawName.includes(cc) || rawUnidad.includes(cc)
-  );
-  const hasDglName = rawName.includes('DGL') || rawName.includes('GEOTECN');
+  // 1. REGLA DE ORO POSITIVA: Si el prefijo o código contiene DGL explícitamente
+  // (ej. PR.DGL..., DGL.PRE..., OT.DGL..., .DGL., -DGL-, o palabra DGL)
+  const isExplicitDgl =
+    /\b(?:PR|PRE|OT|COT|PROY)[\s.\-_]*DGL\b/i.test(rawName) ||
+    /^DGL[\s.\-_]+/i.test(rawName) ||
+    rawName.includes('.DGL.') ||
+    rawName.includes('-DGL-') ||
+    rawName.includes(' DGL ');
+
+  if (isExplicitDgl) {
+    return true;
+  }
+
+  // 2. DESCALIFICACIÓN INMEDIATA POR OTRA DIVISIÓN EXPLÍCITA DE IDIEM
+  // Ejemplos: PR.DEP., PR.DPR., PR.DGI., PR.DHC., DEP.PRE., etc.
+  const otherDivRegex = /\b(?:PR|PRE|OT|COT|PROY)[\s.\-_]+(DEP|DPR|DGI|DHC|DES|DHI|DTC|DCO|GCO|DIC|DIO|UCF|DAC|DOH|DDA|DMC|DAS|DCT|DED|DCL|DTI)\b/i;
+  const startOtherDivRegex = /^(DEP|DPR|DGI|DHC|DES|DHI|DTC|DCO|GCO|DIC|DIO|UCF|DAC|DOH|DDA|DMC|DAS|DCT|DED|DCL|DTI)[\s.\-_]+/i;
+  if (otherDivRegex.test(rawName) || startOtherDivRegex.test(rawName)) {
+    return false;
+  }
+
+  // Si el campo nativo de Salesforce Division__c dice explícitamente otra división distinta a DGL
+  if (rawDivisionSf && rawDivisionSf !== 'DGL' && !rawDivisionSf.includes('GEOTECN')) {
+    return false;
+  }
+
+  // 3. COMPROBACIÓN POSITIVA POR CENTRO DE COSTO OFICIAL DGL (2340, 2341, 2344, 1817, 2339, 3340)
+  const hasDglCc = Array.from(DGL_CENTROS_COSTO_SET).some((cc) => {
+    if (rawUnidad.includes(cc)) return true;
+    const regex = new RegExp(`(?:^|[^0-9])${cc}(?:[^0-9]|$)`);
+    return regex.test(rawName);
+  });
+
+  // 4. COMPROBACIÓN POSITIVA POR SECCIÓN OFICIAL DGL (SLG, SLGP, SGL, DGL)
   const hasDglSeccion = ['SLG', 'SLGP', 'SGL', 'DGL'].some((sec) => rawSeccion.includes(sec));
 
-  // 1. Si la división está declarada explícitamente como DGL / Geotecnia
-  if (rawDivision === 'DGL' || rawDivision.includes('GEOTECN')) {
-    return true;
-  }
+  // 5. COMPROBACIÓN POSITIVA POR PALABRAS CLAVE O ORIGEN WEB
+  const hasKeywords =
+    rawName.includes('GEOTECN') ||
+    rawName.includes('MECANICA DE SUELOS') ||
+    rawName.includes('LABORATORIO SUELOS');
 
-  // 2. Si la división dice explícitamente OTRA división (ej. ESTRUCTURAS, CIVIL, MATERIALES, ASFALTOS)
-  if (rawDivision && rawDivision !== 'DGL' && !rawDivision.includes('GEOTECN')) {
-    // Si dice otra división y no tiene código DGL explícito ni CC DGL, descartar tajantemente
-    if (!hasDglName && !hasDglCc) {
-      return false;
-    }
-  }
+  const isWebDgl = source === 'WEB_DGL' || String(item.id || '').startsWith('dgl-quote-');
 
-  // 3. Comprobación positiva por código de proyecto, centro de costo o sección
-  if (hasDglName || hasDglCc || hasDglSeccion) {
-    return true;
-  }
-
-  return false;
+  return hasDglCc || hasDglSeccion || hasKeywords || isWebDgl;
 }
 
 // Clasificación de Proyectos para Salesforce IDIEM

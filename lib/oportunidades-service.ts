@@ -343,7 +343,7 @@ export async function getLocalCotizacionesAsOportunidades(): Promise<Oportunidad
  */
 export async function getSavedSalesforceOportunidadesAsync(): Promise<OportunidadCRM[]> {
   if (_memorySfHistory && _memorySfHistory.length > 0) {
-    return _memorySfHistory;
+    return _memorySfHistory.filter((o) => isOportunidadDgl(o));
   }
 
   // 1. Intentar desde Supabase (persistente en Cloudflare Workers)
@@ -356,7 +356,14 @@ export async function getSavedSalesforceOportunidadesAsync(): Promise<Oportunida
         .single();
 
       if (!error && data?.value && Array.isArray(data.value)) {
-        _memorySfHistory = (data.value as OportunidadCRM[]).filter((o) => isOportunidadDgl(o));
+        const cleanList = (data.value as OportunidadCRM[]).filter((o) => isOportunidadDgl(o));
+        _memorySfHistory = cleanList;
+        // Si el historial en Supabase contenía oportunidades de otras divisiones, sanear la BD
+        if (cleanList.length !== data.value.length) {
+          saveSavedSalesforceOportunidades(cleanList).catch((err) =>
+            console.warn('Error saneando historial en Supabase:', err)
+          );
+        }
         return _memorySfHistory;
       }
     } catch (err) {

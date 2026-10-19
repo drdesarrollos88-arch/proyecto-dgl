@@ -54,7 +54,7 @@ function mapAccountToCliente(r: any): Cliente {
   return {
     id: r.Id,
     name,
-    rut: r.RUT__c || '',
+    rut: r.RUT__c || r.Rut__c || '',
     comuna: r.BillingState || r.BillingCity || '',
     address,
     giro: r.Giro__c || '',
@@ -109,10 +109,15 @@ export async function searchSalesforceAccounts(query = '', limit = 20): Promise<
 
   let whereClause = "Name != null";
   if (cleanTerm) {
-    whereClause += ` AND (Name LIKE '%${cleanTerm}%' OR Razon_Social__c LIKE '%${cleanTerm}%' OR RUT__c LIKE '%${cleanTerm}%')`;
+    const digitsOnly = cleanTerm.replace(/[^0-9kK]/g, '');
+    let rutConditions = `RUT__c LIKE '%${cleanTerm}%'`;
+    if (digitsOnly && digitsOnly.length >= 4 && digitsOnly !== cleanTerm) {
+      rutConditions += ` OR RUT__c LIKE '%${digitsOnly}%'`;
+    }
+    whereClause += ` AND (Name LIKE '%${cleanTerm}%' OR Razon_Social__c LIKE '%${cleanTerm}%' OR ${rutConditions})`;
   }
 
-  const soql = `
+  const soqlFull = `
     SELECT Id, Name, Razon_Social__c, RUT__c, BillingStreet, BillingCity, BillingState, Phone, E_mail__c, Giro__c, Condicion_de_Pago__c, Condici_n_de_Pago_empresa__c, CreatedDate, LastModifiedDate
     FROM Account
     WHERE ${whereClause}
@@ -120,8 +125,23 @@ export async function searchSalesforceAccounts(query = '', limit = 20): Promise<
     LIMIT ${limit}
   `.replace(/\s+/g, ' ').trim();
 
-  const res = await sfRequest(client.instanceUrl, client.accessToken, `query?q=${encodeURIComponent(soql)}`);
-  const records = res?.records || [];
+  let records: any[] = [];
+  try {
+    const res = await sfRequest(client.instanceUrl, client.accessToken, `query?q=${encodeURIComponent(soqlFull)}`);
+    records = res?.records || [];
+  } catch (err) {
+    console.warn('SOQL extendido con condición de pago falló en Account, reintentando con campos esenciales:', err);
+    const soqlFallback = `
+      SELECT Id, Name, RUT__c, BillingStreet, BillingCity, BillingState, Phone, CreatedDate, LastModifiedDate
+      FROM Account
+      WHERE ${whereClause}
+      ORDER BY Name ASC
+      LIMIT ${limit}
+    `.replace(/\s+/g, ' ').trim();
+    const fallbackRes = await sfRequest(client.instanceUrl, client.accessToken, `query?q=${encodeURIComponent(soqlFallback)}`);
+    records = fallbackRes?.records || [];
+  }
+
   const clientes = records.map(mapAccountToCliente);
 
   setCached(cacheKey, clientes);
@@ -140,17 +160,32 @@ export async function getSalesforceAccountById(id: string): Promise<Cliente | nu
   if (cached) return cached;
 
   const client = await getValidSalesforceClient();
-  const soql = `
+  const soqlFull = `
     SELECT Id, Name, Razon_Social__c, RUT__c, BillingStreet, BillingCity, BillingState, Phone, E_mail__c, Giro__c, Condicion_de_Pago__c, Condici_n_de_Pago_empresa__c, CreatedDate, LastModifiedDate
     FROM Account
     WHERE Id = '${cleanId}'
     LIMIT 1
   `.replace(/\s+/g, ' ').trim();
 
-  const res = await sfRequest(client.instanceUrl, client.accessToken, `query?q=${encodeURIComponent(soql)}`);
-  if (!res?.records || res.records.length === 0) return null;
+  let records: any[] = [];
+  try {
+    const res = await sfRequest(client.instanceUrl, client.accessToken, `query?q=${encodeURIComponent(soqlFull)}`);
+    records = res?.records || [];
+  } catch (err) {
+    console.warn(`SOQL extendido falló para Account ${cleanId}, reintentando con campos esenciales:`, err);
+    const soqlFallback = `
+      SELECT Id, Name, RUT__c, BillingStreet, BillingCity, BillingState, Phone, CreatedDate, LastModifiedDate
+      FROM Account
+      WHERE Id = '${cleanId}'
+      LIMIT 1
+    `.replace(/\s+/g, ' ').trim();
+    const fallbackRes = await sfRequest(client.instanceUrl, client.accessToken, `query?q=${encodeURIComponent(soqlFallback)}`);
+    records = fallbackRes?.records || [];
+  }
 
-  const cliente = mapAccountToCliente(res.records[0]);
+  if (records.length === 0) return null;
+
+  const cliente = mapAccountToCliente(records[0]);
   setCached(cacheKey, cliente);
   return cliente;
 }

@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get('q') || '';
   const limitParam = searchParams.get('limit');
-  const limit = limitParam ? Math.min(100, Math.max(1, parseInt(limitParam, 10) || 20)) : 20;
+  const limit = limitParam ? Math.min(500, Math.max(1, parseInt(limitParam, 10) || 20)) : 20;
 
   // 1. Prioridad: Consulta en tiempo real a Salesforce CRM si está conectado
   if (await isSalesforceCrmAvailable()) {

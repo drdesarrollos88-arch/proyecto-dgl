@@ -13,6 +13,7 @@ import initialDbData from '../data/db.json';
 import { isSupabaseConfigured, supabaseAdmin } from './supabase';
 import { searchClientes } from './clientes-db';
 import { getCotizacionesAsync } from './cotizaciones-db';
+import { isSalesforceCrmAvailable, searchSalesforceAccounts } from './salesforce/salesforce-crm-service';
 
 const UF_DEFAULT = 38500;
 const SF_HISTORY_FILE = path.join(process.cwd(), 'data', 'salesforce-oportunidades-history.json');
@@ -230,7 +231,8 @@ export function parseSafeFecha(rawDate?: string): { anio: number; mes: number; f
 }
 
 /**
- * Precarga el mapa de condiciones de pago de clientes registrados para enriquecer las oportunidades
+ * Precarga el mapa de condiciones de pago de clientes para enriquecer las oportunidades.
+ * Prioridad oficial: Salesforce CRM. Respaldo: Base local de clientes.
  */
 async function getClientePaymentConditionMap(): Promise<{
   byRut: Map<string, string>;
@@ -239,6 +241,25 @@ async function getClientePaymentConditionMap(): Promise<{
   const byRut = new Map<string, string>();
   const byName = new Map<string, string>();
   try {
+    // 1. Prioridad: Consulta oficial a Salesforce Accounts si está conectado
+    if (await isSalesforceCrmAvailable()) {
+      try {
+        const sfClientes = await searchSalesforceAccounts('', 2000);
+        for (const cl of sfClientes) {
+          if (cl.paymentCondition) {
+            if (cl.rut) byRut.set(cl.rut.toLowerCase().replace(/[^0-9k]/g, ''), cl.paymentCondition);
+            if (cl.name) byName.set(cl.name.trim().toLowerCase(), cl.paymentCondition);
+          }
+        }
+        if (byRut.size > 0 || byName.size > 0) {
+          return { byRut, byName };
+        }
+      } catch (sfErr) {
+        console.warn('Fallo cargando condiciones de pago desde Salesforce, usando base local como respaldo:', sfErr);
+      }
+    }
+
+    // 2. Base local de respaldo
     const clientes = await searchClientes('', 1000);
     for (const cl of clientes) {
       if (cl.paymentCondition) {
@@ -493,14 +514,14 @@ export async function syncSalesforceOportunidades(
   let records: any[] = [];
   try {
     const soqlWithCond = encodeURIComponent(
-      `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Rut__c, Account.Condicion_de_Pago__c, Account.Condici_n_de_Pago_empresa__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} ORDER BY CloseDate DESC LIMIT 2000`
+      `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.Rut__c, Account.RUT__c, Account.Condicion_de_Pago__c, Account.Condici_n_de_Pago_empresa__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} ORDER BY CloseDate DESC LIMIT 2000`
     );
     const resWithCond = await sfRequest(instanceUrl, accessToken, `query?q=${soqlWithCond}`);
     records = resWithCond?.records || [];
   } catch (qErr) {
     console.warn('Consulta SOQL con campos de condición falló, reintentando con campos base:', qErr);
     const soqlBasic = encodeURIComponent(
-      `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Rut__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} ORDER BY CloseDate DESC LIMIT 2000`
+      `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.Rut__c, Account.RUT__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} ORDER BY CloseDate DESC LIMIT 2000`
     );
     const resBasic = await sfRequest(instanceUrl, accessToken, `query?q=${soqlBasic}`);
     records = resBasic?.records || [];
@@ -538,8 +559,10 @@ export async function syncSalesforceOportunidades(
     const etapa = rec.StageName || 'Propuesta enviada';
     const estado = clasificarEstadoOportunidad(etapa);
 
-    const cleanRut = (rec.Account?.Rut__c || '').toLowerCase().replace(/[^0-9k]/g, '');
-    const cleanName = (rec.Account?.Name || '').trim().toLowerCase();
+    const rawRut = rec.Account?.Rut__c || rec.Account?.RUT__c || '';
+    const cleanRut = rawRut.toLowerCase().replace(/[^0-9k]/g, '');
+    const clientName = rec.Account?.Razon_Social__c || rec.Account?.Name || 'Empresa sin razón social';
+    const cleanName = clientName.trim().toLowerCase();
     const condicionPago =
       rec.Account?.Condicion_de_Pago__c ||
       rec.Account?.Condici_n_de_Pago_empresa__c ||
@@ -553,8 +576,8 @@ export async function syncSalesforceOportunidades(
       codigo: codInfo.codigoCompleto || oppName,
       codigoNucleo: codInfo.codigoNucleo,
       nombre: oppName,
-      cliente: rec.Account?.Name || 'Empresa sin razón social',
-      rut: rec.Account?.Rut__c || '',
+      cliente: clientName,
+      rut: rawRut,
       condicionPago,
       etapa,
       estado,

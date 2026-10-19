@@ -24,6 +24,7 @@ import {
   Briefcase,
   FileSpreadsheet,
   Clock,
+  CreditCard,
 } from 'lucide-react';
 
 function VentasContent() {
@@ -418,6 +419,19 @@ function VentasContent() {
                           {c.clientRut && (
                             <div className="text-[10px] text-slate-400 font-mono">
                               RUT: {c.clientRut}
+                            </div>
+                          )}
+                          {(c.paymentCondition || c.condicionesComerciales?.condicionVenta) && (
+                            <div className="mt-1">
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-900 border border-amber-200"
+                                title={c.paymentCondition || c.condicionesComerciales?.condicionVenta}
+                              >
+                                <CreditCard className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                                <span className="truncate max-w-[170px]">
+                                  {c.paymentCondition || c.condicionesComerciales?.condicionVenta}
+                                </span>
+                              </span>
                             </div>
                           )}
                         </td>

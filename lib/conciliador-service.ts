@@ -18,6 +18,7 @@ import {
 import { getValidSalesforceClient } from './salesforce/salesforce-client';
 import { sfRequest } from './salesforce/salesforce-sync-service';
 import { GoogleGenAI } from '@google/genai';
+import { isOportunidadDgl } from './types';
 
 const UF_PROMEDIO_DEFAULT = 38500;
 
@@ -837,15 +838,38 @@ export async function fetchLiveSalesforceCuotas(
   const startDay = prevDate.toISOString().slice(0, 10);
   const endDay = nextDate.toISOString().slice(0, 10);
 
-  const soql = encodeURIComponent(
-    `SELECT Id, Name, Numero_de_cuota__c, Fecha_de_Pago__c, Monto__c, Oportunidad__c, Oportunidad__r.Name, Oportunidad__r.StageName, Oportunidad__r.Owner.Name, Oportunidad__r.Account.Name, Oportunidad__r.Account.Rut__c FROM Cuota_de_facturacion__c WHERE Fecha_de_Pago__c >= ${startDay} AND Fecha_de_Pago__c <= ${endDay} ORDER BY Fecha_de_Pago__c ASC LIMIT 1000`
+  const dglOppWhere = "(Oportunidad__r.Division__c = 'DGL' OR Oportunidad__r.Name LIKE '%DGL%' OR Oportunidad__r.Name LIKE '%2340%' OR Oportunidad__r.Name LIKE '%2341%' OR Oportunidad__r.Name LIKE '%2344%' OR Oportunidad__r.Name LIKE '%1817%' OR Oportunidad__r.Name LIKE '%2339%' OR Oportunidad__r.Name LIKE '%3340%')";
+
+  let records: any[] = [];
+  try {
+    const soqlDgl = encodeURIComponent(
+      `SELECT Id, Name, Numero_de_cuota__c, Fecha_de_Pago__c, Monto__c, Oportunidad__c, Oportunidad__r.Name, Oportunidad__r.Division__c, Oportunidad__r.StageName, Oportunidad__r.Owner.Name, Oportunidad__r.Account.Name, Oportunidad__r.Account.Rut__c FROM Cuota_de_facturacion__c WHERE Fecha_de_Pago__c >= ${startDay} AND Fecha_de_Pago__c <= ${endDay} AND ${dglOppWhere} ORDER BY Fecha_de_Pago__c ASC LIMIT 2000`
+    );
+    const res = await sfRequest(instanceUrl, accessToken, `query?q=${soqlDgl}`);
+    records = res?.records || [];
+  } catch (err1) {
+    console.warn('SOQL cuotas con filtro de división DGL falló, reintentando con campos básicos:', err1);
+    try {
+      const soqlFallback = encodeURIComponent(
+        `SELECT Id, Name, Numero_de_cuota__c, Fecha_de_Pago__c, Monto__c, Oportunidad__c, Oportunidad__r.Name, Oportunidad__r.StageName, Oportunidad__r.Owner.Name, Oportunidad__r.Account.Name, Oportunidad__r.Account.Rut__c FROM Cuota_de_facturacion__c WHERE Fecha_de_Pago__c >= ${startDay} AND Fecha_de_Pago__c <= ${endDay} ORDER BY Fecha_de_Pago__c ASC LIMIT 2000`
+      );
+      const res = await sfRequest(instanceUrl, accessToken, `query?q=${soqlFallback}`);
+      records = res?.records || [];
+    } catch (err2) {
+      console.error('Error consultando cuotas en Salesforce:', err2);
+    }
+  }
+
+  // Filtrar estrictamente cuotas que pertenezcan a Oportunidades de la División DGL
+  const dglRecords = records.filter((rec: any) =>
+    isOportunidadDgl({
+      Name: rec.Oportunidad__r?.Name,
+      Division__c: rec.Oportunidad__r?.Division__c,
+    })
   );
 
-  const res = await sfRequest(instanceUrl, accessToken, `query?q=${soql}`);
-  const records = res?.records || [];
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return records.map((rec: any, idx: number) => {
+  return dglRecords.map((rec: any, idx: number) => {
     const oppName = rec.Oportunidad__r?.Name || 'Oportunidad sin nombre';
     const montoClp = Number(rec.Monto__c) || 0;
     const { fechaIso, mes: recMes, anio: recAnio } = parseExcelDate(rec.Fecha_de_Pago__c);
@@ -866,7 +890,7 @@ export async function fetchLiveSalesforceCuotas(
       montoUf: Number((montoClp / UF_PROMEDIO_DEFAULT).toFixed(2)),
       rutEmpresa: normalizeRut(rec.Oportunidad__r?.Account?.Rut__c),
       cuenta: rec.Oportunidad__r?.Account?.Name || '',
-      division,
+      division: 'DGL',
       comercialResponsable: rec.Oportunidad__r?.Owner?.Name || undefined,
       traspasoInterno: false,
       esCuentaComercial: esCuentaComercialSalesforce({
@@ -982,6 +1006,9 @@ export async function conciliarPeriodo(params: {
   const enrichedAllSf: SalesforceCuotaRegistro[] = sfItems
     .filter((s) => {
       if (division && division !== 'TODAS' && (s.division || 'DGL').toUpperCase() !== division.toUpperCase()) {
+        return false;
+      }
+      if (!isOportunidadDgl({ Name: s.opportunityName, Division__c: s.division, codigo: s.codigoOportunidadExtraido })) {
         return false;
       }
       const esCta = esCuentaComercialSalesforce(s);

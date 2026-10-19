@@ -8,7 +8,7 @@ import {
 import { getValidSalesforceClient } from './salesforce/salesforce-client';
 import { sfRequest } from './salesforce/salesforce-sync-service';
 import { extractProyectoCodigos } from './conciliador-service';
-import { Cotizacion } from './types';
+import { Cotizacion, isOportunidadDgl } from './types';
 import initialDbData from '../data/db.json';
 import { isSupabaseConfigured, supabaseAdmin } from './supabase';
 import { searchClientes } from './clientes-db';
@@ -356,7 +356,7 @@ export async function getSavedSalesforceOportunidadesAsync(): Promise<Oportunida
         .single();
 
       if (!error && data?.value && Array.isArray(data.value)) {
-        _memorySfHistory = data.value as OportunidadCRM[];
+        _memorySfHistory = (data.value as OportunidadCRM[]).filter((o) => isOportunidadDgl(o));
         return _memorySfHistory;
       }
     } catch (err) {
@@ -370,8 +370,8 @@ export async function getSavedSalesforceOportunidadesAsync(): Promise<Oportunida
       const raw = fs.readFileSync(SF_HISTORY_FILE, 'utf-8');
       const list: OportunidadCRM[] = JSON.parse(raw);
       if (Array.isArray(list)) {
-        _memorySfHistory = list;
-        return list;
+        _memorySfHistory = list.filter((o) => isOportunidadDgl(o));
+        return _memorySfHistory;
       }
     }
   } catch (err) {
@@ -385,14 +385,14 @@ export async function getSavedSalesforceOportunidadesAsync(): Promise<Oportunida
  * Versión síncrona de consulta histórica para fallback en memoria
  */
 export function getSavedSalesforceOportunidades(): OportunidadCRM[] {
-  if (_memorySfHistory && _memorySfHistory.length > 0) return _memorySfHistory;
+  if (_memorySfHistory && _memorySfHistory.length > 0) return _memorySfHistory.filter((o) => isOportunidadDgl(o));
   try {
     if (fs.existsSync(SF_HISTORY_FILE)) {
       const raw = fs.readFileSync(SF_HISTORY_FILE, 'utf-8');
       const list: OportunidadCRM[] = JSON.parse(raw);
       if (Array.isArray(list)) {
-        _memorySfHistory = list;
-        return list;
+        _memorySfHistory = list.filter((o) => isOportunidadDgl(o));
+        return _memorySfHistory;
       }
     }
   } catch {}
@@ -510,22 +510,37 @@ export async function syncSalesforceOportunidades(
 ): Promise<{ count: number; items: OportunidadCRM[] }> {
   const { accessToken, instanceUrl } = await getValidSalesforceClient();
 
+  // Condición estricta para sincronizar únicamente oportunidades de la División DGL
+  const dglWhereCond = "(Division__c = 'DGL' OR Name LIKE '%DGL%' OR Name LIKE '%2340%' OR Name LIKE '%2341%' OR Name LIKE '%2344%' OR Name LIKE '%1817%' OR Name LIKE '%2339%' OR Name LIKE '%3340%')";
+
   // Consulta limpia de Opportunity en Salesforce con condición de pago y cuenta asociada
   let records: any[] = [];
   try {
     const soqlWithCond = encodeURIComponent(
-      `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.Rut__c, Account.RUT__c, Account.Condicion_de_Pago__c, Account.Condici_n_de_Pago_empresa__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} ORDER BY CloseDate DESC LIMIT 2000`
+      `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.Rut__c, Account.RUT__c, Account.Condicion_de_Pago__c, Account.Condici_n_de_Pago_empresa__c, Division__c, Unidad__c, Seccion__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} AND ${dglWhereCond} ORDER BY CloseDate DESC LIMIT 2000`
     );
     const resWithCond = await sfRequest(instanceUrl, accessToken, `query?q=${soqlWithCond}`);
     records = resWithCond?.records || [];
   } catch (qErr) {
-    console.warn('Consulta SOQL con campos de condición falló, reintentando con campos base:', qErr);
-    const soqlBasic = encodeURIComponent(
-      `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.Rut__c, Account.RUT__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} ORDER BY CloseDate DESC LIMIT 2000`
-    );
-    const resBasic = await sfRequest(instanceUrl, accessToken, `query?q=${soqlBasic}`);
-    records = resBasic?.records || [];
+    console.warn('Consulta SOQL con campos de división/condición falló, reintentando con campos base:', qErr);
+    try {
+      const soqlDglName = encodeURIComponent(
+        `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.Rut__c, Account.RUT__c, Account.Condicion_de_Pago__c, Account.Condici_n_de_Pago_empresa__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} AND (Name LIKE '%DGL%' OR Name LIKE '%2340%' OR Name LIKE '%2341%' OR Name LIKE '%2344%' OR Name LIKE '%1817%' OR Name LIKE '%2339%' OR Name LIKE '%3340%') ORDER BY CloseDate DESC LIMIT 2000`
+      );
+      const resDglName = await sfRequest(instanceUrl, accessToken, `query?q=${soqlDglName}`);
+      records = resDglName?.records || [];
+    } catch (qErr2) {
+      console.warn('Consulta SOQL con filtro de nombre falló, reintentando consulta base general:', qErr2);
+      const soqlBasic = encodeURIComponent(
+        `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.Rut__c, Account.RUT__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} ORDER BY CloseDate DESC LIMIT 2000`
+      );
+      const resBasic = await sfRequest(instanceUrl, accessToken, `query?q=${soqlBasic}`);
+      records = resBasic?.records || [];
+    }
   }
+
+  // Filtrar estrictamente solo registros pertenecientes a la División DGL
+  const dglRecords = records.filter((rec: any) => isOportunidadDgl(rec));
 
   // Mapeo opcional de cuotas por Oportunidad
   const cuotasByOppId = new Map<string, number>();
@@ -548,7 +563,7 @@ export async function syncSalesforceOportunidades(
   // Precargar condiciones de pago de clientes para enriquecimiento adicional
   const clientMap = await getClientePaymentConditionMap();
 
-  const syncedItems: OportunidadCRM[] = records.map((rec: any, idx: number) => {
+  const syncedItems: OportunidadCRM[] = dglRecords.map((rec: any, idx: number) => {
     const oppName = rec.Name || 'Oportunidad sin nombre';
     const montoClp = Number(rec.Amount) || 0;
     const montoUf = Number((montoClp / UF_DEFAULT).toFixed(2));
@@ -588,7 +603,7 @@ export async function syncSalesforceOportunidades(
       mes,
       anio,
       comercial: rec.Owner?.Name || 'Comercial Salesforce',
-      division,
+      division: 'DGL',
       cuotasCount: cuotasByOppId.get(rec.Id) || 1,
       salesforceId: rec.Id,
       createdAt: closeDateStr,
@@ -596,10 +611,11 @@ export async function syncSalesforceOportunidades(
     };
   });
 
-  // Combinar con historial guardado previamente para otros años/períodos
+  // Combinar con historial guardado previamente para otros años/períodos, depurando cualquier oportunidad histórica ajena a DGL
   const existing = await getSavedSalesforceOportunidadesAsync();
+  const cleanExisting = existing.filter((e) => isOportunidadDgl(e));
   const removeIds = new Set(syncedItems.map((s) => s.salesforceId));
-  const merged = [...syncedItems, ...existing.filter((e) => !removeIds.has(e.salesforceId))];
+  const merged = [...syncedItems, ...cleanExisting.filter((e) => !removeIds.has(e.salesforceId))];
 
   await saveSavedSalesforceOportunidades(merged);
 
@@ -641,11 +657,12 @@ export async function getConsolidadoOportunidades(params: {
     getAniosDisponiblesEnMetasAsync(division),
   ]);
 
-  // Evitar duplicar: si una cotización local ya tiene salesforceId y está en sfOpps, priorizamos la versión local (Web DGL)
+  // Evitar duplicar y depurar tajantemente cualquier oportunidad de otras divisiones
   const localSfIds = new Set(localOpps.map((l) => l.salesforceId).filter(Boolean));
-  const uniqueSfOpps = sfOpps.filter((s) => !localSfIds.has(s.salesforceId));
+  const dglSfOpps = sfOpps.filter((s) => !localSfIds.has(s.salesforceId) && isOportunidadDgl(s));
+  const dglLocalOpps = localOpps.filter((l) => isOportunidadDgl(l));
 
-  const allConsolidated = [...localOpps, ...uniqueSfOpps];
+  const allConsolidated = [...dglLocalOpps, ...dglSfOpps];
 
   // 2. Filtrar por año y división
   const yearItems = allConsolidated.filter(

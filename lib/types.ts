@@ -111,6 +111,57 @@ export const CENTROS_DE_COSTO = [
 
 export type CentroDeCosto = typeof CENTROS_DE_COSTO[number];
 
+/**
+ * Valida estrictamente si una oportunidad o cuota de Salesforce pertenece a la División DGL
+ * (División Geotecnia y Laboratorio de IDIEM), descartando cualquier registro de otras divisiones
+ * (como Estructuras, Civil, Materiales, Asfaltos, etc.).
+ */
+export function isOportunidadDgl(item?: {
+  Name?: string | null;
+  name?: string | null;
+  codigo?: string | null;
+  Division__c?: string | null;
+  division?: string | null;
+  Unidad__c?: string | null;
+  Seccion__c?: string | null;
+  seccion?: string | null;
+  centroCosto?: string | null;
+} | null): boolean {
+  if (!item) return false;
+
+  const rawDivision = String(item.Division__c || item.division || '').trim().toUpperCase();
+  const rawName = String(item.Name || item.name || item.codigo || '').trim().toUpperCase();
+  const rawUnidad = String(item.Unidad__c || item.centroCosto || '').trim().toUpperCase();
+  const rawSeccion = String(item.Seccion__c || item.seccion || '').trim().toUpperCase();
+
+  const dglCentrosCosto = ['2340', '2341', '2344', '1817', '2339', '3340'];
+  const hasDglCc = dglCentrosCosto.some(
+    (cc) => rawName.includes(cc) || rawUnidad.includes(cc)
+  );
+  const hasDglName = rawName.includes('DGL') || rawName.includes('GEOTECN');
+  const hasDglSeccion = ['SLG', 'SLGP', 'SGL', 'DGL'].some((sec) => rawSeccion.includes(sec));
+
+  // 1. Si la división está declarada explícitamente como DGL / Geotecnia
+  if (rawDivision === 'DGL' || rawDivision.includes('GEOTECN')) {
+    return true;
+  }
+
+  // 2. Si la división dice explícitamente OTRA división (ej. ESTRUCTURAS, CIVIL, MATERIALES, ASFALTOS)
+  if (rawDivision && rawDivision !== 'DGL' && !rawDivision.includes('GEOTECN')) {
+    // Si dice otra división y no tiene código DGL explícito ni CC DGL, descartar tajantemente
+    if (!hasDglName && !hasDglCc) {
+      return false;
+    }
+  }
+
+  // 3. Comprobación positiva por código de proyecto, centro de costo o sección
+  if (hasDglName || hasDglCc || hasDglSeccion) {
+    return true;
+  }
+
+  return false;
+}
+
 // Clasificación de Proyectos para Salesforce IDIEM
 export const SECTORES_PROYECTO = [
   'Inmobiliario',

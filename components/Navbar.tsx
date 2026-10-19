@@ -40,6 +40,7 @@ import {
   Scale,
   Sun,
   Moon,
+  Bug,
 } from 'lucide-react';
 import CierreOportunidadModal from '@/components/salesforce/CierreOportunidadModal';
 
@@ -833,6 +834,24 @@ export default function Navbar() {
                 <span>Auditoría</span>
               </Link>
             )}
+
+            {/* 6. Tickets & Soporte */}
+            <Link
+              href="/tickets"
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                pathname.startsWith('/tickets')
+                  ? 'bg-rose-50 text-rose-800 border border-rose-200 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <Bug className="w-3.5 h-3.5 text-rose-600" />
+              <span>Tickets</span>
+              {user?.role === 'superadmin' && (
+                <span className="bg-rose-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full">
+                  Admin
+                </span>
+              )}
+            </Link>
           </nav>
 
           {/* User Profile & Actions */}
@@ -992,6 +1011,15 @@ export default function Navbar() {
             <span>Conciliador</span>
           </Link>
         )}
+        <Link
+          href="/tickets"
+          className={`flex items-center gap-1 py-1 ${
+            pathname.startsWith('/tickets') ? 'text-rose-700 font-bold' : 'text-slate-600'
+          }`}
+        >
+          <Bug className="w-3.5 h-3.5 text-rose-600" />
+          <span>Tickets</span>
+        </Link>
       </div>
 
       {/* Modals */}

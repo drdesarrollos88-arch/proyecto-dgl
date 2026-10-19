@@ -13,11 +13,29 @@ export interface VersionRegistro {
 
 export const HISTORIAL_VERSIONES: VersionRegistro[] = [
   {
+    version: '2.7.0',
+    tag: 'v2.7.0',
+    fecha: '2026-10-19',
+    fechaFormato: '19 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Módulo de Tickets & Soporte Técnico y Paneles Detallados Salesforce DGL',
+    modulos: ['Tickets & Soporte', 'Oportunidades & CRM', 'Salesforce Dashboards', 'Gestión Comercial'],
+    descripcion:
+      'Lanzamiento del nuevo sistema integral de Tickets y Soporte Técnico para reporte y seguimiento de incidencias, mejoras y solicitudes operativas, junto con la incorporación de paneles detallados de Salesforce estilo presentación comercial oficial para análisis exhaustivo de Ventas Ganadas y Cotizaciones/Pipeline de la División DGL.',
+    detalles: [
+      'Sistema de Tickets & Soporte: Módulo completo (/tickets) con registro de incidencias, categorización por tipo (Error, Mejora, Soporte, Otro), prioridades (Urgente, Alta, Media, Baja), estados (Abierto, En Progreso, Resuelto, Cerrado) y gestión administrativa.',
+      'Paneles Detallados Salesforce: Incorporación de modales analíticos SalesforceVentasDashboardModal y SalesforceCotizacionesDashboardModal con acceso directo desde las tarjetas de KPI del módulo de Oportunidades.',
+      'Precisión Cronológica Salesforce: Disociación rigurosa entre la fecha oficial de cierre de negocio (fechaCierreNegocio) y la fecha de última emisión de cotización (fechaUltimoEnvioCotizacion), con cálculo nativo de montos en UF.',
+      'Acceso Rápido en Navbar: Enlace directo y dinámico con badge de administración para el seguimiento de tickets en tiempo real.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
     version: '2.6.2',
     tag: 'v2.6.2',
     fecha: '2026-10-16',
     fechaFormato: '16 de Octubre, 2026',
-    estado: 'activa',
+    estado: 'previa',
     titulo: 'Dashboard Dual 50/50 (Ventas vs Cotizaciones), Metas Multi-Año y Fix Salesforce SOQL',
     modulos: ['Oportunidades & CRM', 'Metas Comerciales', 'Salesforce SOQL', 'Dashboard Dual'],
     descripcion:

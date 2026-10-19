@@ -36,7 +36,10 @@ import {
   AlertTriangle,
   Cloud,
   CreditCard,
+  Maximize2,
 } from 'lucide-react';
+import SalesforceVentasDashboardModal from '@/components/salesforce/SalesforceVentasDashboardModal';
+import SalesforceCotizacionesDashboardModal from '@/components/salesforce/SalesforceCotizacionesDashboardModal';
 
 const MESES = [
   { value: 0, label: 'Todo el Año (Acumulado YTD)' },
@@ -98,6 +101,10 @@ export default function OportunidadesPage() {
   const [editingMetas, setEditingMetas] = useState<MetaComercialPeriodo[]>([]);
   const [newYearInput, setNewYearInput] = useState<string>('');
   const [savingMetas, setSavingMetas] = useState<boolean>(false);
+
+  // Modales de paneles detallados de Salesforce
+  const [showVentasDashboardModal, setShowVentasDashboardModal] = useState<boolean>(false);
+  const [showCotizacionesDashboardModal, setShowCotizacionesDashboardModal] = useState<boolean>(false);
 
   // Solo años creados en presupuestos
   const availableYears = useMemo(() => {
@@ -482,26 +489,48 @@ export default function OportunidadesPage() {
                     </p>
                   </div>
                 </div>
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                    kpis.cumplimientoVentaPct >= 100
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                      : kpis.cumplimientoVentaPct >= 70
-                      ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                      : 'bg-rose-100 text-rose-800 border border-rose-300'
-                  }`}
-                >
-                  {kpis.cumplimientoVentaPct}% Cumplimiento Meta
-                </span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      kpis.cumplimientoVentaPct >= 100
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : kpis.cumplimientoVentaPct >= 70
+                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                        : 'bg-rose-100 text-rose-800 border border-rose-300'
+                    }`}
+                  >
+                    {kpis.cumplimientoVentaPct}% Cumplimiento Meta
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowVentasDashboardModal(true)}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold shadow-xs cursor-pointer transition-transform hover:scale-102"
+                    title="Ver panel detallado oficial de Salesforce (PPT Comercial Venta DGL)"
+                  >
+                    <Maximize2 className="w-3 h-3" />
+                    <span>Ver Panel SF</span>
+                  </button>
+                </div>
               </div>
 
               {/* Tarjetas KPI de Ventas */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Total Ganado */}
-                <div className="p-3.5 rounded-xl bg-emerald-50/50 border border-emerald-100 space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800">
-                    Monto Total Ganado
-                  </span>
+                <div
+                  onClick={() => setShowVentasDashboardModal(true)}
+                  className="p-3.5 rounded-xl bg-emerald-50/50 hover:bg-emerald-50 border border-emerald-100 hover:border-emerald-300 space-y-1 cursor-pointer transition-all hover:shadow-xs group"
+                  title="Haz clic para abrir el panel detallado de Salesforce de Ventas Ganadas"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
+                      <span>Monto Total Ganado</span>
+                      <Maximize2 className="w-2.5 h-2.5 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </span>
+                    <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100/80 px-1.5 py-0.2 rounded group-hover:bg-emerald-200">
+                      Ver Panel →
+                    </span>
+                  </div>
                   <div className="flex items-baseline justify-between">
                     <span className="text-xl font-bold text-slate-900 tabular-nums">
                       {formatClp(kpis.montoGanadoClp)}
@@ -647,24 +676,46 @@ export default function OportunidadesPage() {
                     </p>
                   </div>
                 </div>
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                    kpis.cumplimientoCotizacionPct >= 100
-                      ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                      : 'bg-amber-100 text-amber-800 border border-amber-300'
-                  }`}
-                >
-                  {kpis.cumplimientoCotizacionPct}% de Meta Cotización
-                </span>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      kpis.cumplimientoCotizacionPct >= 100
+                        ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                        : 'bg-amber-100 text-amber-800 border border-amber-300'
+                    }`}
+                  >
+                    {kpis.cumplimientoCotizacionPct}% de Meta Cotización
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowCotizacionesDashboardModal(true)}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold shadow-xs cursor-pointer transition-transform hover:scale-102"
+                    title="Ver panel detallado oficial de Salesforce (PPT Comercial Cotizaciones DGL)"
+                  >
+                    <Maximize2 className="w-3 h-3" />
+                    <span>Ver Panel SF</span>
+                  </button>
+                </div>
               </div>
 
               {/* Tarjetas KPI de Cotizaciones */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Total Cotizado */}
-                <div className="p-3.5 rounded-xl bg-blue-50/50 border border-blue-100 space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-800">
-                    Volumen Cotizado Total
-                  </span>
+                <div
+                  onClick={() => setShowCotizacionesDashboardModal(true)}
+                  className="p-3.5 rounded-xl bg-blue-50/50 hover:bg-blue-50 border border-blue-100 hover:border-blue-300 space-y-1 cursor-pointer transition-all hover:shadow-xs group"
+                  title="Haz clic para abrir el panel detallado de Salesforce de Cotizaciones"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-blue-800 flex items-center gap-1">
+                      <span>Volumen Cotizado Total</span>
+                      <Maximize2 className="w-2.5 h-2.5 text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </span>
+                    <span className="text-[9px] font-bold text-blue-700 bg-blue-100/80 px-1.5 py-0.2 rounded group-hover:bg-blue-200">
+                      Ver Panel →
+                    </span>
+                  </div>
                   <div className="flex items-baseline justify-between">
                     <span className="text-xl font-bold text-slate-900 tabular-nums">
                       {formatClp(kpis.montoCotizadoTotalClp)}
@@ -686,10 +737,20 @@ export default function OportunidadesPage() {
                 </div>
 
                 {/* Pipeline en Curso */}
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
-                    Pipeline Activo en Curso
-                  </span>
+                <div
+                  onClick={() => setShowCotizacionesDashboardModal(true)}
+                  className="p-3.5 rounded-xl bg-slate-50 hover:bg-amber-50/50 border border-slate-200 hover:border-amber-300 space-y-1 cursor-pointer transition-all hover:shadow-xs group"
+                  title="Haz clic para abrir el panel detallado de Salesforce de Pipeline Activo"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 group-hover:text-amber-800 flex items-center gap-1">
+                      <span>Pipeline Activo en Curso</span>
+                      <Maximize2 className="w-2.5 h-2.5 text-amber-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </span>
+                    <span className="text-[9px] font-bold text-amber-700 bg-amber-100/80 px-1.5 py-0.2 rounded group-hover:bg-amber-200">
+                      Ver Pipeline →
+                    </span>
+                  </div>
                   <div className="flex items-baseline justify-between">
                     <span className="text-xl font-bold text-slate-900 tabular-nums">
                       {formatClp(kpis.montoEnCursoClp)}
@@ -1144,6 +1205,30 @@ export default function OportunidadesPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Detallado Salesforce: PPT Comercial Venta DGL */}
+      {kpis && showVentasDashboardModal && (
+        <SalesforceVentasDashboardModal
+          isOpen={showVentasDashboardModal}
+          onClose={() => setShowVentasDashboardModal(false)}
+          anio={selectedAnio}
+          kpis={kpis}
+          items={items}
+          metas={metas}
+        />
+      )}
+
+      {/* Modal Detallado Salesforce: PPT Comercial Cotizaciones DGL */}
+      {kpis && showCotizacionesDashboardModal && (
+        <SalesforceCotizacionesDashboardModal
+          isOpen={showCotizacionesDashboardModal}
+          onClose={() => setShowCotizacionesDashboardModal(false)}
+          anio={selectedAnio}
+          kpis={kpis}
+          items={items}
+          metas={metas}
+        />
       )}
     </div>
   );

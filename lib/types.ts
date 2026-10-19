@@ -136,6 +136,7 @@ export const DGL_CENTROS_COSTO_SET = new Set(['2340', '2341', '2344', '1817', '2
 export function isOportunidadDgl(item?: {
   Name?: string | null;
   name?: string | null;
+  nombre?: string | null;
   codigo?: string | null;
   Division__c?: string | null;
   division?: string | null;
@@ -148,8 +149,14 @@ export function isOportunidadDgl(item?: {
 } | null): boolean {
   if (!item) return false;
 
-  const rawName = String(item.Name || item.name || item.codigo || '').trim().toUpperCase();
-  const rawDivisionSf = String(item.Division__c || '').trim().toUpperCase();
+  const rawName = String(
+    item.Name ||
+    item.name ||
+    item.nombre ||
+    item.codigo ||
+    ''
+  ).trim().toUpperCase();
+  const rawDivisionSf = String(item.Division__c || item.division || '').trim().toUpperCase();
   const rawUnidad = String(item.Unidad__c || item.centroCosto || '').trim().toUpperCase();
   const rawSeccion = String(item.Seccion__c || item.seccion || '').trim().toUpperCase();
   const source = String(item.source || '').trim().toUpperCase();
@@ -178,6 +185,11 @@ export function isOportunidadDgl(item?: {
   // Si el campo nativo de Salesforce Division__c dice explícitamente otra división distinta a DGL
   if (rawDivisionSf && rawDivisionSf !== 'DGL' && !rawDivisionSf.includes('GEOTECN')) {
     return false;
+  }
+
+  // Si tiene explícitamente la división DGL confirmada (por Salesforce o local) y no fue descalificado por otra división
+  if (rawDivisionSf === 'DGL' || rawDivisionSf.includes('GEOTECN')) {
+    return true;
   }
 
   // 3. COMPROBACIÓN POSITIVA POR CENTRO DE COSTO OFICIAL DGL (2340, 2341, 2344, 1817, 2339, 3340)

@@ -9,11 +9,11 @@ import { getValidSalesforceClient } from './salesforce/salesforce-client';
 import { sfRequest } from './salesforce/salesforce-sync-service';
 import { extractProyectoCodigos } from './conciliador-service';
 import { Cotizacion, isOportunidadDgl } from './types';
-import initialDbData from '../data/db.json';
-import { isSupabaseConfigured, supabaseAdmin } from './supabase';
-import { searchClientes } from './clientes-db';
+import { getSupabaseAdmin } from './supabase';
 import { getCotizacionesAsync, saveCotizacionAsync } from './cotizaciones-db';
 import { isSalesforceCrmAvailable, searchSalesforceAccounts } from './salesforce/salesforce-crm-service';
+import { searchClientes } from './clientes-db';
+import initialDbData from '../data/db.json';
 
 const UF_DEFAULT = 38500;
 const SF_HISTORY_FILE = path.join(process.cwd(), 'data', 'salesforce-oportunidades-history.json');
@@ -63,20 +63,23 @@ export async function getMetasComercialesAsync(anio: number, division = 'DGL'): 
 
   if (_memoryMetas && _memoryMetas.length > 0) {
     list = _memoryMetas;
-  } else if (isSupabaseConfigured && supabaseAdmin) {
-    try {
-      const { data, error } = await supabaseAdmin
-        .from('configuracion_sistema')
-        .select('value')
-        .eq('key', KEY_METAS)
-        .single();
+  } else {
+    const admin = getSupabaseAdmin();
+    if (admin) {
+      try {
+        const { data, error } = await admin
+          .from('configuracion_sistema')
+          .select('value')
+          .eq('key', KEY_METAS)
+          .single();
 
-      if (!error && data?.value && Array.isArray(data.value)) {
-        _memoryMetas = data.value as MetaComercialPeriodo[];
-        list = _memoryMetas;
+        if (!error && data?.value && Array.isArray(data.value)) {
+          _memoryMetas = data.value as MetaComercialPeriodo[];
+          list = _memoryMetas;
+        }
+      } catch (err) {
+        console.warn('Error consultando metas_comerciales en Supabase:', err);
       }
-    } catch (err) {
-      console.warn('Error consultando metas_comerciales en Supabase:', err);
     }
   }
 
@@ -179,9 +182,10 @@ export async function saveMetasComerciales(metasToSave: MetaComercialPeriodo[]):
   _memoryMetas = existing;
 
   // 1. Guardar en Supabase (compatible con Cloudflare Workers)
-  if (isSupabaseConfigured && supabaseAdmin) {
+  const admin = getSupabaseAdmin();
+  if (admin) {
     try {
-      await supabaseAdmin.from('configuracion_sistema').upsert({
+      await admin.from('configuracion_sistema').upsert({
         key: KEY_METAS,
         value: existing,
         updated_at: new Date().toISOString(),
@@ -308,6 +312,10 @@ export async function getLocalCotizacionesAsOportunidades(): Promise<Oportunidad
       clientMap.byName.get(cleanName) ||
       '50% AL CONTADO Y 50% CONTRA ENTREGA';
 
+    const fechaCierreNegocio =
+      estado === 'ganada' ? c.cierreNegocio?.fechaCierre || fechaIso : undefined;
+    const fechaUltimoEnvioCotizacion = fechaIso;
+
     return {
       id: `dgl-quote-${c.id}`,
       source: 'WEB_DGL',
@@ -332,6 +340,9 @@ export async function getLocalCotizacionesAsOportunidades(): Promise<Oportunidad
       cuotasCount: c.cierreNegocio?.cuotasFacturacion || 1,
       salesforceId: (c as any).salesforceOpportunityId,
       cotizacionDglId: c.id,
+      fechaCierreNegocio,
+      fechaUltimoEnvioCotizacion,
+      montoFacturarUf: c.totalUf || undefined,
       createdAt: c.createdAt || fechaIso,
       updatedAt: c.updatedAt || fechaIso,
     };
@@ -347,9 +358,10 @@ export async function getSavedSalesforceOportunidadesAsync(): Promise<Oportunida
   }
 
   // 1. Intentar desde Supabase (persistente en Cloudflare Workers)
-  if (isSupabaseConfigured && supabaseAdmin) {
+  const admin = getSupabaseAdmin();
+  if (admin) {
     try {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await admin
         .from('configuracion_sistema')
         .select('value')
         .eq('key', KEY_SF_HISTORY)
@@ -413,9 +425,10 @@ export async function saveSavedSalesforceOportunidades(merged: OportunidadCRM[])
   _memorySfHistory = merged;
 
   // 1. Guardar en Supabase (funciona en Edge y Cloudflare Workers)
-  if (isSupabaseConfigured && supabaseAdmin) {
+  const admin = getSupabaseAdmin();
+  if (admin) {
     try {
-      await supabaseAdmin.from('configuracion_sistema').upsert({
+      await admin.from('configuracion_sistema').upsert({
         key: KEY_SF_HISTORY,
         value: merged,
         updated_at: new Date().toISOString(),
@@ -438,18 +451,21 @@ export async function saveSavedSalesforceOportunidades(merged: OportunidadCRM[])
  */
 export async function getAniosDisponiblesEnMetasAsync(division = 'DGL'): Promise<number[]> {
   let list: MetaComercialPeriodo[] = _memoryMetas || [];
-  if (list.length === 0 && isSupabaseConfigured && supabaseAdmin) {
-    try {
-      const { data } = await supabaseAdmin
-        .from('configuracion_sistema')
-        .select('value')
-        .eq('key', KEY_METAS)
-        .single();
-      if (data?.value && Array.isArray(data.value)) {
-        list = data.value;
-        _memoryMetas = list;
-      }
-    } catch {}
+  if (list.length === 0) {
+    const admin = getSupabaseAdmin();
+    if (admin) {
+      try {
+        const { data } = await admin
+          .from('configuracion_sistema')
+          .select('value')
+          .eq('key', KEY_METAS)
+          .single();
+        if (data?.value && Array.isArray(data.value)) {
+          list = data.value;
+          _memoryMetas = list;
+        }
+      } catch {}
+    }
   }
 
   if (list.length === 0) {
@@ -517,27 +533,29 @@ export async function syncSalesforceOportunidades(
 ): Promise<{ count: number; updatedCount: number; newCount: number; items: OportunidadCRM[] }> {
   const { accessToken, instanceUrl } = await getValidSalesforceClient();
 
-  // Condición estricta para sincronizar únicamente oportunidades de la División DGL
-  const dglWhereCond = "(Division__c = 'DGL' OR Name LIKE '%DGL%' OR Name LIKE '%2340%' OR Name LIKE '%2341%' OR Name LIKE '%2344%' OR Name LIKE '%1817%' OR Name LIKE '%2339%' OR Name LIKE '%3340%')";
+  // Condición oficial Salesforce para División DGL
+  const dglWhereCond = "Division__c = 'DGL'";
+  const recordTypeCond = "(RecordType.Name = 'Oportunidad' OR RecordType.Name = 'Oportunidad Dependiente' OR RecordTypeId = null)";
+  const dateCond = `(CALENDAR_YEAR(Fecha_de_cierre_del_Negocio__c) = ${anio} OR CALENDAR_YEAR(Fecha_de_ultimo_envio_Cotizacion__c) = ${anio} OR (Fecha_de_cierre_del_Negocio__c = null AND Fecha_de_ultimo_envio_Cotizacion__c = null AND CALENDAR_YEAR(CloseDate) = ${anio}))`;
 
-  // Consulta limpia de Opportunity en Salesforce con condición de pago y cuenta asociada (sin campos duplicados de RUT)
+  // Consulta limpia de Opportunity en Salesforce con condición de pago y cuenta asociada
   let records: any[] = [];
   try {
     const soqlWithCond = encodeURIComponent(
-      `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.RUT__c, Account.Condicion_de_Pago__c, Account.Condici_n_de_Pago_empresa__c, Division__c, Unidad__c, Seccion__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} AND ${dglWhereCond} ORDER BY CloseDate DESC LIMIT 2000`
+      `SELECT Id, Name, StageName, Amount, CloseDate, Fecha_de_cierre_del_Negocio__c, Fecha_de_ultimo_envio_Cotizacion__c, Monto_a_Facturar_UF__c, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.RUT__c, Account.Condicion_de_Pago__c, Account.Condici_n_de_Pago_empresa__c, Division__c, Unidad__c, Seccion__c, RecordType.Name FROM Opportunity WHERE ${dateCond} AND ${dglWhereCond} AND ${recordTypeCond} ORDER BY CloseDate DESC LIMIT 2000`
     );
     const resWithCond = await sfRequest(instanceUrl, accessToken, `query?q=${soqlWithCond}`);
     records = resWithCond?.records || [];
   } catch (qErr) {
-    console.warn('Consulta SOQL con campos de división/condición falló, reintentando con campos base:', qErr);
+    console.warn('Consulta SOQL con campos de división/condición falló, reintentando con nombres base:', qErr);
     try {
       const soqlDglName = encodeURIComponent(
-        `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.RUT__c, Account.Condicion_de_Pago__c, Account.Condici_n_de_Pago_empresa__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} AND (Name LIKE '%DGL%' OR Name LIKE '%2340%' OR Name LIKE '%2341%' OR Name LIKE '%2344%' OR Name LIKE '%1817%' OR Name LIKE '%2339%' OR Name LIKE '%3340%') ORDER BY CloseDate DESC LIMIT 2000`
+        `SELECT Id, Name, StageName, Amount, CloseDate, Fecha_de_cierre_del_Negocio__c, Fecha_de_ultimo_envio_Cotizacion__c, Monto_a_Facturar_UF__c, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.RUT__c, Account.Condicion_de_Pago__c, Account.Condici_n_de_Pago_empresa__c FROM Opportunity WHERE ${dateCond} AND (Division__c = 'DGL' OR Name LIKE '%DGL%' OR Name LIKE '%2340%' OR Name LIKE '%2341%' OR Name LIKE '%2344%' OR Name LIKE '%1817%' OR Name LIKE '%2339%' OR Name LIKE '%3340%') ORDER BY CloseDate DESC LIMIT 2000`
       );
       const resDglName = await sfRequest(instanceUrl, accessToken, `query?q=${soqlDglName}`);
       records = resDglName?.records || [];
     } catch (qErr2) {
-      console.warn('Consulta SOQL con filtro de nombre falló, reintentando consulta base general:', qErr2);
+      console.warn('Consulta SOQL con filtro de fecha ampliado falló, reintentando consulta base general:', qErr2);
       const soqlBasic = encodeURIComponent(
         `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.RUT__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} ORDER BY CloseDate DESC LIMIT 2000`
       );
@@ -605,13 +623,23 @@ export async function syncSalesforceOportunidades(
     const rec = dglRecords[idx];
     const oppName = rec.Name || 'Oportunidad sin nombre';
     const montoClp = Number(rec.Amount) || 0;
-    const montoUf = Number((montoClp / UF_DEFAULT).toFixed(2));
-    const closeDateStr = rec.CloseDate || `${anio}-01-15`;
-    const d = new Date(closeDateStr);
-    const mes = !isNaN(d.getMonth()) ? d.getMonth() + 1 : 1;
+    const montoFacturarUf = Number(rec.Monto_a_Facturar_UF__c) || undefined;
+    const montoUf = montoFacturarUf || (montoClp > 0 ? Number((montoClp / UF_DEFAULT).toFixed(2)) : 0);
     const codInfo = extractProyectoCodigos(oppName);
     const etapa = rec.StageName || 'Propuesta enviada';
     const estado = clasificarEstadoOportunidad(etapa);
+
+    const fechaCierreNegocio = rec.Fecha_de_cierre_del_Negocio__c || undefined;
+    const fechaUltimoEnvioCotizacion = rec.Fecha_de_ultimo_envio_Cotizacion__c || undefined;
+
+    // Fecha representativa oficial:
+    // Ganada: Fecha_de_cierre_del_Negocio__c
+    // Cotizada/En curso/Perdida: Fecha_de_ultimo_envio_Cotizacion__c
+    const effectiveDateStr =
+      estado === 'ganada' && fechaCierreNegocio
+        ? fechaCierreNegocio
+        : fechaUltimoEnvioCotizacion || rec.CloseDate || `${anio}-01-15`;
+    const { anio: effectiveAnio, mes: effectiveMes, fechaIso } = parseSafeFecha(effectiveDateStr);
 
     const rawRut = rec.Account?.RUT__c || rec.Account?.Rut__c || '';
     const cleanRut = rawRut.toLowerCase().replace(/[^0-9k]/g, '');
@@ -652,13 +680,18 @@ export async function syncSalesforceOportunidades(
         probabilidadPct: Number(rec.Probability) || (estado === 'ganada' ? 100 : estado === 'perdida' ? 0 : 60),
         montoClp,
         montoUf,
-        fechaCierre: closeDateStr,
-        mes,
-        anio,
+        fechaCierre: fechaIso,
+        mes: effectiveMes,
+        anio: effectiveAnio,
         comercial: rec.Owner?.Name || existingItem.comercial || 'Comercial Salesforce',
-        division: 'DGL',
+        division: rec.Division__c || existingItem.division || 'DGL',
+        seccion: rec.Seccion__c || existingItem.seccion,
+        centroCosto: rec.Unidad__c || existingItem.centroCosto,
         cuotasCount: cuotasByOppId.get(rec.Id) || existingItem.cuotasCount || 1,
         salesforceId: rec.Id,
+        fechaCierreNegocio,
+        fechaUltimoEnvioCotizacion,
+        montoFacturarUf,
         updatedAt: nowIso,
       };
       updatedCount++;
@@ -678,14 +711,19 @@ export async function syncSalesforceOportunidades(
         probabilidadPct: Number(rec.Probability) || (estado === 'ganada' ? 100 : estado === 'perdida' ? 0 : 60),
         montoClp,
         montoUf,
-        fechaCierre: closeDateStr,
-        mes,
-        anio,
+        fechaCierre: fechaIso,
+        mes: effectiveMes,
+        anio: effectiveAnio,
         comercial: rec.Owner?.Name || 'Comercial Salesforce',
-        division: 'DGL',
+        division: rec.Division__c || 'DGL',
+        seccion: rec.Seccion__c || undefined,
+        centroCosto: rec.Unidad__c || undefined,
         cuotasCount: cuotasByOppId.get(rec.Id) || 1,
         salesforceId: rec.Id,
-        createdAt: closeDateStr,
+        fechaCierreNegocio,
+        fechaUltimoEnvioCotizacion,
+        montoFacturarUf,
+        createdAt: fechaIso,
         updatedAt: nowIso,
       };
       newCount++;
@@ -776,22 +814,79 @@ export async function getConsolidadoOportunidades(params: {
     getAniosDisponiblesEnMetasAsync(division),
   ]);
 
-  // Evitar duplicar y depurar tajantemente cualquier oportunidad de otras divisiones
-  const localSfIds = new Set(localOpps.map((l) => l.salesforceId).filter(Boolean));
-  const dglSfOpps = sfOpps.filter((s) => !localSfIds.has(s.salesforceId) && isOportunidadDgl(s));
-  const dglLocalOpps = localOpps.filter((l) => isOportunidadDgl(l));
+  // Prioridad oficial: Salesforce como fuente de verdad de montos y estados
+  // Las cotizaciones locales enriquecen a Salesforce con su ID local (cotizacionDglId) para vincular el documento técnico
+  const dglSfOpps = sfOpps.filter((s) => isOportunidadDgl(s));
+  const sfIdSet = new Set(dglSfOpps.map((s) => s.salesforceId || s.id).filter(Boolean));
+  const sfCodeSet = new Set(dglSfOpps.map((s) => s.codigo?.toLowerCase().trim()).filter(Boolean));
 
-  const allConsolidated = [...dglLocalOpps, ...dglSfOpps];
+  for (const sf of dglSfOpps) {
+    const matched = localOpps.find(
+      (l) =>
+        (l.salesforceId && (l.salesforceId === sf.salesforceId || l.salesforceId === sf.id)) ||
+        (l.codigo && l.codigo.toLowerCase().trim() === sf.codigo?.toLowerCase().trim())
+    );
+    if (matched) {
+      sf.cotizacionDglId = matched.cotizacionDglId || matched.id.replace('dgl-quote-', '');
+    }
+  }
 
-  // 2. Filtrar por año y división
-  const yearItems = allConsolidated.filter(
-    (o) => o.anio === anio && (division === 'TODAS' || o.division === division)
-  );
+  // Cotizaciones locales que aún no existen en Salesforce
+  const pureLocalOpps = localOpps.filter((l) => {
+    if (!isOportunidadDgl(l)) return false;
+    if (l.salesforceId && sfIdSet.has(l.salesforceId)) return false;
+    if (l.codigo && sfCodeSet.has(l.codigo.toLowerCase().trim())) return false;
+    return true;
+  });
+
+  const allConsolidated = [...dglSfOpps, ...pureLocalOpps];
+
+  // Helpers para extraer las fechas oficiales de venta ganada y de cotización
+  const getWonDate = (o: OportunidadCRM) => {
+    const dStr =
+      o.fechaCierreNegocio ||
+      (o.source === 'WEB_DGL' && o.estado === 'ganada' ? o.fechaCierre : undefined);
+    return dStr ? parseSafeFecha(dStr) : null;
+  };
+  const getQuoteDate = (o: OportunidadCRM) => {
+    const dStr =
+      o.fechaUltimoEnvioCotizacion ||
+      (o.source === 'WEB_DGL' ? o.fechaCierre : undefined);
+    return dStr ? parseSafeFecha(dStr) : null;
+  };
+
+  // 2. Filtrar por año y división de manera coherente con Salesforce
+  const yearItems = allConsolidated.filter((o) => {
+    if (division !== 'TODAS' && o.division !== division) return false;
+    const wonDate = getWonDate(o);
+    const quoteDate = getQuoteDate(o);
+    const inWonYear = wonDate ? wonDate.anio === anio : false;
+    const inQuoteYear = quoteDate ? quoteDate.anio === anio : false;
+    const fallbackYear = o.source === 'WEB_DGL' && o.anio === anio;
+    return inWonYear || inQuoteYear || fallbackYear;
+  });
 
   // 3. Filtrar para la vista de tabla según parámetros seleccionados
   const q = search.trim().toLowerCase();
   const filteredItems = yearItems.filter((o) => {
-    if (mes !== 0 && o.mes !== mes) return false;
+    const wonDate = getWonDate(o);
+    const quoteDate = getQuoteDate(o);
+
+    if (mes !== 0) {
+      if (o.estado === 'ganada') {
+        const matchesWon = wonDate ? (wonDate.mes === mes && wonDate.anio === anio) : o.mes === mes;
+        const matchesQuote = quoteDate ? (quoteDate.mes === mes && quoteDate.anio === anio) : false;
+        if (!matchesWon && !matchesQuote) return false;
+      } else {
+        const matchesQuote = quoteDate ? (quoteDate.mes === mes && quoteDate.anio === anio) : o.mes === mes;
+        if (!matchesQuote) return false;
+      }
+    } else {
+      const matchesWon = wonDate ? wonDate.anio === anio : false;
+      const matchesQuote = quoteDate ? quoteDate.anio === anio : false;
+      if (!matchesWon && !matchesQuote && o.anio !== anio) return false;
+    }
+
     if (source !== 'TODOS' && o.source !== source) return false;
     if (estado !== 'TODOS' && o.estado !== estado) return false;
     if (comercial !== 'TODOS' && o.comercial !== comercial) return false;
@@ -808,8 +903,6 @@ export async function getConsolidadoOportunidades(params: {
   }).sort((a, b) => new Date(b.fechaCierre).getTime() - new Date(a.fechaCierre).getTime());
 
   // 4. Calcular KPIs para el período (mes específico o acumulado del año)
-  const targetPeriodItems = yearItems.filter((o) => (mes === 0 ? true : o.mes === mes));
-
   // Metas aplicables al período
   const periodMetas = metas.filter((m) => (mes === 0 ? true : m.mes === mes));
   const metaVentaClp = periodMetas.reduce((acc, m) => acc + m.metaVentaClp, 0);
@@ -821,8 +914,11 @@ export async function getConsolidadoOportunidades(params: {
   let conteoEnCurso = 0;
   let conteoPerdidas = 0;
   let montoGanadoClp = 0;
+  let montoGanadoUf = 0;
   let montoEnCursoClp = 0;
+  let montoEnCursoUf = 0;
   let montoCotizadoTotalClp = 0;
+  let montoCotizadoTotalUf = 0;
 
   const comercialMap = new Map<
     string,
@@ -831,6 +927,7 @@ export async function getConsolidadoOportunidades(params: {
       totalOpps: number;
       ganadasCount: number;
       montoGanadoClp: number;
+      montoGanadoUf: number;
       enCursoCount: number;
       montoEnCursoClp: number;
       cotizadoTotalClp: number;
@@ -839,61 +936,90 @@ export async function getConsolidadoOportunidades(params: {
 
   const etapaMap = new Map<
     string,
-    { etapa: string; estado: 'ganada' | 'perdida' | 'en_curso'; count: number; montoClp: number }
+    { etapa: string; estado: 'ganada' | 'perdida' | 'en_curso'; count: number; montoClp: number; montoUf: number }
   >();
 
-  for (const o of targetPeriodItems) {
-    montoCotizadoTotalClp += o.montoClp;
+  for (const o of yearItems) {
+    const wonDate = getWonDate(o);
+    const quoteDate = getQuoteDate(o);
 
-    if (o.estado === 'ganada') {
+    const isWonInYear = wonDate ? wonDate.anio === anio : (o.estado === 'ganada' && o.anio === anio);
+    const isWonInPeriod = isWonInYear && (mes === 0 || (wonDate ? wonDate.mes === mes : o.mes === mes));
+
+    const isQuoteInYear = quoteDate ? quoteDate.anio === anio : (o.estado !== 'ganada' && o.anio === anio);
+    const isQuoteInPeriod = isQuoteInYear && (mes === 0 || (quoteDate ? quoteDate.mes === mes : o.mes === mes));
+
+    // A. Ventas Ganadas
+    if (o.estado === 'ganada' && isWonInPeriod) {
       conteoGanadas++;
       montoGanadoClp += o.montoClp;
-    } else if (o.estado === 'perdida') {
-      conteoPerdidas++;
-    } else {
-      conteoEnCurso++;
-      montoEnCursoClp += o.montoClp;
+      montoGanadoUf += o.montoUf;
     }
 
-    // Agrupación por comercial
-    const comName = o.comercial || 'Sin asignar';
-    const comData = comercialMap.get(comName) || {
-      comercial: comName,
-      totalOpps: 0,
-      ganadasCount: 0,
-      montoGanadoClp: 0,
-      enCursoCount: 0,
-      montoEnCursoClp: 0,
-      cotizadoTotalClp: 0,
-    };
-    comData.totalOpps++;
-    comData.cotizadoTotalClp += o.montoClp;
-    if (o.estado === 'ganada') {
-      comData.ganadasCount++;
-      comData.montoGanadoClp += o.montoClp;
-    } else if (o.estado === 'en_curso') {
-      comData.enCursoCount++;
-      comData.montoEnCursoClp += o.montoClp;
-    }
-    comercialMap.set(comName, comData);
+    // B. Cotizaciones Emitidas
+    if (isQuoteInPeriod) {
+      montoCotizadoTotalClp += o.montoClp;
+      montoCotizadoTotalUf += o.montoUf;
 
-    // Agrupación por etapa
-    const etapaData = etapaMap.get(o.etapa) || {
-      etapa: o.etapa,
-      estado: o.estado,
-      count: 0,
-      montoClp: 0,
-    };
-    etapaData.count++;
-    etapaData.montoClp += o.montoClp;
-    etapaMap.set(o.etapa, etapaData);
+      if (o.estado === 'en_curso') {
+        conteoEnCurso++;
+        montoEnCursoClp += o.montoClp;
+        montoEnCursoUf += o.montoUf;
+      } else if (o.estado === 'perdida') {
+        conteoPerdidas++;
+      }
+    }
+
+    // C. Agrupación por comercial
+    if (isWonInPeriod || isQuoteInPeriod) {
+      const comName = o.comercial || 'Sin asignar';
+      const comData = comercialMap.get(comName) || {
+        comercial: comName,
+        totalOpps: 0,
+        ganadasCount: 0,
+        montoGanadoClp: 0,
+        montoGanadoUf: 0,
+        enCursoCount: 0,
+        montoEnCursoClp: 0,
+        cotizadoTotalClp: 0,
+      };
+      comData.totalOpps++;
+      if (isQuoteInPeriod) {
+        comData.cotizadoTotalClp += o.montoClp;
+        if (o.estado === 'en_curso') {
+          comData.enCursoCount++;
+          comData.montoEnCursoClp += o.montoClp;
+        }
+      }
+      if (o.estado === 'ganada' && isWonInPeriod) {
+        comData.ganadasCount++;
+        comData.montoGanadoClp += o.montoClp;
+        comData.montoGanadoUf += o.montoUf;
+      }
+      comercialMap.set(comName, comData);
+    }
+
+    // D. Agrupación por etapa
+    if (isWonInPeriod || isQuoteInPeriod) {
+      const etapaData = etapaMap.get(o.etapa) || {
+        etapa: o.etapa,
+        estado: o.estado,
+        count: 0,
+        montoClp: 0,
+        montoUf: 0,
+      };
+      etapaData.count++;
+      etapaData.montoClp += o.montoClp;
+      etapaData.montoUf += o.montoUf;
+      etapaMap.set(o.etapa, etapaData);
+    }
   }
 
   const totalCerradas = conteoGanadas + conteoPerdidas;
   const tasaCierrePct = totalCerradas > 0 ? Math.round((conteoGanadas / totalCerradas) * 100) : 0;
-  const montoGanadoUf = Number((montoGanadoClp / UF_DEFAULT).toFixed(2));
-  const montoEnCursoUf = Number((montoEnCursoClp / UF_DEFAULT).toFixed(2));
-  const montoCotizadoTotalUf = Number((montoCotizadoTotalClp / UF_DEFAULT).toFixed(2));
+  montoGanadoUf = Number(montoGanadoUf.toFixed(2));
+  montoEnCursoUf = Number(montoEnCursoUf.toFixed(2));
+  montoCotizadoTotalUf = Number(montoCotizadoTotalUf.toFixed(2));
 
   const cumplimientoVentaPct =
     metaVentaClp > 0 ? Math.round((montoGanadoClp / metaVentaClp) * 100) : 0;
@@ -911,35 +1037,56 @@ export async function getConsolidadoOportunidades(params: {
   // Evolución mensual de los 12 meses del año (Ventas y Cotizaciones)
   const evolucionMeses = [];
   for (let m = 1; m <= 12; m++) {
-    const monthOpps = yearItems.filter((o) => o.mes === m);
-    const mGanado = monthOpps
-      .filter((o) => o.estado === 'ganada')
-      .reduce((acc, o) => acc + o.montoClp, 0);
-    const mEnCurso = monthOpps
-      .filter((o) => o.estado === 'en_curso')
-      .reduce((acc, o) => acc + o.montoClp, 0);
-    const mCotizadoTotal = monthOpps.reduce((acc, o) => acc + o.montoClp, 0);
+    let mGanadoClp = 0;
+    let mGanadoUf = 0;
+    let mEnCursoClp = 0;
+    let mEnCursoUf = 0;
+    let mCotizadoTotalClp = 0;
+    let mCotizadoTotalUf = 0;
+
+    for (const o of yearItems) {
+      const wonDate = getWonDate(o);
+      const quoteDate = getQuoteDate(o);
+
+      if (o.estado === 'ganada') {
+        const isWonMonth = wonDate ? (wonDate.anio === anio && wonDate.mes === m) : (o.anio === anio && o.mes === m);
+        if (isWonMonth) {
+          mGanadoClp += o.montoClp;
+          mGanadoUf += o.montoUf;
+        }
+      }
+
+      const isQuoteMonth = quoteDate ? (quoteDate.anio === anio && quoteDate.mes === m) : (o.estado !== 'ganada' && o.anio === anio && o.mes === m);
+      if (isQuoteMonth) {
+        mCotizadoTotalClp += o.montoClp;
+        mCotizadoTotalUf += o.montoUf;
+        if (o.estado === 'en_curso') {
+          mEnCursoClp += o.montoClp;
+          mEnCursoUf += o.montoUf;
+        }
+      }
+    }
 
     const targetMeta = metas.find((meta) => meta.mes === m);
     const mMetaClp = targetMeta?.metaVentaClp || 0;
-    const mCumplimientoVenta = mMetaClp > 0 ? Math.round((mGanado / mMetaClp) * 100) : 0;
+    const mCumplimientoVenta = mMetaClp > 0 ? Math.round((mGanadoClp / mMetaClp) * 100) : 0;
 
     const mMetaCotizacionClp = targetMeta?.metaCotizacionClp || 0;
     const mCumplimientoCotizacion =
-      mMetaCotizacionClp > 0 ? Math.round((mCotizadoTotal / mMetaCotizacionClp) * 100) : 0;
+      mMetaCotizacionClp > 0 ? Math.round((mCotizadoTotalClp / mMetaCotizacionClp) * 100) : 0;
 
     evolucionMeses.push({
       mes: m,
       nombreMes: NOMBRES_MESES[m].slice(0, 3),
-      ganadoClp: mGanado,
-      ganadoUf: Number((mGanado / UF_DEFAULT).toFixed(1)),
-      enCursoClp: mEnCurso,
-      enCursoUf: Number((mEnCurso / UF_DEFAULT).toFixed(1)),
+      ganadoClp: mGanadoClp,
+      ganadoUf: Number(mGanadoUf.toFixed(1)),
+      enCursoClp: mEnCursoClp,
+      enCursoUf: Number(mEnCursoUf.toFixed(1)),
       metaVentaClp: mMetaClp,
       metaVentaUf: Number((mMetaClp / UF_DEFAULT).toFixed(1)),
       cumplimientoVentaPct: mCumplimientoVenta,
-      cotizadoTotalClp: mCotizadoTotal,
-      cotizadoTotalUf: Number((mCotizadoTotal / UF_DEFAULT).toFixed(1)),
+      cotizadoTotalClp: mCotizadoTotalClp,
+      cotizadoTotalUf: Number(mCotizadoTotalUf.toFixed(1)),
       metaCotizacionClp: mMetaCotizacionClp,
       metaCotizacionUf: Number((mMetaCotizacionClp / UF_DEFAULT).toFixed(1)),
       cumplimientoCotizacionPct: mCumplimientoCotizacion,
@@ -949,7 +1096,7 @@ export async function getConsolidadoOportunidades(params: {
   const kpis: KpisOportunidades = {
     anio,
     mes,
-    totalOportunidades: targetPeriodItems.length,
+    totalOportunidades: filteredItems.length,
     conteoGanadas,
     conteoEnCurso,
     conteoPerdidas,

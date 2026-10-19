@@ -26,6 +26,9 @@ export interface OportunidadCRM {
   condicionPago?: string;
   salesforceId?: string;
   cotizacionDglId?: string; // ID local para abrir cotización técnica si nació en el portal
+  fechaCierreNegocio?: string; // YYYY-MM-DD oficial de cierre ganado en Salesforce
+  fechaUltimoEnvioCotizacion?: string; // YYYY-MM-DD oficial de envío/emisión de cotización en Salesforce
+  montoFacturarUf?: number; // Monto en UF registrado oficialmente en Salesforce
   createdAt: string;
   updatedAt: string;
 }

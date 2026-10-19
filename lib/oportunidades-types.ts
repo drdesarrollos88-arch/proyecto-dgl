@@ -23,6 +23,7 @@ export interface OportunidadCRM {
   seccion?: string;
   centroCosto?: string;
   cuotasCount: number;
+  condicionPago?: string;
   salesforceId?: string;
   cotizacionDglId?: string; // ID local para abrir cotización técnica si nació en el portal
   createdAt: string;

@@ -35,6 +35,7 @@ import {
   FileSpreadsheet,
   AlertTriangle,
   Cloud,
+  CreditCard,
 } from 'lucide-react';
 
 const MESES = [
@@ -276,6 +277,7 @@ export default function OportunidadesPage() {
       'Oportunidad',
       'Cliente',
       'RUT',
+      'Condicion_Pago',
       'Comercial',
       'Fecha_Cierre',
       'Mes',
@@ -293,6 +295,7 @@ export default function OportunidadesPage() {
       o.nombre,
       o.cliente,
       o.rut,
+      o.condicionPago || '50% AL CONTADO Y 50% CONTRA ENTREGA',
       o.comercial,
       o.fechaCierre,
       String(o.mes),
@@ -863,6 +866,7 @@ export default function OportunidadesPage() {
                   <th className="py-2.5 px-3">Origen / Código</th>
                   <th className="py-2.5 px-3">Oportunidad / Proyecto</th>
                   <th className="py-2.5 px-3">Cliente / RUT</th>
+                  <th className="py-2.5 px-3">Condición de Pago</th>
                   <th className="py-2.5 px-3">Comercial / Cierre</th>
                   <th className="py-2.5 px-3">Etapa</th>
                   <th className="py-2.5 px-3 text-right">Monto CLP / UF</th>
@@ -872,7 +876,7 @@ export default function OportunidadesPage() {
               <tbody className="divide-y divide-slate-100 text-xs">
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-500 text-xs">
+                    <td colSpan={8} className="py-12 text-center text-slate-500 text-xs">
                       {loading
                         ? 'Cargando oportunidades...'
                         : 'No se encontraron oportunidades con los filtros seleccionados. Puedes hacer clic en "Importar Salesforce" para cargar el historial de ese año.'}
@@ -924,7 +928,21 @@ export default function OportunidadesPage() {
                           <div className="font-mono text-[11px] text-slate-500">{o.rut || 'Sin RUT'}</div>
                         </td>
 
-                        {/* Col 4: Comercial / Fecha Cierre */}
+                        {/* Col 4: Condición de Pago */}
+                        <td className="py-3 px-3">
+                          {o.condicionPago ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-900 border border-amber-200">
+                              <CreditCard className="w-3 h-3 text-amber-600 shrink-0" />
+                              <span className="truncate max-w-[140px]" title={o.condicionPago}>
+                                {o.condicionPago}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 italic">30 días contra factura</span>
+                          )}
+                        </td>
+
+                        {/* Col 5: Comercial / Fecha Cierre */}
                         <td className="py-3 px-3">
                           <div className="font-medium text-slate-800 truncate max-w-[150px]">
                             {o.comercial}

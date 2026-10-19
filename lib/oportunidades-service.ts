@@ -10,10 +10,19 @@ import { sfRequest } from './salesforce/salesforce-sync-service';
 import { extractProyectoCodigos } from './conciliador-service';
 import { Cotizacion } from './types';
 import initialDbData from '../data/db.json';
+import { isSupabaseConfigured, supabaseAdmin } from './supabase';
+import { searchClientes } from './clientes-db';
+import { getCotizacionesAsync } from './cotizaciones-db';
 
 const UF_DEFAULT = 38500;
 const SF_HISTORY_FILE = path.join(process.cwd(), 'data', 'salesforce-oportunidades-history.json');
 const METAS_FILE = path.join(process.cwd(), 'data', 'metas-comerciales.json');
+
+const KEY_SF_HISTORY = 'salesforce_oportunidades_history';
+const KEY_METAS = 'metas_comerciales';
+
+let _memorySfHistory: OportunidadCRM[] | null = null;
+let _memoryMetas: MetaComercialPeriodo[] | null = null;
 
 const NOMBRES_MESES = [
   '',
@@ -46,19 +55,42 @@ export function clasificarEstadoOportunidad(etapa: string): 'ganada' | 'perdida'
 }
 
 /**
- * Carga metas comerciales guardadas en disco o genera valores base por defecto
+ * Carga metas comerciales guardadas en Supabase, memoria o archivo
  */
-export function getMetasComerciales(anio: number, division = 'DGL'): MetaComercialPeriodo[] {
-  try {
-    if (fs.existsSync(METAS_FILE)) {
-      const raw = fs.readFileSync(METAS_FILE, 'utf-8');
-      const list: MetaComercialPeriodo[] = JSON.parse(raw);
-      const filtered = list.filter((m) => m.anio === anio && (division === 'TODAS' || m.division === division));
-      if (filtered.length > 0) return filtered;
+export async function getMetasComercialesAsync(anio: number, division = 'DGL'): Promise<MetaComercialPeriodo[]> {
+  let list: MetaComercialPeriodo[] = [];
+
+  if (_memoryMetas && _memoryMetas.length > 0) {
+    list = _memoryMetas;
+  } else if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('configuracion_sistema')
+        .select('value')
+        .eq('key', KEY_METAS)
+        .single();
+
+      if (!error && data?.value && Array.isArray(data.value)) {
+        _memoryMetas = data.value as MetaComercialPeriodo[];
+        list = _memoryMetas;
+      }
+    } catch (err) {
+      console.warn('Error consultando metas_comerciales en Supabase:', err);
     }
-  } catch (err) {
-    console.warn('Error leyendo metas-comerciales.json:', err);
   }
+
+  if (list.length === 0) {
+    try {
+      if (fs.existsSync(METAS_FILE)) {
+        const raw = fs.readFileSync(METAS_FILE, 'utf-8');
+        list = JSON.parse(raw);
+        _memoryMetas = list;
+      }
+    } catch {}
+  }
+
+  const filtered = list.filter((m) => m.anio === anio && (division === 'TODAS' || m.division === division));
+  if (filtered.length > 0) return filtered;
 
   // Valores predeterminados referenciales para DGL (ej. $120M CLP / ~3.100 UF mensuales)
   const defaultMetaVentaClp = 120000000;
@@ -82,18 +114,54 @@ export function getMetasComerciales(anio: number, division = 'DGL'): MetaComerci
   return defaultList;
 }
 
+export function getMetasComerciales(anio: number, division = 'DGL'): MetaComercialPeriodo[] {
+  let list: MetaComercialPeriodo[] = _memoryMetas || [];
+  if (list.length === 0) {
+    try {
+      if (fs.existsSync(METAS_FILE)) {
+        const raw = fs.readFileSync(METAS_FILE, 'utf-8');
+        list = JSON.parse(raw);
+        _memoryMetas = list;
+      }
+    } catch {}
+  }
+
+  const filtered = list.filter((m) => m.anio === anio && (division === 'TODAS' || m.division === division));
+  if (filtered.length > 0) return filtered;
+
+  const defaultMetaVentaClp = 120000000;
+  const defaultMetaCotizacionClp = 250000000;
+
+  const defaultList: MetaComercialPeriodo[] = [];
+  for (let m = 1; m <= 12; m++) {
+    defaultList.push({
+      id: `meta-${division}-${anio}-${m}`,
+      anio,
+      mes: m,
+      division,
+      metaVentaClp: defaultMetaVentaClp,
+      metaVentaUf: Math.round(defaultMetaVentaClp / UF_DEFAULT),
+      metaCotizacionClp: defaultMetaCotizacionClp,
+      metaCotizacionUf: Math.round(defaultMetaCotizacionClp / UF_DEFAULT),
+      conteoCotizacionesMeta: 25,
+      descripcion: `Meta estándar presupuestada ${NOMBRES_MESES[m]} ${anio}`,
+    });
+  }
+  return defaultList;
+}
+
 /**
- * Guarda o actualiza metas comerciales en disco
+ * Guarda o actualiza metas comerciales en memoria, Supabase y disco de forma resiliente
  */
-export function saveMetasComerciales(metasToSave: MetaComercialPeriodo[]): void {
-  let existing: MetaComercialPeriodo[] = [];
-  try {
-    if (fs.existsSync(METAS_FILE)) {
-      const raw = fs.readFileSync(METAS_FILE, 'utf-8');
-      existing = JSON.parse(raw);
-    }
-  } catch {
-    existing = [];
+export async function saveMetasComerciales(metasToSave: MetaComercialPeriodo[]): Promise<void> {
+  let existing: MetaComercialPeriodo[] = _memoryMetas || [];
+  if (existing.length === 0) {
+    try {
+      if (fs.existsSync(METAS_FILE)) {
+        const raw = fs.readFileSync(METAS_FILE, 'utf-8');
+        existing = JSON.parse(raw);
+      }
+    } catch {}
   }
 
   for (const meta of metasToSave) {
@@ -107,10 +175,26 @@ export function saveMetasComerciales(metasToSave: MetaComercialPeriodo[]): void 
     }
   }
 
-  fs.writeFileSync(METAS_FILE, JSON.stringify(existing, null, 2), 'utf-8');
-}
+  _memoryMetas = existing;
 
-import { getCotizacionesAsync } from './cotizaciones-db';
+  // 1. Guardar en Supabase (compatible con Cloudflare Workers)
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      await supabaseAdmin.from('configuracion_sistema').upsert({
+        key: KEY_METAS,
+        value: existing,
+        updated_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Error guardando metas_comerciales en Supabase:', err);
+    }
+  }
+
+  // 2. Guardar en disco local si el entorno lo permite (sin lanzar error en Workers)
+  try {
+    fs.writeFileSync(METAS_FILE, JSON.stringify(existing, null, 2), 'utf-8');
+  } catch {}
+}
 
 /**
  * Parsea de manera segura fechas en formatos DD-MM-YYYY, YYYY-MM-DD o ISO
@@ -146,6 +230,29 @@ export function parseSafeFecha(rawDate?: string): { anio: number; mes: number; f
 }
 
 /**
+ * Precarga el mapa de condiciones de pago de clientes registrados para enriquecer las oportunidades
+ */
+async function getClientePaymentConditionMap(): Promise<{
+  byRut: Map<string, string>;
+  byName: Map<string, string>;
+}> {
+  const byRut = new Map<string, string>();
+  const byName = new Map<string, string>();
+  try {
+    const clientes = await searchClientes('', 1000);
+    for (const cl of clientes) {
+      if (cl.paymentCondition) {
+        if (cl.rut) byRut.set(cl.rut.toLowerCase().replace(/[^0-9k]/g, ''), cl.paymentCondition);
+        if (cl.name) byName.set(cl.name.trim().toLowerCase(), cl.paymentCondition);
+      }
+    }
+  } catch (err) {
+    console.warn('No se pudo precargar mapa de clientes para condiciones de pago:', err);
+  }
+  return { byRut, byName };
+}
+
+/**
  * Carga las cotizaciones reales del sistema (Supabase) y las transforma en OportunidadCRM (source: 'WEB_DGL')
  */
 export async function getLocalCotizacionesAsOportunidades(): Promise<OportunidadCRM[]> {
@@ -161,6 +268,8 @@ export async function getLocalCotizacionesAsOportunidades(): Promise<Oportunidad
     } catch {}
   }
 
+  const clientMap = await getClientePaymentConditionMap();
+
   return localList.map((c) => {
     const { anio, mes, fechaIso } = parseSafeFecha(c.date || c.createdAt);
     const codInfo = extractProyectoCodigos(c.code || c.projectName || '');
@@ -168,6 +277,15 @@ export async function getLocalCotizacionesAsOportunidades(): Promise<Oportunidad
     const montoClp = c.totalClp || Math.round((c.totalUf || 0) * (c.ufValue || UF_DEFAULT));
     const montoUf = c.totalUf || (montoClp > 0 ? Number((montoClp / (c.ufValue || UF_DEFAULT)).toFixed(2)) : 0);
     const estado = clasificarEstadoOportunidad(c.status || 'Borrador');
+
+    const cleanRut = (c.clientRut || '').toLowerCase().replace(/[^0-9k]/g, '');
+    const cleanName = (c.clientName || '').trim().toLowerCase();
+    const condicionPago =
+      c.paymentCondition ||
+      c.condicionesComerciales?.condicionVenta ||
+      clientMap.byRut.get(cleanRut) ||
+      clientMap.byName.get(cleanName) ||
+      '50% AL CONTADO Y 50% CONTRA ENTREGA';
 
     return {
       id: `dgl-quote-${c.id}`,
@@ -177,6 +295,7 @@ export async function getLocalCotizacionesAsOportunidades(): Promise<Oportunidad
       nombre: c.projectName || c.reference || `Cotización ${c.code}`,
       cliente: c.clientName || 'Cliente Particular',
       rut: c.clientRut || '',
+      condicionPago,
       etapa: c.status || 'Enviada',
       estado,
       probabilidadPct: estado === 'ganada' ? 100 : estado === 'perdida' ? 0 : 60,
@@ -199,32 +318,121 @@ export async function getLocalCotizacionesAsOportunidades(): Promise<Oportunidad
 }
 
 /**
- * Carga oportunidades históricas sincronizadas de Salesforce desde archivo persistente
+ * Carga oportunidades históricas sincronizadas de Salesforce desde memoria, Supabase o archivo
  */
-export function getSavedSalesforceOportunidades(): OportunidadCRM[] {
+export async function getSavedSalesforceOportunidadesAsync(): Promise<OportunidadCRM[]> {
+  if (_memorySfHistory && _memorySfHistory.length > 0) {
+    return _memorySfHistory;
+  }
+
+  // 1. Intentar desde Supabase (persistente en Cloudflare Workers)
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('configuracion_sistema')
+        .select('value')
+        .eq('key', KEY_SF_HISTORY)
+        .single();
+
+      if (!error && data?.value && Array.isArray(data.value)) {
+        _memorySfHistory = data.value as OportunidadCRM[];
+        return _memorySfHistory;
+      }
+    } catch (err) {
+      console.warn('Error consultando salesforce_oportunidades_history en Supabase:', err);
+    }
+  }
+
+  // 2. Fallback a archivo local si existe
   try {
     if (fs.existsSync(SF_HISTORY_FILE)) {
       const raw = fs.readFileSync(SF_HISTORY_FILE, 'utf-8');
       const list: OportunidadCRM[] = JSON.parse(raw);
-      return Array.isArray(list) ? list : [];
+      if (Array.isArray(list)) {
+        _memorySfHistory = list;
+        return list;
+      }
     }
   } catch (err) {
-    console.warn('Error leyendo salesforce-oportunidades-history.json:', err);
+    console.warn('Fallback local SF_HISTORY_FILE:', err);
   }
+
   return [];
 }
 
 /**
- * Obtiene la lista de años disponibles creados en el archivo de metas comerciales
+ * Versión síncrona de consulta histórica para fallback en memoria
  */
-export function getAniosDisponiblesEnMetas(division = 'DGL'): number[] {
-  let list: MetaComercialPeriodo[] = [];
+export function getSavedSalesforceOportunidades(): OportunidadCRM[] {
+  if (_memorySfHistory && _memorySfHistory.length > 0) return _memorySfHistory;
   try {
-    if (fs.existsSync(METAS_FILE)) {
-      const raw = fs.readFileSync(METAS_FILE, 'utf-8');
-      list = JSON.parse(raw);
+    if (fs.existsSync(SF_HISTORY_FILE)) {
+      const raw = fs.readFileSync(SF_HISTORY_FILE, 'utf-8');
+      const list: OportunidadCRM[] = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        _memorySfHistory = list;
+        return list;
+      }
     }
   } catch {}
+  return [];
+}
+
+/**
+ * Guarda el historial de oportunidades de Salesforce en memoria, Supabase y disco de forma resiliente
+ */
+export async function saveSavedSalesforceOportunidades(merged: OportunidadCRM[]): Promise<void> {
+  _memorySfHistory = merged;
+
+  // 1. Guardar en Supabase (funciona en Edge y Cloudflare Workers)
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      await supabaseAdmin.from('configuracion_sistema').upsert({
+        key: KEY_SF_HISTORY,
+        value: merged,
+        updated_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Error guardando salesforce_oportunidades_history en Supabase:', err);
+    }
+  }
+
+  // 2. Intentar guardar en disco local (solo si el runtime lo permite)
+  try {
+    fs.writeFileSync(SF_HISTORY_FILE, JSON.stringify(merged, null, 2), 'utf-8');
+  } catch {
+    // Cloudflare Workers no permite fs.writeFileSync; ignorar de forma segura
+  }
+}
+
+/**
+ * Obtiene la lista de años disponibles creados en metas comerciales
+ */
+export async function getAniosDisponiblesEnMetasAsync(division = 'DGL'): Promise<number[]> {
+  let list: MetaComercialPeriodo[] = _memoryMetas || [];
+  if (list.length === 0 && isSupabaseConfigured && supabaseAdmin) {
+    try {
+      const { data } = await supabaseAdmin
+        .from('configuracion_sistema')
+        .select('value')
+        .eq('key', KEY_METAS)
+        .single();
+      if (data?.value && Array.isArray(data.value)) {
+        list = data.value;
+        _memoryMetas = list;
+      }
+    } catch {}
+  }
+
+  if (list.length === 0) {
+    try {
+      if (fs.existsSync(METAS_FILE)) {
+        const raw = fs.readFileSync(METAS_FILE, 'utf-8');
+        list = JSON.parse(raw);
+        _memoryMetas = list;
+      }
+    } catch {}
+  }
 
   const yearsSet = new Set<number>();
   if (Array.isArray(list)) {
@@ -238,7 +446,35 @@ export function getAniosDisponiblesEnMetas(division = 'DGL'): number[] {
   if (yearsSet.size === 0) {
     yearsSet.add(2026);
     const base2026 = getMetasComerciales(2026, division);
-    saveMetasComerciales(base2026);
+    await saveMetasComerciales(base2026);
+  }
+
+  return Array.from(yearsSet).sort((a, b) => b - a);
+}
+
+export function getAniosDisponiblesEnMetas(division = 'DGL'): number[] {
+  let list: MetaComercialPeriodo[] = _memoryMetas || [];
+  if (list.length === 0) {
+    try {
+      if (fs.existsSync(METAS_FILE)) {
+        const raw = fs.readFileSync(METAS_FILE, 'utf-8');
+        list = JSON.parse(raw);
+        _memoryMetas = list;
+      }
+    } catch {}
+  }
+
+  const yearsSet = new Set<number>();
+  if (Array.isArray(list)) {
+    for (const m of list) {
+      if (m.anio && (division === 'TODAS' || m.division === division)) {
+        yearsSet.add(m.anio);
+      }
+    }
+  }
+
+  if (yearsSet.size === 0) {
+    yearsSet.add(2026);
   }
 
   return Array.from(yearsSet).sort((a, b) => b - a);
@@ -253,13 +489,22 @@ export async function syncSalesforceOportunidades(
 ): Promise<{ count: number; items: OportunidadCRM[] }> {
   const { accessToken, instanceUrl } = await getValidSalesforceClient();
 
-  // Consulta limpia de Opportunity en Salesforce sin subconsultas inválidas
-  const soql = encodeURIComponent(
-    `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Rut__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} ORDER BY CloseDate DESC LIMIT 2000`
-  );
-
-  const res = await sfRequest(instanceUrl, accessToken, `query?q=${soql}`);
-  const records = res?.records || [];
+  // Consulta limpia de Opportunity en Salesforce con condición de pago y cuenta asociada
+  let records: any[] = [];
+  try {
+    const soqlWithCond = encodeURIComponent(
+      `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Rut__c, Account.Condicion_de_Pago__c, Account.Condici_n_de_Pago_empresa__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} ORDER BY CloseDate DESC LIMIT 2000`
+    );
+    const resWithCond = await sfRequest(instanceUrl, accessToken, `query?q=${soqlWithCond}`);
+    records = resWithCond?.records || [];
+  } catch (qErr) {
+    console.warn('Consulta SOQL con campos de condición falló, reintentando con campos base:', qErr);
+    const soqlBasic = encodeURIComponent(
+      `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Rut__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} ORDER BY CloseDate DESC LIMIT 2000`
+    );
+    const resBasic = await sfRequest(instanceUrl, accessToken, `query?q=${soqlBasic}`);
+    records = resBasic?.records || [];
+  }
 
   // Mapeo opcional de cuotas por Oportunidad
   const cuotasByOppId = new Map<string, number>();
@@ -279,6 +524,9 @@ export async function syncSalesforceOportunidades(
     console.warn('Consulta de cuotas opcionales omitida:', cErr);
   }
 
+  // Precargar condiciones de pago de clientes para enriquecimiento adicional
+  const clientMap = await getClientePaymentConditionMap();
+
   const syncedItems: OportunidadCRM[] = records.map((rec: any, idx: number) => {
     const oppName = rec.Name || 'Oportunidad sin nombre';
     const montoClp = Number(rec.Amount) || 0;
@@ -290,6 +538,15 @@ export async function syncSalesforceOportunidades(
     const etapa = rec.StageName || 'Propuesta enviada';
     const estado = clasificarEstadoOportunidad(etapa);
 
+    const cleanRut = (rec.Account?.Rut__c || '').toLowerCase().replace(/[^0-9k]/g, '');
+    const cleanName = (rec.Account?.Name || '').trim().toLowerCase();
+    const condicionPago =
+      rec.Account?.Condicion_de_Pago__c ||
+      rec.Account?.Condici_n_de_Pago_empresa__c ||
+      clientMap.byRut.get(cleanRut) ||
+      clientMap.byName.get(cleanName) ||
+      '50% AL CONTADO Y 50% CONTRA ENTREGA';
+
     return {
       id: `sf-${rec.Id || idx}`,
       source: 'SALESFORCE',
@@ -298,6 +555,7 @@ export async function syncSalesforceOportunidades(
       nombre: oppName,
       cliente: rec.Account?.Name || 'Empresa sin razón social',
       rut: rec.Account?.Rut__c || '',
+      condicionPago,
       etapa,
       estado,
       probabilidadPct: Number(rec.Probability) || (estado === 'ganada' ? 100 : estado === 'perdida' ? 0 : 60),
@@ -316,11 +574,11 @@ export async function syncSalesforceOportunidades(
   });
 
   // Combinar con historial guardado previamente para otros años/períodos
-  const existing = getSavedSalesforceOportunidades();
+  const existing = await getSavedSalesforceOportunidadesAsync();
   const removeIds = new Set(syncedItems.map((s) => s.salesforceId));
   const merged = [...syncedItems, ...existing.filter((e) => !removeIds.has(e.salesforceId))];
 
-  fs.writeFileSync(SF_HISTORY_FILE, JSON.stringify(merged, null, 2), 'utf-8');
+  await saveSavedSalesforceOportunidades(merged);
 
   return { count: syncedItems.length, items: syncedItems };
 }
@@ -352,10 +610,12 @@ export async function getConsolidadoOportunidades(params: {
     search = '',
   } = params;
 
-  // 1. Cargar fuentes
-  const [localOpps, sfOpps] = await Promise.all([
+  // 1. Cargar fuentes asíncronamente desde Supabase / memoria
+  const [localOpps, sfOpps, metas, aniosDisponibles] = await Promise.all([
     getLocalCotizacionesAsOportunidades(),
-    Promise.resolve(getSavedSalesforceOportunidades()),
+    getSavedSalesforceOportunidadesAsync(),
+    getMetasComercialesAsync(anio, division),
+    getAniosDisponiblesEnMetasAsync(division),
   ]);
 
   // Evitar duplicar: si una cotización local ya tiene salesforceId y está en sfOpps, priorizamos la versión local (Web DGL)
@@ -390,7 +650,6 @@ export async function getConsolidadoOportunidades(params: {
 
   // 4. Calcular KPIs para el período (mes específico o acumulado del año)
   const targetPeriodItems = yearItems.filter((o) => (mes === 0 ? true : o.mes === mes));
-  const metas = getMetasComerciales(anio, division);
 
   // Metas aplicables al período
   const periodMetas = metas.filter((m) => (mes === 0 ? true : m.mes === mes));
@@ -553,7 +812,7 @@ export async function getConsolidadoOportunidades(params: {
     metaCotizacionUf,
     cumplimientoCotizacionPct,
     gapCotizacionClp,
-    aniosDisponibles: getAniosDisponiblesEnMetas(division),
+    aniosDisponibles,
     porComercial: Array.from(comercialMap.values()).map((c) => ({
       ...c,
       montoGanadoUf: Number((c.montoGanadoClp / UF_DEFAULT).toFixed(1)),

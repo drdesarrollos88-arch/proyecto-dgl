@@ -695,6 +695,7 @@ function ClientesContent() {
                       <th className="py-3 px-4 w-36">Comuna</th>
                       <th className="py-3 px-4">Dirección</th>
                       <th className="py-3 px-4 w-40">Giro</th>
+                      <th className="py-3 px-4 w-44">Condición de Pago</th>
                       <th className="py-3 px-4 w-32">Teléfono</th>
                       <th className="py-3 px-4 w-28 text-center">Acciones</th>
                     </tr>
@@ -738,6 +739,18 @@ function ClientesContent() {
                           </td>
                           <td className="py-3 px-4 text-slate-600 truncate max-w-[150px]" title={c.giro}>
                             {c.giro || '-'}
+                          </td>
+                          <td className="py-3 px-4">
+                            {c.paymentCondition ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-900 border border-amber-200">
+                                <CreditCard className="w-3 h-3 text-amber-600 shrink-0" />
+                                <span className="truncate max-w-[150px]" title={c.paymentCondition}>
+                                  {c.paymentCondition}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 text-[11px] italic">Sin definir</span>
+                            )}
                           </td>
                           <td className="py-3 px-4 text-slate-600 whitespace-nowrap">
                             {c.phone ? (

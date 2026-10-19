@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       if (!Array.isArray(metas)) {
         return NextResponse.json({ error: 'Formato de metas inválido' }, { status: 400 });
       }
-      saveMetasComerciales(metas);
+      await saveMetasComerciales(metas);
       return NextResponse.json({ success: true, message: 'Metas comerciales actualizadas correctamente' });
     }
 

@@ -12,7 +12,7 @@ import { Cotizacion, isOportunidadDgl } from './types';
 import initialDbData from '../data/db.json';
 import { isSupabaseConfigured, supabaseAdmin } from './supabase';
 import { searchClientes } from './clientes-db';
-import { getCotizacionesAsync } from './cotizaciones-db';
+import { getCotizacionesAsync, saveCotizacionAsync } from './cotizaciones-db';
 import { isSalesforceCrmAvailable, searchSalesforceAccounts } from './salesforce/salesforce-crm-service';
 
 const UF_DEFAULT = 38500;
@@ -502,22 +502,22 @@ export function getAniosDisponiblesEnMetas(division = 'DGL'): number[] {
 }
 
 /**
- * Sincroniza e importa en vivo desde Salesforce todas las oportunidades del año especificado vía SOQL
+ * Sincroniza, actualiza e importa en vivo desde Salesforce todas las oportunidades del año especificado vía SOQL
  */
 export async function syncSalesforceOportunidades(
   anio: number,
   division = 'DGL'
-): Promise<{ count: number; items: OportunidadCRM[] }> {
+): Promise<{ count: number; updatedCount: number; newCount: number; items: OportunidadCRM[] }> {
   const { accessToken, instanceUrl } = await getValidSalesforceClient();
 
   // Condición estricta para sincronizar únicamente oportunidades de la División DGL
   const dglWhereCond = "(Division__c = 'DGL' OR Name LIKE '%DGL%' OR Name LIKE '%2340%' OR Name LIKE '%2341%' OR Name LIKE '%2344%' OR Name LIKE '%1817%' OR Name LIKE '%2339%' OR Name LIKE '%3340%')";
 
-  // Consulta limpia de Opportunity en Salesforce con condición de pago y cuenta asociada
+  // Consulta limpia de Opportunity en Salesforce con condición de pago y cuenta asociada (sin campos duplicados de RUT)
   let records: any[] = [];
   try {
     const soqlWithCond = encodeURIComponent(
-      `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.Rut__c, Account.RUT__c, Account.Condicion_de_Pago__c, Account.Condici_n_de_Pago_empresa__c, Division__c, Unidad__c, Seccion__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} AND ${dglWhereCond} ORDER BY CloseDate DESC LIMIT 2000`
+      `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.RUT__c, Account.Condicion_de_Pago__c, Account.Condici_n_de_Pago_empresa__c, Division__c, Unidad__c, Seccion__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} AND ${dglWhereCond} ORDER BY CloseDate DESC LIMIT 2000`
     );
     const resWithCond = await sfRequest(instanceUrl, accessToken, `query?q=${soqlWithCond}`);
     records = resWithCond?.records || [];
@@ -525,14 +525,14 @@ export async function syncSalesforceOportunidades(
     console.warn('Consulta SOQL con campos de división/condición falló, reintentando con campos base:', qErr);
     try {
       const soqlDglName = encodeURIComponent(
-        `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.Rut__c, Account.RUT__c, Account.Condicion_de_Pago__c, Account.Condici_n_de_Pago_empresa__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} AND (Name LIKE '%DGL%' OR Name LIKE '%2340%' OR Name LIKE '%2341%' OR Name LIKE '%2344%' OR Name LIKE '%1817%' OR Name LIKE '%2339%' OR Name LIKE '%3340%') ORDER BY CloseDate DESC LIMIT 2000`
+        `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.RUT__c, Account.Condicion_de_Pago__c, Account.Condici_n_de_Pago_empresa__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} AND (Name LIKE '%DGL%' OR Name LIKE '%2340%' OR Name LIKE '%2341%' OR Name LIKE '%2344%' OR Name LIKE '%1817%' OR Name LIKE '%2339%' OR Name LIKE '%3340%') ORDER BY CloseDate DESC LIMIT 2000`
       );
       const resDglName = await sfRequest(instanceUrl, accessToken, `query?q=${soqlDglName}`);
       records = resDglName?.records || [];
     } catch (qErr2) {
       console.warn('Consulta SOQL con filtro de nombre falló, reintentando consulta base general:', qErr2);
       const soqlBasic = encodeURIComponent(
-        `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.Rut__c, Account.RUT__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} ORDER BY CloseDate DESC LIMIT 2000`
+        `SELECT Id, Name, StageName, Amount, CloseDate, Probability, Owner.Name, Account.Name, Account.Razon_Social__c, Account.RUT__c FROM Opportunity WHERE CALENDAR_YEAR(CloseDate) = ${anio} ORDER BY CloseDate DESC LIMIT 2000`
       );
       const resBasic = await sfRequest(instanceUrl, accessToken, `query?q=${soqlBasic}`);
       records = resBasic?.records || [];
@@ -560,10 +560,42 @@ export async function syncSalesforceOportunidades(
     console.warn('Consulta de cuotas opcionales omitida:', cErr);
   }
 
-  // Precargar condiciones de pago de clientes para enriquecimiento adicional
-  const clientMap = await getClientePaymentConditionMap();
+  // Precargar condiciones de pago de clientes, historial previo y cotizaciones locales concurrentemente
+  const [clientMap, existing, localCotizaciones] = await Promise.all([
+    getClientePaymentConditionMap(),
+    getSavedSalesforceOportunidadesAsync(),
+    getCotizacionesAsync().catch(() => []),
+  ]);
 
-  const syncedItems: OportunidadCRM[] = dglRecords.map((rec: any, idx: number) => {
+  // Depurar y limpiar historial previo para DGL
+  const cleanExisting = existing.filter((e) => isOportunidadDgl(e));
+
+  // Indexar historial previo por salesforceId y por código
+  const existingBySfId = new Map<string, OportunidadCRM>();
+  const existingByCode = new Map<string, OportunidadCRM>();
+  for (const item of cleanExisting) {
+    if (item.salesforceId) existingBySfId.set(item.salesforceId, item);
+    if (item.id) existingBySfId.set(item.id, item);
+    if (item.codigo) existingByCode.set(item.codigo.toLowerCase().trim(), item);
+    if (item.codigoNucleo) existingByCode.set(item.codigoNucleo.toLowerCase().trim(), item);
+  }
+
+  // Indexar cotizaciones locales para vinculación bidireccional
+  const cotizacionesByCode = new Map<string, Cotizacion>();
+  const cotizacionesBySfId = new Map<string, Cotizacion>();
+  for (const cot of localCotizaciones) {
+    if (cot.salesforceOpportunityId) cotizacionesBySfId.set(cot.salesforceOpportunityId, cot);
+    if (cot.code) cotizacionesByCode.set(cot.code.toLowerCase().trim(), cot);
+  }
+
+  let updatedCount = 0;
+  let newCount = 0;
+  const processedSfIds = new Set<string>();
+  const processedItems: OportunidadCRM[] = [];
+  const nowIso = new Date().toISOString();
+
+  for (let idx = 0; idx < dglRecords.length; idx++) {
+    const rec = dglRecords[idx];
     const oppName = rec.Name || 'Oportunidad sin nombre';
     const montoClp = Number(rec.Amount) || 0;
     const montoUf = Number((montoClp / UF_DEFAULT).toFixed(2));
@@ -574,7 +606,7 @@ export async function syncSalesforceOportunidades(
     const etapa = rec.StageName || 'Propuesta enviada';
     const estado = clasificarEstadoOportunidad(etapa);
 
-    const rawRut = rec.Account?.Rut__c || rec.Account?.RUT__c || '';
+    const rawRut = rec.Account?.RUT__c || rec.Account?.Rut__c || '';
     const cleanRut = rawRut.toLowerCase().replace(/[^0-9k]/g, '');
     const clientName = rec.Account?.Razon_Social__c || rec.Account?.Name || 'Empresa sin razón social';
     const cleanName = clientName.trim().toLowerCase();
@@ -585,41 +617,121 @@ export async function syncSalesforceOportunidades(
       clientMap.byName.get(cleanName) ||
       '50% AL CONTADO Y 50% CONTRA ENTREGA';
 
-    return {
-      id: `sf-${rec.Id || idx}`,
-      source: 'SALESFORCE',
-      codigo: codInfo.codigoCompleto || oppName,
-      codigoNucleo: codInfo.codigoNucleo,
-      nombre: oppName,
-      cliente: clientName,
-      rut: rawRut,
-      condicionPago,
-      etapa,
-      estado,
-      probabilidadPct: Number(rec.Probability) || (estado === 'ganada' ? 100 : estado === 'perdida' ? 0 : 60),
-      montoClp,
-      montoUf,
-      fechaCierre: closeDateStr,
-      mes,
-      anio,
-      comercial: rec.Owner?.Name || 'Comercial Salesforce',
-      division: 'DGL',
-      cuotasCount: cuotasByOppId.get(rec.Id) || 1,
-      salesforceId: rec.Id,
-      createdAt: closeDateStr,
-      updatedAt: closeDateStr,
-    };
-  });
+    const sfId = rec.Id || `sf-gen-${idx}`;
+    processedSfIds.add(sfId);
 
-  // Combinar con historial guardado previamente para otros años/períodos, depurando cualquier oportunidad histórica ajena a DGL
-  const existing = await getSavedSalesforceOportunidadesAsync();
-  const cleanExisting = existing.filter((e) => isOportunidadDgl(e));
-  const removeIds = new Set(syncedItems.map((s) => s.salesforceId));
-  const merged = [...syncedItems, ...cleanExisting.filter((e) => !removeIds.has(e.salesforceId))];
+    // Buscar si ya existía en el historial para actualizar en vez de duplicar
+    const codeKey = codInfo.codigoCompleto ? codInfo.codigoCompleto.toLowerCase().trim() : null;
+    const coreKey = codInfo.codigoNucleo ? codInfo.codigoNucleo.toLowerCase().trim() : null;
+    const existingItem =
+      existingBySfId.get(sfId) ||
+      (codeKey ? existingByCode.get(codeKey) : undefined) ||
+      (coreKey ? existingByCode.get(coreKey) : undefined);
 
-  await saveSavedSalesforceOportunidades(merged);
+    let resolvedItem: OportunidadCRM;
 
-  return { count: syncedItems.length, items: syncedItems };
+    if (existingItem) {
+      // ACTUALIZAR registro existente con los datos más recientes de Salesforce
+      resolvedItem = {
+        ...existingItem,
+        codigo: codInfo.codigoCompleto || existingItem.codigo || oppName,
+        codigoNucleo: codInfo.codigoNucleo || existingItem.codigoNucleo,
+        nombre: oppName,
+        cliente: clientName || existingItem.cliente,
+        rut: rawRut || existingItem.rut,
+        condicionPago: condicionPago || existingItem.condicionPago,
+        etapa,
+        estado,
+        probabilidadPct: Number(rec.Probability) || (estado === 'ganada' ? 100 : estado === 'perdida' ? 0 : 60),
+        montoClp,
+        montoUf,
+        fechaCierre: closeDateStr,
+        mes,
+        anio,
+        comercial: rec.Owner?.Name || existingItem.comercial || 'Comercial Salesforce',
+        division: 'DGL',
+        cuotasCount: cuotasByOppId.get(rec.Id) || existingItem.cuotasCount || 1,
+        salesforceId: rec.Id,
+        updatedAt: nowIso,
+      };
+      updatedCount++;
+    } else {
+      // IMPORTAR nuevo registro
+      resolvedItem = {
+        id: `sf-${rec.Id || idx}`,
+        source: 'SALESFORCE',
+        codigo: codInfo.codigoCompleto || oppName,
+        codigoNucleo: codInfo.codigoNucleo,
+        nombre: oppName,
+        cliente: clientName,
+        rut: rawRut,
+        condicionPago,
+        etapa,
+        estado,
+        probabilidadPct: Number(rec.Probability) || (estado === 'ganada' ? 100 : estado === 'perdida' ? 0 : 60),
+        montoClp,
+        montoUf,
+        fechaCierre: closeDateStr,
+        mes,
+        anio,
+        comercial: rec.Owner?.Name || 'Comercial Salesforce',
+        division: 'DGL',
+        cuotasCount: cuotasByOppId.get(rec.Id) || 1,
+        salesforceId: rec.Id,
+        createdAt: closeDateStr,
+        updatedAt: nowIso,
+      };
+      newCount++;
+    }
+
+    // Vinculación y actualización con Cotizaciones Locales de Supabase si corresponde
+    const matchedCot =
+      cotizacionesBySfId.get(rec.Id) ||
+      (codeKey ? cotizacionesByCode.get(codeKey) : undefined);
+
+    if (matchedCot) {
+      resolvedItem.cotizacionDglId = matchedCot.id;
+      let cotChanged = false;
+      if (!matchedCot.salesforceOpportunityId || matchedCot.salesforceOpportunityId !== rec.Id) {
+        matchedCot.salesforceOpportunityId = rec.Id;
+        matchedCot.salesforceOpportunityUrl = `${instanceUrl}/${rec.Id}`;
+        cotChanged = true;
+      }
+      if (estado === 'ganada' && matchedCot.status !== 'Aprobada') {
+        matchedCot.status = 'Aprobada';
+        cotChanged = true;
+      } else if (estado === 'perdida' && matchedCot.status !== 'Rechazada') {
+        matchedCot.status = 'Rechazada';
+        cotChanged = true;
+      }
+      if (cotChanged) {
+        matchedCot.salesforceSyncedAt = nowIso;
+        saveCotizacionAsync(matchedCot).catch((err) =>
+          console.warn(`Error actualizando cotización local ${matchedCot.code}:`, err)
+        );
+      }
+    }
+
+    processedItems.push(resolvedItem);
+  }
+
+  // Fusionar con registros del historial de otros años/períodos no presentes en esta llamada
+  const finalMergedHistory: OportunidadCRM[] = [...processedItems];
+  for (const item of cleanExisting) {
+    const itemSfId = item.salesforceId || item.id;
+    if (itemSfId && !processedSfIds.has(itemSfId)) {
+      finalMergedHistory.push(item);
+    }
+  }
+
+  await saveSavedSalesforceOportunidades(finalMergedHistory);
+
+  return {
+    count: processedItems.length,
+    updatedCount,
+    newCount,
+    items: processedItems,
+  };
 }
 
 /**

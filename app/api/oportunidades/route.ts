@@ -53,8 +53,10 @@ export async function POST(req: NextRequest) {
       const result = await syncSalesforceOportunidades(anio, division);
       return NextResponse.json({
         success: true,
-        message: `Sincronizadas exitosamente ${result.count} oportunidades de Salesforce para ${division} (${anio})`,
+        message: `Sincronización completada para ${division} (${anio}): ${result.updatedCount} actualizadas, ${result.newCount} nuevas (${result.count} total)`,
         count: result.count,
+        updatedCount: result.updatedCount,
+        newCount: result.newCount,
       });
     }
 

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
+import SalesforceStatusBadge from '@/components/salesforce/SalesforceStatusBadge';
 import {
   KpisOportunidades,
   MetaComercialPeriodo,
@@ -32,6 +33,8 @@ import {
   ChevronDown,
   X,
   FileSpreadsheet,
+  AlertTriangle,
+  Cloud,
 } from 'lucide-react';
 
 const MESES = [
@@ -85,6 +88,8 @@ export default function OportunidadesPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [syncingSf, setSyncingSf] = useState<boolean>(false);
   const [syncSuccessMsg, setSyncSuccessMsg] = useState<string | null>(null);
+  const [syncErrorMsg, setSyncErrorMsg] = useState<string | null>(null);
+  const [isAuthError, setIsAuthError] = useState<boolean>(false);
 
   // Modal de configuración y creación de metas comerciales
   const [showMetasModal, setShowMetasModal] = useState<boolean>(false);
@@ -132,10 +137,26 @@ export default function OportunidadesPage() {
     loadData();
   }, [loadData]);
 
+  // Conectar con Salesforce vía Popup OAuth
+  const handleConnectSalesforce = () => {
+    const width = 600;
+    const height = 720;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2.5;
+
+    window.open(
+      '/api/auth/salesforce/login',
+      'SalesforceAuthWindow',
+      `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes,scrollbars=yes`
+    );
+  };
+
   // Sincronizar Oportunidades de Salesforce en vivo
-  const handleSyncSalesforce = async () => {
+  const handleSyncSalesforce = useCallback(async () => {
     setSyncingSf(true);
     setSyncSuccessMsg(null);
+    setSyncErrorMsg(null);
+    setIsAuthError(false);
     try {
       const res = await fetch('/api/oportunidades', {
         method: 'POST',
@@ -151,11 +172,34 @@ export default function OportunidadesPage() {
       setSyncSuccessMsg(data.message || 'Sincronización completada.');
       loadData();
     } catch (err: any) {
-      alert(err?.message || 'Error conectando con Salesforce');
+      const msg = err?.message || 'Error conectando con Salesforce';
+      setSyncErrorMsg(msg);
+      const isAuth =
+        msg.toLowerCase().includes('caducado') ||
+        msg.toLowerCase().includes('expirado') ||
+        msg.toLowerCase().includes('token') ||
+        msg.toLowerCase().includes('invalid_grant') ||
+        msg.toLowerCase().includes('inicia sesión') ||
+        msg.toLowerCase().includes('conectar salesforce');
+      setIsAuthError(isAuth);
     } finally {
       setSyncingSf(false);
     }
-  };
+  }, [selectedAnio, loadData]);
+
+  // Escuchar mensaje del popup OAuth cuando finalice la autorización
+  useEffect(() => {
+    const handleAuthMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'SALESFORCE_AUTH_SUCCESS') {
+        setSyncErrorMsg(null);
+        setIsAuthError(false);
+        handleSyncSalesforce();
+      }
+    };
+
+    window.addEventListener('message', handleAuthMessage);
+    return () => window.removeEventListener('message', handleAuthMessage);
+  }, [handleSyncSalesforce]);
 
   // Abrir modal de metas
   const handleOpenMetasModal = () => {
@@ -341,6 +385,9 @@ export default function OportunidadesPage() {
                 ))}
               </select>
 
+              {/* Estado / Conexión Salesforce */}
+              <SalesforceStatusBadge />
+
               {/* Botón Sincronizar Salesforce */}
               <button
                 type="button"
@@ -374,6 +421,42 @@ export default function OportunidadesPage() {
               </button>
             </div>
           </div>
+
+          {/* Banner de Alerta / Sesión Caducada de Salesforce */}
+          {syncErrorMsg && (
+            <div className="mt-4 p-3.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in duration-200">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-rose-600 mt-0.5 shrink-0" />
+                <div className="text-xs">
+                  <div className="font-bold text-rose-950">
+                    {isAuthError ? 'Sesión de Salesforce Caducada o Desconectada' : 'Aviso al sincronizar con Salesforce'}
+                  </div>
+                  <div className="text-rose-800 mt-0.5">{syncErrorMsg}</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                {isAuthError && (
+                  <button
+                    type="button"
+                    onClick={handleConnectSalesforce}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white shadow-xs transition-colors cursor-pointer"
+                  >
+                    <Cloud className="w-3.5 h-3.5" />
+                    <span>Conectar Salesforce</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSyncErrorMsg(null)}
+                  className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-100 rounded-md transition-colors cursor-pointer"
+                  title="Cerrar aviso"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Bloque 1: DASHBOARD DUAL 50 / 50 (VENTAS vs COTIZACIONES) */}

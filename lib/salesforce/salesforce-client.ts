@@ -231,6 +231,13 @@ export async function refreshSalesforceToken(refreshToken: string): Promise<stri
 
   if (!res.ok) {
     const errText = await res.text();
+    if (errText.includes('invalid_grant') || errText.includes('expired access/refresh token')) {
+      // Token caducado o revocado en Salesforce: limpiar credenciales inválidas para reflejar estado desconectado
+      await disconnectSalesforce();
+      throw new Error(
+        'La sesión de Salesforce ha caducado (token expirado o revocado). Por favor vuelve a conectar tu cuenta haciendo clic en "Conectar Salesforce".'
+      );
+    }
     throw new Error(`Fallo al refrescar token de Salesforce (${res.status}): ${errText}`);
   }
 
@@ -294,7 +301,7 @@ export async function getValidSalesforceClient(): Promise<{
     };
   }
 
-  throw new Error('La sesión de Salesforce ha caducado y no tiene Refresh Token. Por favor reautentica.');
+  throw new Error('La sesión de Salesforce ha caducado. Por favor haz clic en "Conectar Salesforce" para volver a iniciar sesión.');
 }
 
 /**

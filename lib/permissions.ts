@@ -11,6 +11,7 @@ export interface PermissionDefinition {
     | 'Ventas'
     | 'Tarifario'
     | 'Clientes'
+    | 'Tickets & Soporte'
     | 'Inteligencia Artificial'
     | 'Auditoría'
     | 'Configuración'
@@ -52,7 +53,7 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     module: 'Cotizaciones',
   },
 
-  // Módulo Ventas & Salesforce
+  // Módulo Ventas & Salesforce (CRM)
   {
     key: 'ventas.ver',
     label: 'Panel de Ventas & Oportunidades',
@@ -69,6 +70,18 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     key: 'ventas.conciliador',
     label: 'Conciliador EERR vs Salesforce',
     description: 'Permite acceder a la herramienta de cuadratura contable y conciliación de estados de resultados.',
+    module: 'Ventas',
+  },
+  {
+    key: 'oportunidades.metas',
+    label: 'Presupuestos & Metas Comerciales',
+    description: 'Permite crear nuevos años presupuestarios y asignar metas de ventas y cotizaciones.',
+    module: 'Ventas',
+  },
+  {
+    key: 'conciliador.aplicar',
+    label: 'Aplicar Cuadraturas en Salesforce',
+    description: 'Permite sincronizar y aplicar acciones de cuadratura (ajustes y cuotas) en Salesforce.',
     module: 'Ventas',
   },
 
@@ -160,6 +173,20 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     module: 'Configuración',
   },
 
+  // Módulo Tickets & Soporte
+  {
+    key: 'tickets.ver',
+    label: 'Visualizar Tickets de Soporte',
+    description: 'Permite consultar el estado de tickets y solicitudes de soporte técnico.',
+    module: 'Tickets & Soporte',
+  },
+  {
+    key: 'tickets.administrar',
+    label: 'Administrar Tickets y Asignaciones',
+    description: 'Permite crear, responder, reasignar y resolver tickets de soporte.',
+    module: 'Tickets & Soporte',
+  },
+
   // Módulo Usuarios y Seguridad (RBAC)
   {
     key: 'usuarios.administrar',
@@ -199,9 +226,11 @@ export const DEFAULT_PROFILES: UserProfile[] = [
       'cotizaciones.ver_todas',
       'ventas.ver',
       'ventas.cierre_oportunidad',
+      'oportunidades.metas',
       'tarifario.ver',
       'tarifario.descargar',
       'clientes.gestionar',
+      'tickets.ver',
       'ia.asistente',
       'configuracion.aprendizaje',
       'configuracion.bibliografia',
@@ -221,6 +250,7 @@ export const DEFAULT_PROFILES: UserProfile[] = [
       'ventas.cierre_oportunidad',
       'tarifario.ver',
       'clientes.gestionar',
+      'tickets.ver',
       'ia.asistente',
       'configuracion.aprendizaje',
       'configuracion.bibliografia',
@@ -238,6 +268,7 @@ export const DEFAULT_PROFILES: UserProfile[] = [
       'ventas.ver',
       'tarifario.ver',
       'clientes.gestionar',
+      'tickets.ver',
       'ia.asistente',
       'configuracion.bibliografia',
     ],
@@ -254,6 +285,7 @@ export const DEFAULT_PROFILES: UserProfile[] = [
       'cotizaciones.ver_todas',
       'ventas.ver',
       'tarifario.ver',
+      'tickets.ver',
       'ia.asistente',
       'configuracion.aprendizaje',
       'configuracion.bibliografia',

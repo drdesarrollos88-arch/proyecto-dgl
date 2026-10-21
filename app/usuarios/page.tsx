@@ -39,7 +39,9 @@ import {
   X,
   Search,
   Sparkles,
+  FileSpreadsheet,
 } from 'lucide-react';
+import BulkUsersModal from '@/components/BulkUsersModal';
 
 function UsuariosContent() {
   const searchParams = useSearchParams();
@@ -47,6 +49,7 @@ function UsuariosContent() {
 
   // Pestañas principales: 'configurar' | 'crear' | 'perfiles'
   const [activeTab, setActiveTab] = useState<'configurar' | 'crear' | 'perfiles'>('configurar');
+  const [showBulkUsersModal, setShowBulkUsersModal] = useState(false);
 
   // Estados de datos
   const [users, setUsers] = useState<Omit<User, 'passwordHash'>[]>([]);
@@ -655,6 +658,16 @@ function UsuariosContent() {
             <Layers className="w-4 h-4 text-slate-500" />
             <span>Perfiles Base ({profiles.length})</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setShowBulkUsersModal(true)}
+            className="pb-3 px-4 text-sm font-bold transition-all border-b-2 flex items-center gap-2 cursor-pointer border-transparent text-slate-600 hover:text-blue-700 hover:border-blue-300 ml-auto"
+            title="Descargar plantilla y cargar usuarios masivamente desde Excel"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Carga Masiva (Excel)</span>
+          </button>
         </div>
 
         {/* ======================================================== */}
@@ -676,6 +689,15 @@ function UsuariosContent() {
               </div>
 
               <div className="flex items-center gap-3 text-xs text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => setShowBulkUsersModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-xs font-semibold text-emerald-800 transition-colors cursor-pointer shadow-2xs"
+                  title="Descargar plantilla y cargar usuarios masivamente desde Excel"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Carga Masiva Excel</span>
+                </button>
                 <span>
                   Mostrando <strong className="text-slate-800">{filteredUsers.length}</strong> usuarios
                 </span>
@@ -1597,6 +1619,13 @@ function UsuariosContent() {
           </div>
         </div>
       )}
+
+      {/* Modal Carga Masiva de Usuarios desde Excel */}
+      <BulkUsersModal
+        isOpen={showBulkUsersModal}
+        onClose={() => setShowBulkUsersModal(false)}
+        onSuccess={loadData}
+      />
     </div>
   );
 }

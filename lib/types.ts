@@ -11,10 +11,12 @@ export const PERMISSION_KEYS = [
   'cotizaciones.ver_todas',
   'cotizaciones.eliminar',
 
-  // Módulo Ventas & Salesforce
+  // Módulo Ventas & Salesforce (CRM)
   'ventas.ver',
   'ventas.cierre_oportunidad',
   'ventas.conciliador',
+  'oportunidades.metas',
+  'conciliador.aplicar',
 
   // Módulo Tarifario Oficial
   'tarifario.ver',
@@ -30,6 +32,10 @@ export const PERMISSION_KEYS = [
   'ia.asistente',
   'configuracion.aprendizaje',
   'configuracion.bibliografia',
+
+  // Módulo Tickets & Soporte Técnico
+  'tickets.ver',
+  'tickets.administrar',
 
   // Módulo Auditoría & Trazabilidad
   'auditoria.ver',

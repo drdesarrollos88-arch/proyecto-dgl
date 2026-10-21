@@ -37,9 +37,11 @@ import {
   Cloud,
   CreditCard,
   Maximize2,
+  Users,
 } from 'lucide-react';
 import SalesforceVentasDashboardModal from '@/components/salesforce/SalesforceVentasDashboardModal';
 import SalesforceCotizacionesDashboardModal from '@/components/salesforce/SalesforceCotizacionesDashboardModal';
+import BulkUsersModal from '@/components/BulkUsersModal';
 
 const MESES = [
   { value: 0, label: 'Todo el Año (Acumulado YTD)' },
@@ -101,6 +103,9 @@ export default function OportunidadesPage() {
   const [editingMetas, setEditingMetas] = useState<MetaComercialPeriodo[]>([]);
   const [newYearInput, setNewYearInput] = useState<string>('');
   const [savingMetas, setSavingMetas] = useState<boolean>(false);
+
+  // Modal de carga masiva de usuarios vía Excel
+  const [showBulkUsersModal, setShowBulkUsersModal] = useState<boolean>(false);
 
   // Modales de paneles detallados de Salesforce
   const [showVentasDashboardModal, setShowVentasDashboardModal] = useState<boolean>(false);
@@ -418,6 +423,17 @@ export default function OportunidadesPage() {
               >
                 <Target className="w-3.5 h-3.5 text-amber-600" />
                 Presupuestos & Metas
+              </button>
+
+              {/* Botón Carga Masiva de Usuarios (Excel) */}
+              <button
+                type="button"
+                onClick={() => setShowBulkUsersModal(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
+                title="Descargar formato Excel y cargar usuarios masivamente con permisos"
+              >
+                <Users className="w-3.5 h-3.5 text-blue-600" />
+                Usuarios Masivo
               </button>
 
               {/* Botón Exportar CSV */}
@@ -1230,6 +1246,12 @@ export default function OportunidadesPage() {
           metas={metas}
         />
       )}
+
+      {/* Modal Carga Masiva de Usuarios vía Excel */}
+      <BulkUsersModal
+        isOpen={showBulkUsersModal}
+        onClose={() => setShowBulkUsersModal(false)}
+      />
     </div>
   );
 }

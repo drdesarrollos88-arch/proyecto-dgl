@@ -13,11 +13,31 @@ export interface VersionRegistro {
 
 export const HISTORIAL_VERSIONES: VersionRegistro[] = [
   {
+    version: '2.7.3',
+    tag: 'v2.7.3',
+    fecha: '2026-10-21',
+    fechaFormato: '21 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Sistema de Carga y Creación Masiva de Usuarios vía Excel con Matriz Integral de Permisos y Auditoría',
+    modulos: ['Usuarios & RBAC', 'CRM & Ventas', 'Seguridad', 'Excel Engine', 'Auditoría'],
+    descripcion:
+      'Implementación del sistema corporativo de aprovisionamiento masivo de usuarios mediante planillas Microsoft Excel (.xlsx). Permite la descarga de la plantilla oficial con doble hoja (carga interactiva y guía de perfiles/roles), generación y actualización de cuentas con validación de credenciales (bcrypt), detección de duplicados por RUT/email, y asignación granular de 26 permisos organizados en los 10 módulos del sistema.',
+    detalles: [
+      'Plantilla Oficial Excel (.xlsx): Libro con dos hojas de trabajo; Hoja 1 "Usuarios y Permisos" estilizada con colores IDIEM DGL, validaciones y 26 columnas de permisos; Hoja 2 "Guía de Perfiles y Roles" con diccionario técnico completo e instrucciones.',
+      'Auditoría y Mapeo Completo del Sistema: Incorporación de los 10 módulos y 26 permisos granulares (Cotizador, Historial, CRM, Conciliador, Tarifario, Clientes, Tickets & Soporte, IA Copiloto, Auditoría, Configuración y RBAC).',
+      'Herencia Inteligente de Permisos: Los usuarios adoptan automáticamente los privilegios de su Perfil Base si las celdas de permisos se dejan en blanco o "HEREDAR", permitiendo a la vez excepciones específicas ("SI" / "NO").',
+      'Seguridad y Jerarquía RBAC: Protección de roles elevados para evitar escalamiento de privilegios, validación de contraseñas de al menos 6 caracteres con hashing bcrypt, y preservación de contraseñas previas en actualizaciones.',
+      'Accesibilidad Dual: Botón y modal de carga masiva incorporados tanto en la barra de herramientas del CRM (Oportunidades) como en el panel de Gestión de Usuarios.',
+      'Trazabilidad en Bitácora: Registro detallado en la tabla de auditoría con recuento de usuarios creados, actualizados, advertencias y metadatos del archivo procesado.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
     version: '2.7.2',
     tag: 'v2.7.2',
     fecha: '2026-10-21',
     fechaFormato: '21 de Octubre, 2026',
-    estado: 'activa',
+    estado: 'previa',
     titulo: 'Unificación de Bloques Cliente/Contacto, Bloques Colapsables y Nuevo Flujo de Modales en Cotizador',
     modulos: ['Cotizador', 'UI/UX', 'Gestión de Proyectos', 'Modales de Emisión'],
     descripcion:

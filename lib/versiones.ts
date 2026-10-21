@@ -13,11 +13,31 @@ export interface VersionRegistro {
 
 export const HISTORIAL_VERSIONES: VersionRegistro[] = [
   {
+    version: '2.7.2',
+    tag: 'v2.7.2',
+    fecha: '2026-10-21',
+    fechaFormato: '21 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Unificación de Bloques Cliente/Contacto, Bloques Colapsables y Nuevo Flujo de Modales en Cotizador',
+    modulos: ['Cotizador', 'UI/UX', 'Gestión de Proyectos', 'Modales de Emisión'],
+    descripcion:
+      'Optimización de la interfaz del cotizador: unificación del Bloque 1 y 2 en un solo contenedor colapsable, capacidad de ocultar/desplegar bloques de información de proyecto, reubicación del botón Guardar Datos Proyecto al pie izquierdo con persistencia total, preservación del número de cotización ante cambios de estructura DGL, y reestructuración completa de las opciones de acción en los modales de borrador y cotización finalizada.',
+    detalles: [
+      'Unificación Bloques 1 y 2: Fusión de Empresa Cliente y Contacto Comercial en un único bloque cohesivo con acordeón para ocultar/desplegar y resumen dinámico en cabecera.',
+      'Bloques Colapsables: Control de expansión/colapso para el bloque de Cliente y el bloque de Proyecto/Presupuesto, otorgando máxima área de trabajo a la tabla de partidas y ensayos.',
+      'Persistencia Integral al Pie Izquierdo: Reubicación del botón "Guardar Datos Proyecto" al pie del Bloque 2 para guardar simultáneamente empresa, contacto, obra, estructura DGL, Salesforce e indicadores.',
+      'Preservación de Correlativo en Estructura DGL: La modificación de Sección DGL o Centro de Costo (CC) actualiza exclusivamente el segmento del centro de costo en el código, evitando el reseteo del correlativo ingresado.',
+      'Modal de Borrador Reestructurado: Opciones claras "Continuar Editando Borrador", "Descargar Borrador", "Finalizar y Descargar Versión Final" y "Ver Historial".',
+      'Modal de Finalización Reestructurado: Opciones claras "Cerrar Cotización", "Continuar Editando" y "Ver Historial".',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
     version: '2.7.1',
     tag: 'v2.7.1',
     fecha: '2026-10-21',
     fechaFormato: '21 de Octubre, 2026',
-    estado: 'activa',
+    estado: 'previa',
     titulo: 'Motor Unificado de Cálculo y Cuadre Matemático Estricto de Cotizaciones (UF, CLP, USD)',
     modulos: ['Cotizador', 'Motor de Cálculo', 'Generador PDF', 'Generador Excel', 'Supabase DB'],
     descripcion:

@@ -78,6 +78,8 @@ import {
   FolderPlus,
   FolderArchive,
   TableProperties,
+  Download,
+  XCircle,
 } from 'lucide-react';
 
 function extractCcCode(ccStr: string): string {
@@ -105,6 +107,10 @@ function updateCodeWithCc(currentCode: string, newCc: string): string {
 
   if (/PR\.DGL\.\w+\./i.test(baseWithoutVersion)) {
     return baseWithoutVersion.replace(/PR\.DGL\.\w+\./i, `PR.DGL.${ccNum}.`) + versionSuffix;
+  }
+
+  if (/^\d{3,6}$/.test(baseWithoutVersion.trim())) {
+    return `PR.DGL.${ccNum}.${year}.${baseWithoutVersion.trim()}${versionSuffix || '-V1'}`;
   }
 
   return `PR.DGL.${ccNum}.${year}.0598${versionSuffix || '-V1'}`;
@@ -301,6 +307,8 @@ function CotizadorContent() {
   const [zonaProyecto, setZonaProyecto] = useState<ZonaProyecto>('Región Metropolitana');
   const [savingProjectMeta, setSavingProjectMeta] = useState(false);
   const [projectMetaSavedSuccess, setProjectMetaSavedSuccess] = useState(false);
+  const [isClientContactCollapsed, setIsClientContactCollapsed] = useState(false);
+  const [isProjectBudgetCollapsed, setIsProjectBudgetCollapsed] = useState(false);
   const [currency, setCurrency] = useState<'UF' | 'USD' | 'CLP'>('UF');
   const [code, setCode] = useState(() => {
     const year = new Date().getFullYear();
@@ -781,22 +789,9 @@ function CotizadorContent() {
     const dglInfo = getDGLInfoByCC(newCc);
     setSeccion(dglInfo.seccion);
 
-    if (!isVersionMode && !savedId) {
-      fetch(`/api/cotizaciones/next-code?centroCosto=${encodeURIComponent(newCc)}`)
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (data?.code) {
-            setCode(data.code);
-          } else {
-            setCode((prevCode) => updateCodeWithCc(prevCode, newCc));
-          }
-        })
-        .catch(() => {
-          setCode((prevCode) => updateCodeWithCc(prevCode, newCc));
-        });
-    } else {
-      setCode((prevCode) => updateCodeWithCc(prevCode, newCc));
-    }
+    // Actualiza únicamente el segmento del Centro de Costo en el código de presupuesto,
+    // preservando intacto el número correlativo que el usuario ya haya indicado o configurado.
+    setCode((prevCode) => updateCodeWithCc(prevCode, newCc));
   };
 
   const handleSeccionChange = (newSec: SeccionDGL) => {
@@ -1674,6 +1669,25 @@ function CotizadorContent() {
       const cotizacionToSave: Cotizacion = {
         ...currentCotizacion,
         clientName: activeClient,
+        clientRut: clientRut.trim(),
+        clientAttention: clientAttention.trim(),
+        clientPhone: clientPhone.trim(),
+        clientEmail: clientEmail.trim(),
+        paymentCondition: paymentCondition,
+        projectName: projectName.trim(),
+        projectId: projectId || undefined,
+        reference: reference.trim(),
+        city: city,
+        currency: currency,
+        code: code,
+        centroCosto: centroCosto,
+        seccion: seccion,
+        sectorProyecto: sectorProyecto,
+        subsectorProyecto: subsectorProyecto,
+        zonaProyecto: zonaProyecto,
+        ufValue: ufValue,
+        dollarValue: dollarValue,
+        showEconomicIndicators: showIndicatorsInPdf,
         commercialSignature: activeSig || currentCotizacion.commercialSignature,
         status: (originalQuote?.status || currentCotizacion.status || 'Borrador') as any,
         version: currentCotizacion.version || originalQuote?.version || 1,
@@ -1710,7 +1724,7 @@ function CotizadorContent() {
         setTimeout(() => setProjectMetaSavedSuccess(false), 4000);
         setStatusMessage({
           type: 'success',
-          text: `Estructura DGL y clasificación de Salesforce guardadas con éxito (${d.cotizacion.code}).`,
+          text: `Todos los datos del proyecto, cliente y presupuesto fueron guardados con éxito (${d.cotizacion.code}).`,
         });
       } else {
         setStatusMessage({
@@ -2468,245 +2482,278 @@ function CotizadorContent() {
         )}
 
 
-        {/* Zona Superior: 1. Empresa Cliente y 2. Contacto Comercial lado a lado */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 mb-3.5">
-          {/* ================= BLOQUE 1: EMPRESA ================= */}
-          <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs flex flex-col justify-between space-y-3">
-            <div>
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
-                <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-blue-700" />
-                  <span>1. Empresa Cliente</span>
-                </h2>
-                <button
-                  type="button"
-                  onClick={handleOpenNewClientModal}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors cursor-pointer"
-                >
-                  <PlusCircle className="w-3 h-3" />
-                  <span>+ Nueva</span>
-                </button>
-              </div>
-
-              {/* Predictive Search Bar */}
-              <div className="relative mb-3" ref={clientSearchRef}>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">
-                  Buscar en Base de Clientes (Razón Social o RUT)
-                </label>
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="Escriba nombre de empresa o RUT..."
-                    value={clientSearchQuery}
-                    onChange={(e) => {
-                      setClientSearchQuery(e.target.value);
-                      if (!clientDropdownOpen) setClientDropdownOpen(true);
-                    }}
-                    onFocus={() => {
-                      if (clientSuggestions.length > 0) setClientDropdownOpen(true);
-                    }}
-                    className="w-full pl-8 pr-8 py-1.5 rounded-lg border border-blue-200 bg-blue-50/20 text-xs focus:bg-white focus:ring-1 focus:ring-blue-600 focus:outline-none placeholder:text-slate-400"
-                  />
-                  {clientSearching && (
-                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                      <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
-                    </div>
-                  )}
-                </div>
-
-                {/* Suggestions Dropdown */}
-                {clientDropdownOpen && clientSuggestions.length > 0 && (
-                  <div className="absolute left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-30 max-h-56 overflow-y-auto divide-y divide-slate-100 animate-in fade-in slide-in-from-top-1 duration-100">
-                    {clientSuggestions.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => handleSelectClient(c)}
-                        className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-start justify-between gap-2 transition-colors cursor-pointer"
-                      >
-                        <div className="min-w-0">
-                          <div className="font-bold text-xs text-slate-900 truncate flex items-center gap-1.5">
-                            <span>{c.name}</span>
-                            {c.source === 'salesforce' && (
-                              <span className="text-[9px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200 flex-shrink-0">
-                                Salesforce
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[10px] text-slate-500 truncate flex items-center gap-1.5 mt-0.5">
-                            {c.comuna && <span>📍 {c.comuna}</span>}
-                            {c.paymentCondition && <span>💳 {c.paymentCondition}</span>}
-                          </div>
-                        </div>
-                        <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded border flex-shrink-0 ${
-                          isForeignRut(c.rut)
-                            ? 'bg-amber-50 text-amber-800 border-amber-200 font-semibold'
-                            : 'bg-slate-100 text-slate-700 border-slate-200'
-                        }`}>
-                          {isForeignRut(c.rut) ? '🌍 Extranjero' : (c.rut || 'S/RUT')}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
+        {/* ================= BLOQUE 1: EMPRESA CLIENTE Y CONTACTO COMERCIAL (UNIFICADO) ================= */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-xs mb-3.5 overflow-hidden transition-all">
+          {/* Cabecera del Bloque 1 con Toggle Ocultar/Desplegar */}
+          <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-50/70 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsClientContactCollapsed(!isClientContactCollapsed)}
+                className="flex items-center gap-1.5 text-xs font-bold text-slate-900 uppercase tracking-wider hover:text-blue-700 transition-colors cursor-pointer"
+                title={isClientContactCollapsed ? 'Desplegar bloque' : 'Ocultar bloque'}
+              >
+                <Building2 className="w-3.5 h-3.5 text-blue-700" />
+                <span>1. Empresa Cliente y Contacto Comercial</span>
+                {isClientContactCollapsed ? (
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-500 ml-1" />
+                ) : (
+                  <ChevronUp className="w-3.5 h-3.5 text-slate-500 ml-1" />
                 )}
-              </div>
-
-              {/* Selected Company Card (Ficha Fija de Empresa) */}
-              {clientName ? (
-                <div className="bg-slate-50 border border-blue-200 rounded-xl p-3 text-xs space-y-2 relative">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] font-bold text-blue-600 uppercase tracking-wider block">
-                          Empresa Asignada
-                        </span>
-                        {selectedClient?.source === 'salesforce' && (
-                          <span className="text-[8px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200">
-                            Salesforce CRM
-                          </span>
-                        )}
-                      </div>
-                      <div className="font-bold text-slate-900 text-sm leading-snug">
-                        {clientName}
-                      </div>
-                    </div>
-                    {clientRut && (
-                      <span className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded border flex-shrink-0 ${
-                        isForeignRut(clientRut)
-                          ? 'text-amber-800 bg-amber-50 border-amber-300'
-                          : 'text-blue-900 bg-blue-100 border-blue-200'
-                      }`}>
-                        {isForeignRut(clientRut) ? '🌍 Cuenta Extranjera (Sin RUT en PDF)' : clientRut}
-                      </span>
-                    )}
-                  </div>
-
-                  {selectedClient?.giro && (
-                    <div className="text-[11px] text-slate-600 truncate">
-                      🏢 <span className="font-medium">{selectedClient.giro}</span>
-                    </div>
-                  )}
-
-                  {selectedClient?.comuna && (
-                    <div className="text-[11px] text-slate-600 truncate">
-                      📍 <span>{selectedClient.address ? `${selectedClient.address}, ` : ''}{selectedClient.comuna}</span>
-                    </div>
-                  )}
-
-                  <div className="pt-1.5 border-t border-slate-200/80">
-                    <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">
-                      Condición de Pago
-                    </label>
-                    <input
-                      type="text"
-                      value={paymentCondition}
-                      onChange={(e) => setPaymentCondition(e.target.value)}
-                      className="w-full py-1 px-2 rounded border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                    />
-                  </div>
-
-                  <div className="pt-1 flex items-center justify-between text-[10px]">
-                    <span className="text-emerald-700 font-medium flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                      Datos vinculados
-                    </span>
-                    <div className="flex items-center gap-2">
-                      {selectedClient && (
-                        <button
-                          type="button"
-                          onClick={handleOpenEditClientModal}
-                          className="text-blue-700 hover:text-blue-900 font-semibold underline cursor-pointer"
-                        >
-                          Modificar en Base
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedClient(null);
-                          setClientName('');
-                          setClientRut('');
-                        }}
-                        className="text-slate-400 hover:text-red-600 font-medium cursor-pointer"
-                      >
-                        Cambiar
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* Fallback if user types without selecting from database */
-                <div className="border border-dashed border-slate-200 rounded-xl p-3 bg-slate-50/50 space-y-2">
-                  <div className="text-center">
-                    <Building className="w-5 h-5 text-slate-300 mx-auto mb-1" />
-                    <p className="text-xs font-medium text-slate-600">
-                      Ninguna empresa vinculada
-                    </p>
-                    <p className="text-[10px] text-slate-400">
-                      Selecciona una empresa del buscador o presiona <strong>+ Nueva</strong>.
-                    </p>
-                  </div>
-                  <div className="pt-1 space-y-1.5">
-                    <input
-                      type="text"
-                      placeholder="O escribe Razón Social directamente..."
-                      value={clientName}
-                      onChange={(e) => setClientName(e.target.value)}
-                      className="w-full py-1.5 px-2 text-xs border border-slate-300 rounded bg-white focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                    />
-                    <input
-                      type="text"
-                      placeholder="RUT Cliente (ej. 76.123.456-7)"
-                      value={clientRut}
-                      onChange={(e) => setClientRut(e.target.value)}
-                      className="w-full py-1.5 px-2 text-xs border border-slate-300 rounded font-mono bg-white focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                    />
-                  </div>
-                </div>
-              )}
+              </button>
             </div>
 
-            <div className="text-[10px] text-slate-400 flex items-center gap-1 pt-2 border-t border-slate-100">
-              <span>✓ Razón Social y RUT quedan fijos automáticamente.</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              {clientName ? (
+                <span className="text-[11px] font-bold text-slate-700 bg-white border border-slate-200 px-2.5 py-0.5 rounded-md flex items-center gap-1.5 shadow-2xs">
+                  <span className="text-blue-700 font-semibold truncate max-w-[180px]">{clientName}</span>
+                  {clientRut && <span className="font-mono text-slate-400 text-[10px]">({clientRut})</span>}
+                  {clientAttention && <span className="text-slate-400">• Atn: {clientAttention}</span>}
+                </span>
+              ) : (
+                <span className="text-[11px] text-slate-400 italic">Sin empresa vinculada</span>
+              )}
+
+              <button
+                type="button"
+                onClick={handleOpenNewClientModal}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 transition-colors cursor-pointer"
+              >
+                <PlusCircle className="w-3 h-3" />
+                <span>+ Nueva Empresa</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsClientContactCollapsed(!isClientContactCollapsed)}
+                className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 px-2 py-0.5 rounded hover:bg-slate-200/60 transition-colors cursor-pointer flex items-center gap-1"
+              >
+                {isClientContactCollapsed ? 'Desplegar' : 'Ocultar'}
+              </button>
             </div>
           </div>
 
-          {/* ================= BLOQUE 2: CONTACTO ================= */}
-          <div 
-            ref={contactBlockRef}
-            className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs flex flex-col justify-between space-y-3 relative"
-          >
-            <div>
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 mb-3">
-                <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <UserCheck className="w-3.5 h-3.5 text-blue-700" />
-                  <span>2. Contacto Comercial</span>
-                </h2>
-                {selectedContact ? (
-                  <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded font-medium flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                    Registrado
+          {/* Contenido desplegable del Bloque 1 */}
+          {!isClientContactCollapsed && (
+            <div className="p-4 grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+              {/* Sección Izquierda: Empresa Cliente */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
+                  <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                    <Building className="w-3 h-3 text-blue-600" />
+                    Datos de la Empresa
                   </span>
-                ) : clientEmail && clientEmail.includes('@') ? (
-                  <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded font-medium flex items-center gap-1">
-                    <Sparkles className="w-3 h-3 text-blue-600" />
-                    Nuevo Contacto
-                  </span>
+                  {selectedClient?.source === 'salesforce' && (
+                    <span className="text-[9px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200">
+                      Salesforce
+                    </span>
+                  )}
+                </div>
+
+                {/* Predictive Search Bar */}
+                <div className="relative" ref={clientSearchRef}>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1 tracking-wider">
+                    Buscar en Base de Clientes (Razón Social o RUT)
+                  </label>
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Escriba nombre de empresa o RUT..."
+                      value={clientSearchQuery}
+                      onChange={(e) => {
+                        setClientSearchQuery(e.target.value);
+                        if (!clientDropdownOpen) setClientDropdownOpen(true);
+                      }}
+                      onFocus={() => {
+                        if (clientSuggestions.length > 0) setClientDropdownOpen(true);
+                      }}
+                      className="w-full pl-8 pr-8 py-1.5 rounded-lg border border-blue-200 bg-blue-50/20 text-xs focus:bg-white focus:ring-1 focus:ring-blue-600 focus:outline-none placeholder:text-slate-400"
+                    />
+                    {clientSearching && (
+                      <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                        <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Suggestions Dropdown */}
+                  {clientDropdownOpen && clientSuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-30 max-h-56 overflow-y-auto divide-y divide-slate-100 animate-in fade-in slide-in-from-top-1 duration-100">
+                      {clientSuggestions.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => handleSelectClient(c)}
+                          className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-start justify-between gap-2 transition-colors cursor-pointer"
+                        >
+                          <div className="min-w-0">
+                            <div className="font-bold text-xs text-slate-900 truncate flex items-center gap-1.5">
+                              <span>{c.name}</span>
+                              {c.source === 'salesforce' && (
+                                <span className="text-[9px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200 flex-shrink-0">
+                                  Salesforce
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-500 truncate flex items-center gap-1.5 mt-0.5">
+                              {c.comuna && <span>📍 {c.comuna}</span>}
+                              {c.paymentCondition && <span>💳 {c.paymentCondition}</span>}
+                            </div>
+                          </div>
+                          <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded border flex-shrink-0 ${
+                            isForeignRut(c.rut)
+                              ? 'bg-amber-50 text-amber-800 border-amber-200 font-semibold'
+                              : 'bg-slate-100 text-slate-700 border-slate-200'
+                          }`}>
+                            {isForeignRut(c.rut) ? '🌍 Extranjero' : (c.rut || 'S/RUT')}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Selected Company Card */}
+                {clientName ? (
+                  <div className="bg-slate-50 border border-blue-200 rounded-xl p-3 text-xs space-y-2 relative">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] font-bold text-blue-600 uppercase tracking-wider block">
+                            Empresa Asignada
+                          </span>
+                          {selectedClient?.source === 'salesforce' && (
+                            <span className="text-[8px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200">
+                              Salesforce CRM
+                            </span>
+                          )}
+                        </div>
+                        <div className="font-bold text-slate-900 text-sm leading-snug">
+                          {clientName}
+                        </div>
+                      </div>
+                      {clientRut && (
+                        <span className={`font-mono text-[11px] font-bold px-2 py-0.5 rounded border flex-shrink-0 ${
+                          isForeignRut(clientRut)
+                            ? 'text-amber-800 bg-amber-50 border-amber-300'
+                            : 'text-blue-900 bg-blue-100 border-blue-200'
+                        }`}>
+                          {isForeignRut(clientRut) ? '🌍 Cuenta Extranjera (Sin RUT en PDF)' : clientRut}
+                        </span>
+                      )}
+                    </div>
+
+                    {selectedClient?.giro && (
+                      <div className="text-[11px] text-slate-600 truncate">
+                        🏢 <span className="font-medium">{selectedClient.giro}</span>
+                      </div>
+                    )}
+
+                    {selectedClient?.comuna && (
+                      <div className="text-[11px] text-slate-600 truncate">
+                        📍 <span>{selectedClient.address ? `${selectedClient.address}, ` : ''}{selectedClient.comuna}</span>
+                      </div>
+                    )}
+
+                    <div className="pt-1.5 border-t border-slate-200/80">
+                      <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">
+                        Condición de Pago
+                      </label>
+                      <input
+                        type="text"
+                        value={paymentCondition}
+                        onChange={(e) => setPaymentCondition(e.target.value)}
+                        className="w-full py-1 px-2 rounded border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="pt-1 flex items-center justify-between text-[10px]">
+                      <span className="text-emerald-700 font-medium flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        Datos vinculados
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {selectedClient && (
+                          <button
+                            type="button"
+                            onClick={handleOpenEditClientModal}
+                            className="text-blue-700 hover:text-blue-900 font-semibold underline cursor-pointer"
+                          >
+                            Modificar en Base
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedClient(null);
+                            setClientName('');
+                            setClientRut('');
+                          }}
+                          className="text-slate-400 hover:text-red-600 font-medium cursor-pointer"
+                        >
+                          Cambiar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 ) : (
-                  <span className="text-[10px] text-slate-500 bg-slate-50 px-2 py-0.5 rounded font-medium">
-                    Búsqueda predictiva
-                  </span>
+                  <div className="border border-dashed border-slate-200 rounded-xl p-3 bg-slate-50/50 space-y-2">
+                    <div className="text-center">
+                      <Building className="w-5 h-5 text-slate-300 mx-auto mb-1" />
+                      <p className="text-xs font-medium text-slate-600">
+                        Ninguna empresa vinculada
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        Selecciona una empresa del buscador o presiona <strong>+ Nueva Empresa</strong>.
+                      </p>
+                    </div>
+                    <div className="pt-1 space-y-1.5">
+                      <input
+                        type="text"
+                        placeholder="O escribe Razón Social directamente..."
+                        value={clientName}
+                        onChange={(e) => setClientName(e.target.value)}
+                        className="w-full py-1.5 px-2 text-xs border border-slate-300 rounded bg-white focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                      />
+                      <input
+                        type="text"
+                        placeholder="RUT Cliente (ej. 76.123.456-7)"
+                        value={clientRut}
+                        onChange={(e) => setClientRut(e.target.value)}
+                        className="w-full py-1.5 px-2 text-xs border border-slate-300 rounded font-mono bg-white focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
 
-              <div className="space-y-2.5 relative">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider flex items-center justify-between">
-                    <span>Atención (Contacto) *</span>
-                    {contactSearching && <Loader2 className="w-3 h-3 text-blue-600 animate-spin" />}
-                  </label>
-                  <div className="relative">
+              {/* Sección Derecha: Contacto Comercial */}
+              <div ref={contactBlockRef} className="space-y-3 relative lg:border-l lg:border-slate-100 lg:pl-4">
+                <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
+                  <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                    <UserCheck className="w-3 h-3 text-blue-600" />
+                    Contacto Comercial
+                  </span>
+                  {selectedContact ? (
+                    <span className="text-[9px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded font-medium flex items-center gap-1">
+                      <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                      Registrado
+                    </span>
+                  ) : clientEmail && clientEmail.includes('@') ? (
+                    <span className="text-[9px] text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.2 rounded font-medium flex items-center gap-1">
+                      <Sparkles className="w-2.5 h-2.5 text-blue-600" />
+                      Nuevo
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="space-y-2.5 relative">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider flex items-center justify-between">
+                      <span>Atención (Contacto) *</span>
+                      {contactSearching && <Loader2 className="w-3 h-3 text-blue-600 animate-spin" />}
+                    </label>
                     <input
                       type="text"
                       placeholder="ej. Ing. Carlos Muñoz"
@@ -2724,13 +2771,11 @@ function CotizadorContent() {
                       className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
                     />
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                    Teléfono Móvil
-                  </label>
-                  <div className="relative">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                      Teléfono Móvil
+                    </label>
                     <input
                       type="text"
                       placeholder="ej. +56 9 8765 4321"
@@ -2745,14 +2790,12 @@ function CotizadorContent() {
                       className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
                     />
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider flex items-center justify-between">
-                    <span>Correo Electrónico (ID Único) *</span>
-                    <span className="text-[9px] font-normal text-slate-400 lowercase">Clave principal</span>
-                  </label>
-                  <div className="relative">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider flex items-center justify-between">
+                      <span>Correo Electrónico (ID Único) *</span>
+                      <span className="text-[9px] font-normal text-slate-400 lowercase">Clave principal</span>
+                    </label>
                     <input
                       type="email"
                       placeholder="ej. contacto@empresa.cl"
@@ -2770,96 +2813,98 @@ function CotizadorContent() {
                       className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none font-mono"
                     />
                   </div>
+
+                  {/* Suggestions Dropdown for Contactos */}
+                  {contactDropdownOpen && contactSuggestions.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-30 max-h-56 overflow-y-auto divide-y divide-slate-100 animate-in fade-in slide-in-from-top-1 duration-100">
+                      <div className="px-3 py-1 bg-slate-50 text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                        <span>Contactos Registrados ({contactSuggestions.length})</span>
+                        <span className="text-[9px] text-blue-600 font-normal">Clic para autocompletar</span>
+                      </div>
+                      {contactSuggestions.map((c) => (
+                        <button
+                          key={c.id || c.email}
+                          type="button"
+                          onClick={() => handleSelectContact(c)}
+                          className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-start justify-between gap-2 transition-colors cursor-pointer"
+                        >
+                          <div className="min-w-0">
+                            <div className="font-bold text-xs text-slate-900 truncate flex items-center gap-1.5">
+                              <User className="w-3 h-3 text-blue-600 flex-shrink-0" />
+                              <span>{c.name}</span>
+                              {c.source === 'salesforce' && (
+                                <span className="text-[9px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200 flex-shrink-0">
+                                  Salesforce
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[11px] text-slate-600 truncate flex items-center gap-2 mt-0.5">
+                              <span className="flex items-center gap-1 text-slate-600 font-mono text-[10px]">
+                                <Mail className="w-2.5 h-2.5 text-slate-400" />
+                                {c.email}
+                              </span>
+                              {c.phone && (
+                                <span className="flex items-center gap-1 text-slate-500 font-mono text-[10px]">
+                                  <Phone className="w-2.5 h-2.5 text-slate-400" />
+                                  {c.phone}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <span className="font-mono text-[9px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200 flex-shrink-0 font-medium">
+                            ✓ En Base
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* Suggestions Dropdown for Contactos */}
-                {contactDropdownOpen && contactSuggestions.length > 0 && (
-                  <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-30 max-h-56 overflow-y-auto divide-y divide-slate-100 animate-in fade-in slide-in-from-top-1 duration-100">
-                    <div className="px-3 py-1 bg-slate-50 text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                      <span>Contactos Registrados ({contactSuggestions.length})</span>
-                      <span className="text-[9px] text-blue-600 font-normal">Clic para autocompletar</span>
-                    </div>
-                    {contactSuggestions.map((c) => (
-                      <button
-                        key={c.id || c.email}
-                        type="button"
-                        onClick={() => handleSelectContact(c)}
-                        className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-start justify-between gap-2 transition-colors cursor-pointer"
-                      >
-                        <div className="min-w-0">
-                          <div className="font-bold text-xs text-slate-900 truncate flex items-center gap-1.5">
-                            <User className="w-3 h-3 text-blue-600 flex-shrink-0" />
-                            <span>{c.name}</span>
-                            {c.source === 'salesforce' && (
-                              <span className="text-[9px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200 flex-shrink-0">
-                                Salesforce
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[11px] text-slate-600 truncate flex items-center gap-2 mt-0.5">
-                            <span className="flex items-center gap-1 text-slate-600 font-mono text-[10px]">
-                              <Mail className="w-2.5 h-2.5 text-slate-400" />
-                              {c.email}
-                            </span>
-                            {c.phone && (
-                              <span className="flex items-center gap-1 text-slate-500 font-mono text-[10px]">
-                                <Phone className="w-2.5 h-2.5 text-slate-400" />
-                                {c.phone}
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[10px] text-slate-400 truncate mt-0.5 flex items-center gap-2">
-                            {c.company && <span>🏢 {c.company}</span>}
-                            {c.cargo && <span>💼 {c.cargo}</span>}
-                          </div>
-                        </div>
-                        <span className="font-mono text-[9px] bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200 flex-shrink-0 font-medium">
-                          ✓ En Base
-                        </span>
-                      </button>
-                    ))}
+                {/* Status Footer */}
+                {selectedContact ? (
+                  <div className="p-2 bg-emerald-50/80 border border-emerald-200 rounded-lg text-[10px] text-emerald-900 flex items-center justify-between">
+                    <span className="flex items-center gap-1 font-medium truncate">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                      <span>Contacto registrado: <strong>{selectedContact.name}</strong></span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedContact(null)}
+                      className="text-emerald-700 hover:text-red-600 underline font-semibold ml-2 cursor-pointer flex-shrink-0"
+                    >
+                      Desvincular
+                    </button>
                   </div>
-                )}
+                ) : clientEmail && clientEmail.includes('@') && clientAttention ? (
+                  <div className="p-2 bg-blue-50/80 border border-blue-200 rounded-lg text-[10px] text-blue-800 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                    <span>✨ Nuevo contacto: se asociará a <strong>{clientEmail}</strong> automáticamente al guardar.</span>
+                  </div>
+                ) : null}
               </div>
             </div>
-
-            {/* Status Footer */}
-            {selectedContact ? (
-              <div className="p-2 bg-emerald-50/80 border border-emerald-200 rounded-lg text-[10px] text-emerald-900 flex items-center justify-between">
-                <span className="flex items-center gap-1 font-medium truncate">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                  <span>Contacto registrado: <strong>{selectedContact.name}</strong></span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSelectedContact(null)}
-                  className="text-emerald-700 hover:text-red-600 underline font-semibold ml-2 cursor-pointer flex-shrink-0"
-                >
-                  Desvincular
-                </button>
-              </div>
-            ) : clientEmail && clientEmail.includes('@') && clientAttention ? (
-              <div className="p-2 bg-blue-50/80 border border-blue-200 rounded-lg text-[10px] text-blue-800 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
-                <span>✨ Nuevo contacto: se guardará y asociará a <strong>{clientEmail}</strong> automáticamente al cotizar.</span>
-              </div>
-            ) : (
-              <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] text-slate-500">
-                💡 Al ingresar nombre, teléfono o correo, el sistema busca predictivamente y autocompleta. Si no existe, se guarda como nuevo.
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
-        {/* Zona Inferior: 3. Proyecto y Presupuesto de ancho completo horizontal */}
-        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs mb-3.5">
-          {/* Cabecera del Bloque 3 con Emisor & Firma integrado */}
-          <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100 mb-3">
+        {/* ================= BLOQUE 2: PROYECTO Y PRESUPUESTO ================= */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-xs mb-3.5 overflow-hidden transition-all">
+          {/* Cabecera del Bloque 2 con Emisor & Firma integrado y Toggle Ocultar/Desplegar */}
+          <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-50/70 border-b border-slate-100">
             <div className="flex items-center gap-2">
-              <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setIsProjectBudgetCollapsed(!isProjectBudgetCollapsed)}
+                className="flex items-center gap-1.5 text-xs font-bold text-slate-900 uppercase tracking-wider hover:text-blue-700 transition-colors cursor-pointer"
+                title={isProjectBudgetCollapsed ? 'Desplegar bloque' : 'Ocultar bloque'}
+              >
                 <Briefcase className="w-3.5 h-3.5 text-blue-700" />
-                <span>3. Proyecto y Presupuesto</span>
-              </h2>
+                <span>2. Proyecto y Presupuesto</span>
+                {isProjectBudgetCollapsed ? (
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-500 ml-1" />
+                ) : (
+                  <ChevronUp className="w-3.5 h-3.5 text-slate-500 ml-1" />
+                )}
+              </button>
               {code.match(/V\d+$/i) && (
                 <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded font-mono">
                   {code.match(/V\d+$/i)?.[0].toUpperCase()}
@@ -2867,426 +2912,473 @@ function CotizadorContent() {
               )}
             </div>
 
-            <div className="flex items-center gap-3 text-[11px] text-slate-500">
-              <span className="truncate">
+            <div className="flex items-center gap-3 text-[11px] text-slate-500 flex-wrap">
+              {projectName && (
+                <span className="font-semibold text-slate-700 bg-white border border-slate-200 px-2 py-0.5 rounded text-[10px] hidden md:inline-block truncate max-w-[200px]">
+                  🏗️ {projectName}
+                </span>
+              )}
+              <span className="font-mono text-blue-900 font-bold bg-blue-50 border border-blue-200 px-2 py-0.5 rounded text-[10px]">
+                {code}
+              </span>
+              <span className="truncate hidden sm:inline-block">
                 Emisor: <strong className="text-slate-700">{commercialName}</strong> ({commercialTitle})
               </span>
-              <span className="font-mono text-slate-600 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded text-[10px] hidden sm:inline-block">
+              <span className="font-mono text-slate-600 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded text-[10px] hidden lg:inline-block">
                 Ref: {commercialInitials} {commercialSignature ? '• Firma ✓' : ''}
               </span>
+              <button
+                type="button"
+                onClick={() => setIsProjectBudgetCollapsed(!isProjectBudgetCollapsed)}
+                className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 px-2 py-0.5 rounded hover:bg-slate-200/60 transition-colors cursor-pointer flex items-center gap-1"
+              >
+                {isProjectBudgetCollapsed ? 'Desplegar' : 'Ocultar'}
+              </button>
             </div>
           </div>
 
-          {/* Fila 1: Datos de la Obra y Presupuesto */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 mb-3">
-            {/* Nombre Obra / Proyecto */}
-            <div ref={projectSearchRef} className="relative sm:col-span-2 lg:col-span-4">
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                  Nombre Obra / Proyecto
-                </label>
-                {projectId ? (
-                  <div className="flex items-center gap-1.5">
-                    <span 
-                      title="ID único e irrepetible no modificable por usuarios"
-                      className="font-mono text-[10px] font-bold bg-blue-100 text-blue-900 border border-blue-300 px-2 py-0.5 rounded flex items-center gap-1 cursor-default select-none shadow-xs"
-                    >
-                      <Lock className="w-2.5 h-2.5 text-blue-700" />
-                      {projectId}
-                    </span>
+          {/* Contenido desplegable del Bloque 2 */}
+          {!isProjectBudgetCollapsed && (
+            <div className="p-4 space-y-3.5">
+              {/* Fila 1: Datos de la Obra y Presupuesto */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
+                {/* Nombre Obra / Proyecto */}
+                <div ref={projectSearchRef} className="relative sm:col-span-2 lg:col-span-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                      Nombre Obra / Proyecto
+                    </label>
+                    {projectId ? (
+                      <div className="flex items-center gap-1.5">
+                        <span 
+                          title="ID único e irrepetible no modificable por usuarios"
+                          className="font-mono text-[10px] font-bold bg-blue-100 text-blue-900 border border-blue-300 px-2 py-0.5 rounded flex items-center gap-1 cursor-default select-none shadow-xs"
+                        >
+                          <Lock className="w-2.5 h-2.5 text-blue-700" />
+                          {projectId}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProjectId('');
+                            setStatusMessage({
+                              type: 'success',
+                              text: 'Proyecto desvinculado. Al guardar se generará un nuevo ID irrepetible.',
+                            });
+                          }}
+                          title="Desvincular para registrar como un nuevo proyecto con ID único"
+                          className="text-[9px] text-slate-400 hover:text-red-600 underline cursor-pointer"
+                        >
+                          Nuevo Proyecto
+                        </button>
+                      </div>
+                    ) : projectName ? (
+                      <span className="text-[9px] font-medium text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded flex items-center gap-1">
+                        <Sparkles className="w-2.5 h-2.5 text-blue-500" />
+                        ID asignado al guardar
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="ej. Edificio Los Olivos - Etapa 2"
+                      value={projectName}
+                      onChange={(e) => {
+                        setProjectName(e.target.value);
+                        if (projectId) setProjectId('');
+                      }}
+                      onFocus={() => {
+                        if (projectSuggestions.length > 0 && !projectId) setProjectDropdownOpen(true);
+                      }}
+                      className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                    />
+                    {projectSearching && (
+                      <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                        <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Suggestions Dropdown for Projects */}
+                  {projectDropdownOpen && projectSuggestions.length > 0 && !projectId && (
+                    <div className="absolute left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-30 max-h-52 overflow-y-auto divide-y divide-slate-100 animate-in fade-in slide-in-from-top-1 duration-100">
+                      <div className="px-3 py-1 bg-slate-50 text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                        <span>Proyectos Registrados ({projectSuggestions.length})</span>
+                        <span className="text-[9px] text-blue-600 font-normal">Clic para asignar</span>
+                      </div>
+                      {projectSuggestions.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => handleSelectProject(p)}
+                          className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-start justify-between gap-2 transition-colors cursor-pointer"
+                        >
+                          <div className="min-w-0">
+                            <div className="font-bold text-xs text-slate-900 truncate">{p.name}</div>
+                            <div className="text-[10px] text-slate-500 truncate flex items-center gap-1.5 mt-0.5">
+                              {p.reference && <span>📋 {p.reference}</span>}
+                              {p.city && <span>📍 {p.city}</span>}
+                              {p.clientName && <span>🏢 {p.clientName}</span>}
+                            </div>
+                          </div>
+                          <span className="font-mono text-[10px] font-bold bg-blue-50 text-blue-800 px-1.5 py-0.5 rounded border border-blue-200 flex-shrink-0 flex items-center gap-1">
+                            <Lock className="w-2.5 h-2.5 text-blue-600" />
+                            {p.id}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Referencia */}
+                <div className="sm:col-span-1 lg:col-span-2">
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1 tracking-wider">
+                    Referencia
+                  </label>
+                  <input
+                    type="text"
+                    value={reference}
+                    onChange={(e) => setReference(e.target.value)}
+                    className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                  />
+                </div>
+
+                {/* Sede */}
+                <div className="sm:col-span-1 lg:col-span-2">
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1 tracking-wider">
+                    Sede
+                  </label>
+                  <select
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 text-xs bg-white focus:ring-1 focus:ring-blue-600 focus:outline-none font-medium"
+                  >
+                    <option value="Santiago">Santiago</option>
+                    <option value="Concepción">Concepción</option>
+                    <option value="Terreno / Regiones">Terreno / Regiones</option>
+                  </select>
+                </div>
+
+                {/* Moneda Propuesta */}
+                <div className="sm:col-span-1 lg:col-span-2">
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1 tracking-wider">
+                    Moneda Propuesta *
+                  </label>
+                  <select
+                    value={currency}
+                    onChange={(e) => handleCurrencyChange(e.target.value as 'UF' | 'USD' | 'CLP')}
+                    className="w-full py-1.5 px-2.5 rounded-lg border border-emerald-300 bg-emerald-50/40 text-xs font-bold text-emerald-950 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                  >
+                    <option value="UF">UF (Unidad de Fomento)</option>
+                    <option value="USD">USD (Dólares Americanos)</option>
+                    <option value="CLP">CLP (Pesos Chilenos)</option>
+                  </select>
+                </div>
+
+                {/* Código de Presupuesto */}
+                <div className="sm:col-span-1 lg:col-span-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                      Código de Presupuesto
+                    </label>
                     <button
                       type="button"
                       onClick={() => {
-                        setProjectId('');
-                        setStatusMessage({
-                          type: 'success',
-                          text: 'Proyecto desvinculado. Al guardar se generará un nuevo ID irrepetible.',
-                        });
+                        const ccNum = extractCcCode(centroCosto);
+                        fetch(`/api/cotizaciones/next-code?centroCosto=${encodeURIComponent(ccNum)}`)
+                          .then((res) => (res.ok ? res.json() : null))
+                          .then((data) => {
+                            if (data?.code) setCode(data.code);
+                          })
+                          .catch(() => {});
                       }}
-                      title="Desvincular para registrar como un nuevo proyecto con ID único"
-                      className="text-[9px] text-slate-400 hover:text-red-600 underline cursor-pointer"
+                      title="Obtener siguiente correlativo automático desde la base de datos para este CC"
+                      className="text-[9px] text-blue-700 hover:text-blue-900 font-semibold underline cursor-pointer"
                     >
-                      Nuevo Proyecto
+                      Siguiente #
                     </button>
                   </div>
-                ) : projectName ? (
-                  <span className="text-[9px] font-medium text-blue-600 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded flex items-center gap-1">
-                    <Sparkles className="w-2.5 h-2.5 text-blue-500" />
-                    ID asignado al guardar
-                  </span>
-                ) : null}
+                  <input
+                    type="text"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 font-mono text-xs font-bold text-blue-900 bg-blue-50/40 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                  />
+                </div>
               </div>
 
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="ej. Edificio Los Olivos - Etapa 2"
-                  value={projectName}
-                  onChange={(e) => {
-                    setProjectName(e.target.value);
-                    if (projectId) setProjectId('');
-                  }}
-                  onFocus={() => {
-                    if (projectSuggestions.length > 0 && !projectId) setProjectDropdownOpen(true);
-                  }}
-                  className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                />
-                {projectSearching && (
-                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                    <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+              {/* Fila 2: Estructura DGL & Salesforce (7 cols) + Indicadores Oficiales (5 cols) */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 pt-3 border-t border-slate-100 items-start">
+                {/* Bloque Izquierdo: Estructura DGL & Clasificación Salesforce (7 cols) */}
+                <div className="lg:col-span-7 bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 space-y-2.5">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200/60">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
+                        Estructura DGL & Clasificación Salesforce
+                      </span>
+                      <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                        <span>DGL</span>
+                        <span>•</span>
+                        <span>Servicio: Ensayos</span>
+                      </span>
+                    </div>
                   </div>
-                )}
-              </div>
 
-              {/* Suggestions Dropdown for Projects */}
-              {projectDropdownOpen && projectSuggestions.length > 0 && !projectId && (
-                <div className="absolute left-0 right-0 mt-1 bg-white rounded-xl shadow-xl border border-slate-200 py-1 z-30 max-h-52 overflow-y-auto divide-y divide-slate-100 animate-in fade-in slide-in-from-top-1 duration-100">
-                  <div className="px-3 py-1 bg-slate-50 text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                    <span>Proyectos Registrados ({projectSuggestions.length})</span>
-                    <span className="text-[9px] text-blue-600 font-normal">Clic para asignar</span>
+                  {/* Fila Estructura DGL (Sección y Centro de Costo) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                        Sección DGL *
+                      </label>
+                      <select
+                        value={seccion}
+                        onChange={(e) => handleSeccionChange(e.target.value as SeccionDGL)}
+                        className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                      >
+                        {SECCIONES_DGL.map((sec) => (
+                          <option key={sec} value={sec}>
+                            {sec}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                        Unidad / Centro de Costo (CC) *
+                      </label>
+                      <select
+                        value={centroCosto}
+                        onChange={(e) => handleCentroCostoChange(e.target.value)}
+                        className="w-full py-1.5 px-2 rounded-lg border border-blue-300 bg-blue-50/40 text-xs font-semibold text-blue-950 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                      >
+                        {(DGL_UNIDADES.filter((u) => u.seccion === seccion).length > 0
+                          ? DGL_UNIDADES.filter((u) => u.seccion === seccion)
+                          : DGL_UNIDADES
+                        ).map((u) => {
+                          const ccMatch = CENTROS_DE_COSTO.find((cc) => cc.startsWith(u.code)) || u.name;
+                          return (
+                            <option key={u.code} value={ccMatch}>
+                              {u.name}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
                   </div>
-                  {projectSuggestions.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => handleSelectProject(p)}
-                      className="w-full text-left px-3 py-2 hover:bg-blue-50 flex items-start justify-between gap-2 transition-colors cursor-pointer"
+
+                  {/* Fila Clasificación Salesforce (Sector, Subsector, Zona) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-slate-200/60">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                        Sector *
+                      </label>
+                      <select
+                        value={sectorProyecto}
+                        onChange={(e) => setSectorProyecto(e.target.value as SectorProyecto)}
+                        className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                      >
+                        {SECTORES_PROYECTO.map((sec) => (
+                          <option key={sec} value={sec}>
+                            {sec}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                        Subsector *
+                      </label>
+                      <select
+                        value={subsectorProyecto}
+                        onChange={(e) => setSubsectorProyecto(e.target.value as SubsectorProyecto)}
+                        className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                      >
+                        {SUBSECTORES_PROYECTO.map((sub) => (
+                          <option key={sub} value={sub}>
+                            {sub}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
+                        Zona *
+                      </label>
+                      <select
+                        value={zonaProyecto}
+                        onChange={(e) => setZonaProyecto(e.target.value as ZonaProyecto)}
+                        className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
+                      >
+                        {ZONAS_PROYECTO.map((zona) => (
+                          <option key={zona} value={zona}>
+                            {zona}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bloque Derecho: Indicadores Oficiales (5 cols) */}
+                <div className="lg:col-span-5 bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/60">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider">
+                        Indicadores Oficiales
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => fetchIndicators(true)}
+                        disabled={isRefreshingIndicators}
+                        title="Revalidar valor oficial en tiempo real con Banco Central"
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 hover:border-slate-400 transition-colors disabled:opacity-50 cursor-pointer"
+                      >
+                        <RefreshCw className={`w-3 h-3 text-slate-500 ${isRefreshingIndicators ? 'animate-spin' : ''}`} />
+                        <span>{isRefreshingIndicators ? 'Revalidando...' : 'Revalidar'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowManualIndicatorEdit(!showManualIndicatorEdit)}
+                        className="px-1.5 py-0.5 rounded text-[10px] font-medium text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer"
+                      >
+                        {showManualIndicatorEdit ? 'Cerrar' : 'Ajustar'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                      <div className="text-[9px] text-slate-500 font-medium">UF Oficial</div>
+                      <div className="text-sm font-mono font-bold text-emerald-900">
+                        ${ufValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                    <div className="bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
+                      <div className="text-[9px] text-slate-500 font-medium">Dólar Observado</div>
+                      <div className="text-sm font-mono font-bold text-slate-900">
+                        ${dollarValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {indicators?.source && (
+                    <div className="text-[9px] text-slate-400 flex items-center justify-between">
+                      <span className="truncate">Fuente: {indicators.source}</span>
+                      <span>{indicators.date || 'Hoy'}</span>
+                    </div>
+                  )}
+
+                  {/* Opción para incluir o no los indicadores oficiales en el documento PDF */}
+                  <div className="pt-1.5 border-t border-slate-200/80 flex items-center justify-between gap-2">
+                    <label className="flex items-center gap-1.5 text-[10px] text-slate-700 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={showIndicatorsInPdf}
+                        onChange={(e) => setShowIndicatorsInPdf(e.target.checked)}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
+                      />
+                      <span>Mostrar en documento PDF</span>
+                    </label>
+                    <span
+                      className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                        showIndicatorsInPdf
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          : 'bg-slate-200 text-slate-600 border border-slate-300'
+                      }`}
                     >
-                      <div className="min-w-0">
-                        <div className="font-bold text-xs text-slate-900 truncate">{p.name}</div>
-                        <div className="text-[10px] text-slate-500 truncate flex items-center gap-1.5 mt-0.5">
-                          {p.reference && <span>📋 {p.reference}</span>}
-                          {p.city && <span>📍 {p.city}</span>}
-                          {p.clientName && <span>🏢 {p.clientName}</span>}
+                      {showIndicatorsInPdf ? 'Visible' : 'Oculto'}
+                    </span>
+                  </div>
+
+                  {showManualIndicatorEdit && (
+                    <div className="mt-1.5 pt-1.5 border-t border-slate-200 space-y-1.5 animate-in fade-in">
+                      <div className="text-[10px] font-semibold text-amber-800 bg-amber-50 p-1 rounded border border-amber-200">
+                        Ajustar valores para este presupuesto:
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <div>
+                          <label className="block text-[9px] text-slate-600 mb-0.5">UF ($)</label>
+                          <input
+                            type="text"
+                            value={customUfInput}
+                            onChange={(e) => setCustomUfInput(e.target.value)}
+                            className="w-full px-1.5 py-0.5 text-xs border border-slate-300 rounded font-mono"
+                            placeholder="40879.04"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] text-slate-600 mb-0.5">Dólar ($)</label>
+                          <input
+                            type="text"
+                            value={customDollarInput}
+                            onChange={(e) => setCustomDollarInput(e.target.value)}
+                            className="w-full px-1.5 py-0.5 text-xs border border-slate-300 rounded font-mono"
+                            placeholder="933.47"
+                          />
                         </div>
                       </div>
-                      <span className="font-mono text-[10px] font-bold bg-blue-50 text-blue-800 px-1.5 py-0.5 rounded border border-blue-200 flex-shrink-0 flex items-center gap-1">
-                        <Lock className="w-2.5 h-2.5 text-blue-600" />
-                        {p.id}
-                      </span>
-                    </button>
-                  ))}
+                      <div className="flex justify-end gap-1.5 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setShowManualIndicatorEdit(false)}
+                          className="px-2 py-0.5 text-[10px] text-slate-600 hover:bg-slate-200 rounded cursor-pointer"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleApplyCustomIndicators}
+                          className="px-2 py-0.5 text-[10px] font-semibold bg-blue-600 text-white hover:bg-blue-700 rounded shadow-xs cursor-pointer"
+                        >
+                          Aplicar
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </div>
 
-            {/* Referencia */}
-            <div className="sm:col-span-1 lg:col-span-2">
-              <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1 tracking-wider">
-                Referencia
-              </label>
-              <input
-                type="text"
-                value={reference}
-                onChange={(e) => setReference(e.target.value)}
-                className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 text-xs focus:ring-1 focus:ring-blue-600 focus:outline-none"
-              />
-            </div>
+              {/* Pie de Bloque: Botón Guardar Datos Proyecto a la IZQUIERDA */}
+              <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <button
+                    type="button"
+                    onClick={handleSaveProjectMeta}
+                    disabled={savingProjectMeta}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 active:scale-95 text-white shadow-sm shadow-blue-600/20 transition-all cursor-pointer disabled:opacity-50"
+                    title="Guarda toda la información de empresa, contacto, proyecto, clasificación DGL e indicadores en la base de datos"
+                  >
+                    {savingProjectMeta ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    <span>{savingProjectMeta ? 'Guardando Datos...' : 'Guardar Datos Proyecto'}</span>
+                  </button>
 
-            {/* Sede */}
-            <div className="sm:col-span-1 lg:col-span-2">
-              <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1 tracking-wider">
-                Sede
-              </label>
-              <select
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 text-xs bg-white focus:ring-1 focus:ring-blue-600 focus:outline-none font-medium"
-              >
-                <option value="Santiago">Santiago</option>
-                <option value="Concepción">Concepción</option>
-                <option value="Terreno / Regiones">Terreno / Regiones</option>
-              </select>
-            </div>
-
-            {/* Moneda Propuesta */}
-            <div className="sm:col-span-1 lg:col-span-2">
-              <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1 tracking-wider">
-                Moneda Propuesta *
-              </label>
-              <select
-                value={currency}
-                onChange={(e) => handleCurrencyChange(e.target.value as 'UF' | 'USD' | 'CLP')}
-                className="w-full py-1.5 px-2.5 rounded-lg border border-emerald-300 bg-emerald-50/40 text-xs font-bold text-emerald-950 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
-              >
-                <option value="UF">UF (Unidad de Fomento)</option>
-                <option value="USD">USD (Dólares Americanos)</option>
-                <option value="CLP">CLP (Pesos Chilenos)</option>
-              </select>
-            </div>
-
-            {/* Código de Presupuesto */}
-            <div className="sm:col-span-1 lg:col-span-2">
-              <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1 tracking-wider">
-                Código de Presupuesto
-              </label>
-              <input
-                type="text"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                className="w-full py-1.5 px-2.5 rounded-lg border border-slate-300 font-mono text-xs font-bold text-blue-900 bg-blue-50/40 focus:ring-1 focus:ring-blue-600 focus:outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Fila 2: Estructura DGL & Salesforce (7 cols) + Indicadores Oficiales (5 cols) */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 pt-3 border-t border-slate-100 items-start">
-            {/* Bloque Izquierdo: Estructura DGL & Clasificación Salesforce (7 cols) */}
-            <div className="lg:col-span-7 bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 space-y-2.5">
-              {/* Cabecera del sub-bloque con botón de guardar */}
-              <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-200/60">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                    Estructura DGL & Clasificación Salesforce
-                  </span>
-                  <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                    <span>DGL</span>
-                    <span>•</span>
-                    <span>Servicio: Ensayos</span>
-                  </span>
                   {projectMetaSavedSuccess && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-300 animate-in fade-in">
-                      <Check className="w-3 h-3 text-emerald-600" />
-                      <span>¡Guardado!</span>
+                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-300 animate-in fade-in">
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>¡Todos los datos del proyecto se guardaron con éxito!</span>
                     </span>
                   )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleSaveProjectMeta}
-                  disabled={savingProjectMeta}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all cursor-pointer disabled:opacity-50"
-                  title="Guarda la estructura DGL y clasificación de Salesforce en la base de datos"
-                >
-                  {savingProjectMeta ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Save className="w-3.5 h-3.5" />
-                  )}
-                  <span>{savingProjectMeta ? 'Guardando...' : 'Guardar Datos Proyecto'}</span>
-                </button>
-              </div>
-
-              {/* Fila Estructura DGL (Sección y Centro de Costo) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                    Sección DGL *
-                  </label>
-                  <select
-                    value={seccion}
-                    onChange={(e) => handleSeccionChange(e.target.value as SeccionDGL)}
-                    className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                  >
-                    {SECCIONES_DGL.map((sec) => (
-                      <option key={sec} value={sec}>
-                        {sec}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                    Unidad / Centro de Costo (CC) *
-                  </label>
-                  <select
-                    value={centroCosto}
-                    onChange={(e) => handleCentroCostoChange(e.target.value)}
-                    className="w-full py-1.5 px-2 rounded-lg border border-blue-300 bg-blue-50/40 text-xs font-semibold text-blue-950 focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                  >
-                    {(DGL_UNIDADES.filter((u) => u.seccion === seccion).length > 0
-                      ? DGL_UNIDADES.filter((u) => u.seccion === seccion)
-                      : DGL_UNIDADES
-                    ).map((u) => {
-                      const ccMatch = CENTROS_DE_COSTO.find((cc) => cc.startsWith(u.code)) || u.name;
-                      return (
-                        <option key={u.code} value={ccMatch}>
-                          {u.name}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-              </div>
-
-              {/* Fila Clasificación Salesforce (Sector, Subsector, Zona) */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-slate-200/60">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                    Sector *
-                  </label>
-                  <select
-                    value={sectorProyecto}
-                    onChange={(e) => setSectorProyecto(e.target.value as SectorProyecto)}
-                    className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                  >
-                    {SECTORES_PROYECTO.map((sec) => (
-                      <option key={sec} value={sec}>
-                        {sec}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                    Subsector *
-                  </label>
-                  <select
-                    value={subsectorProyecto}
-                    onChange={(e) => setSubsectorProyecto(e.target.value as SubsectorProyecto)}
-                    className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                  >
-                    {SUBSECTORES_PROYECTO.map((sub) => (
-                      <option key={sub} value={sub}>
-                        {sub}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5 tracking-wider">
-                    Zona *
-                  </label>
-                  <select
-                    value={zonaProyecto}
-                    onChange={(e) => setZonaProyecto(e.target.value as ZonaProyecto)}
-                    className="w-full py-1.5 px-2 rounded-lg border border-slate-300 bg-white text-xs font-medium text-slate-800 focus:ring-1 focus:ring-blue-600 focus:outline-none"
-                  >
-                    {ZONAS_PROYECTO.map((zona) => (
-                      <option key={zona} value={zona}>
-                        {zona}
-                      </option>
-                    ))}
-                  </select>
+                <div className="text-[11px] text-slate-400">
+                  <span>✓ Guarda empresa, contacto, obra, estructura DGL y Salesforce sin alterar el documento final.</span>
                 </div>
               </div>
             </div>
-
-            {/* Bloque Derecho: Indicadores Oficiales (5 cols) */}
-            <div className="lg:col-span-5 bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 space-y-2">
-              <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/60">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span className="font-bold text-slate-800 text-[10px] uppercase tracking-wider">
-                    Indicadores Oficiales
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => fetchIndicators(true)}
-                    disabled={isRefreshingIndicators}
-                    title="Revalidar valor oficial en tiempo real con Banco Central"
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 hover:border-slate-400 transition-colors disabled:opacity-50 cursor-pointer"
-                  >
-                    <RefreshCw className={`w-3 h-3 text-slate-500 ${isRefreshingIndicators ? 'animate-spin' : ''}`} />
-                    <span>{isRefreshingIndicators ? 'Revalidando...' : 'Revalidar'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowManualIndicatorEdit(!showManualIndicatorEdit)}
-                    className="px-1.5 py-0.5 rounded text-[10px] font-medium text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer"
-                  >
-                    {showManualIndicatorEdit ? 'Cerrar' : 'Ajustar'}
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
-                  <div className="text-[9px] text-slate-500 font-medium">UF Oficial</div>
-                  <div className="text-sm font-mono font-bold text-emerald-900">
-                    ${ufValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                </div>
-                <div className="bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 shadow-2xs">
-                  <div className="text-[9px] text-slate-500 font-medium">Dólar Observado</div>
-                  <div className="text-sm font-mono font-bold text-slate-900">
-                    ${dollarValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                </div>
-              </div>
-
-              {indicators?.source && (
-                <div className="text-[9px] text-slate-400 flex items-center justify-between">
-                  <span className="truncate">Fuente: {indicators.source}</span>
-                  <span>{indicators.date || 'Hoy'}</span>
-                </div>
-              )}
-
-              {/* Opción para incluir o no los indicadores oficiales en el documento PDF */}
-              <div className="pt-1.5 border-t border-slate-200/80 flex items-center justify-between gap-2">
-                <label className="flex items-center gap-1.5 text-[10px] text-slate-700 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={showIndicatorsInPdf}
-                    onChange={(e) => setShowIndicatorsInPdf(e.target.checked)}
-                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer"
-                  />
-                  <span>Mostrar en documento PDF</span>
-                </label>
-                <span
-                  className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
-                    showIndicatorsInPdf
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                      : 'bg-slate-200 text-slate-600 border border-slate-300'
-                  }`}
-                >
-                  {showIndicatorsInPdf ? 'Visible' : 'Oculto'}
-                </span>
-              </div>
-
-              {showManualIndicatorEdit && (
-                <div className="mt-1.5 pt-1.5 border-t border-slate-200 space-y-1.5 animate-in fade-in">
-                  <div className="text-[10px] font-semibold text-amber-800 bg-amber-50 p-1 rounded border border-amber-200">
-                    Ajustar valores para este presupuesto:
-                  </div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    <div>
-                      <label className="block text-[9px] text-slate-600 mb-0.5">UF ($)</label>
-                      <input
-                        type="text"
-                        value={customUfInput}
-                        onChange={(e) => setCustomUfInput(e.target.value)}
-                        className="w-full px-1.5 py-0.5 text-xs border border-slate-300 rounded font-mono"
-                        placeholder="40879.04"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[9px] text-slate-600 mb-0.5">Dólar ($)</label>
-                      <input
-                        type="text"
-                        value={customDollarInput}
-                        onChange={(e) => setCustomDollarInput(e.target.value)}
-                        className="w-full px-1.5 py-0.5 text-xs border border-slate-300 rounded font-mono"
-                        placeholder="933.47"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-end gap-1.5 pt-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setShowManualIndicatorEdit(false)}
-                      className="px-2 py-0.5 text-[10px] text-slate-600 hover:bg-slate-200 rounded cursor-pointer"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleApplyCustomIndicators}
-                      className="px-2 py-0.5 text-[10px] font-semibold bg-blue-600 text-white hover:bg-blue-700 rounded shadow-xs cursor-pointer"
-                    >
-                      Aplicar
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Items Table Section - Compact */}
@@ -4685,42 +4777,47 @@ function CotizadorContent() {
 
             {/* Direct Action Buttons */}
             {modalMode === 'finalized' ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleDownloadPdfOnly()}
-                  disabled={generatingPdf}
-                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-[#E20000] hover:bg-[#C20000] text-white text-xs font-bold shadow-sm shadow-red-600/20 transition-all cursor-pointer disabled:opacity-50"
-                >
-                  <FileText className="w-4 h-4" />
-                  <span>{generatingPdf ? 'Descargando...' : 'Descargar PDF Nuevamente'}</span>
-                </button>
+              <div className="space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSuccessModal(false);
+                      handleReset();
+                    }}
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-all cursor-pointer sm:col-span-2"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    <span>Cerrar Cotización</span>
+                  </button>
 
-                <Link
-                  href="/cotizaciones"
-                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-all"
-                >
-                  <span>Ver en Historial</span>
-                </Link>
+                  <button
+                    type="button"
+                    onClick={() => setShowSuccessModal(false)}
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                    <span>Continuar Editando</span>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => setShowSuccessModal(false)}
-                  className="py-2.5 px-3 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all cursor-pointer"
-                >
-                  Continuar Editando
-                </button>
+                  <Link
+                    href="/cotizaciones"
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all"
+                  >
+                    <span>Ver Historial</span>
+                  </Link>
+                </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowSuccessModal(false);
-                    handleReset();
-                  }}
-                  className="py-2.5 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition-all cursor-pointer"
-                >
-                  Nueva Cotización
-                </button>
+                <div className="pt-1 text-center">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadPdfOnly()}
+                    disabled={generatingPdf}
+                    className="text-[11px] text-blue-700 hover:text-blue-900 font-semibold underline cursor-pointer disabled:opacity-50"
+                  >
+                    {generatingPdf ? 'Descargando...' : 'Descargar PDF Nuevamente'}
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -4734,22 +4831,35 @@ function CotizadorContent() {
                   className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-[#E20000] hover:bg-[#C20000] text-white text-xs font-bold shadow-sm shadow-red-600/20 transition-all cursor-pointer disabled:opacity-50 sm:col-span-2"
                 >
                   <FileText className="w-4 h-4" />
-                  <span>{generatingPdf ? 'Finalizando...' : 'Finalizar y Generar PDF Ahora'}</span>
+                  <span>{generatingPdf ? 'Finalizando...' : 'Finalizar y Descargar Versión Final'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleDownloadDraftPdf();
+                  }}
+                  disabled={generatingPdf}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>{generatingPdf ? 'Generando...' : 'Descargar Borrador'}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setShowSuccessModal(false)}
-                  className="py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-all cursor-pointer"
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-all cursor-pointer"
                 >
-                  Continuar Editando
+                  <Edit3 className="w-4 h-4" />
+                  <span>Continuar Editando Borrador</span>
                 </button>
 
                 <Link
                   href="/cotizaciones"
-                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all"
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all sm:col-span-2"
                 >
-                  <span>Ver en Historial</span>
+                  <span>Ver Historial</span>
                 </Link>
               </div>
             )}

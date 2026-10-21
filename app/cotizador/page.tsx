@@ -28,6 +28,11 @@ import {
   isForeignRut,
 } from '@/lib/types';
 import { generateCotizacionPdf } from '@/lib/pdf-generator';
+import {
+  calculateItemSubtotals,
+  recalculateCotizacionItems,
+  calculateCotizacionTotals,
+} from '@/lib/cotizacion-calculations';
 import UnifiedAiAssistantModal, { DisplayChatMessage } from '@/components/UnifiedAiAssistantModal';
 import CommercialConditionsEditor from '@/components/CommercialConditionsEditor';
 import {
@@ -449,16 +454,24 @@ function CotizadorContent() {
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
 
-  // Recalculate CLP when UF changes
+  // Recalcular ítems con estricto cuadre aritmético cuando cambian indicadores económicos o moneda
+  const handleIndicatorsChange = (newUf: number, newDollar: number) => {
+    setUfValue(newUf);
+    setDollarValue(newDollar);
+    setCustomUfInput(String(newUf));
+    setCustomDollarInput(String(newDollar));
+    setItems((prev) => recalculateCotizacionItems(prev, newUf, newDollar, currency));
+  };
+
   const handleUfChange = (newUf: number) => {
     setUfValue(newUf);
     setCustomUfInput(String(newUf));
-    setItems((prev) =>
-      prev.map((it) => ({
-        ...it,
-        subtotalClp: Math.round(it.subtotalUf * newUf),
-      }))
-    );
+    setItems((prev) => recalculateCotizacionItems(prev, newUf, dollarValue, currency));
+  };
+
+  const handleCurrencyChange = (newCurrency: 'UF' | 'USD' | 'CLP') => {
+    setCurrency(newCurrency);
+    setItems((prev) => recalculateCotizacionItems(prev, ufValue, dollarValue, newCurrency));
   };
 
   const fetchIndicators = async (force = false) => {
@@ -470,13 +483,13 @@ function CotizadorContent() {
         const d: EconomicIndicators = await res.json();
         if (d && d.uf) {
           setIndicators(d);
-          handleUfChange(d.uf);
-          setDollarValue(d.dolar);
-          setCustomDollarInput(String(d.dolar));
+          const safeUf = d.uf;
+          const safeDollar = d.dolar || dollarValue;
+          handleIndicatorsChange(safeUf, safeDollar);
           if (force) {
             setStatusMessage({
               type: 'success',
-              text: `Indicadores económicos revalidados: UF $${d.uf.toLocaleString('es-CL', { minimumFractionDigits: 2 })} / USD $${d.dolar.toLocaleString('es-CL', { minimumFractionDigits: 2 })} (${d.source || 'Oficial'})`,
+              text: `Indicadores económicos revalidados: UF $${d.uf.toLocaleString('es-CL', { minimumFractionDigits: 2 })} / USD $${(d.dolar || dollarValue).toLocaleString('es-CL', { minimumFractionDigits: 2 })} (${d.source || 'Oficial'})`,
             });
           }
         }
@@ -514,6 +527,7 @@ function CotizadorContent() {
       return;
     }
 
+    let safeDollar = dollarValue;
     if (!isNaN(parsedDollar) && parsedDollar > 0) {
       if (parsedDollar < 500 || parsedDollar > 2500) {
         setStatusMessage({
@@ -522,11 +536,10 @@ function CotizadorContent() {
         });
         return;
       }
-      setDollarValue(parsedDollar);
-      setCustomDollarInput(String(parsedDollar));
+      safeDollar = parsedDollar;
     }
 
-    handleUfChange(parsedUf);
+    handleIndicatorsChange(parsedUf, safeDollar);
     setShowManualIndicatorEdit(false);
     setStatusMessage({
       type: 'success',
@@ -732,7 +745,12 @@ function CotizadorContent() {
           if (c.showObservationsWeight !== undefined) {
             setShowObservationsWeight(c.showObservationsWeight !== false);
           }
-          if (Array.isArray(c.items)) setItems(recalculateItemNumbers(c.items));
+          if (Array.isArray(c.items)) {
+            const loadedUf = c.ufValue || ufValue;
+            const loadedDollar = c.dollarValue || dollarValue;
+            const loadedCurrency = c.currency || currency;
+            setItems(recalculateItemNumbers(recalculateCotizacionItems(c.items, loadedUf, loadedDollar, loadedCurrency)));
+          }
           if (c.aiChatState?.messages && Array.isArray(c.aiChatState.messages) && c.aiChatState.messages.length > 0) {
             assistantChatMessagesRef.current = c.aiChatState.messages;
             assistantActiveAnalisisRef.current = c.aiChatState.activeAnalisis || null;
@@ -1152,6 +1170,17 @@ function CotizadorContent() {
 
   // Add item from catalog to quotation
   const handleAddItem = (tarifarioItem: TarifarioItem) => {
+    const { subtotalUf, subtotalClp, subtotalUsd } = calculateItemSubtotals(
+      {
+        ufPrice: tarifarioItem.ufPrice,
+        factor: 1.0,
+        quantity: 1,
+      },
+      ufValue,
+      dollarValue,
+      currency
+    );
+
     const newItem: CotizacionItem = {
       id: `ci-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       itemNumber: `1.1.${items.length + 1}`,
@@ -1163,8 +1192,9 @@ function CotizadorContent() {
       ufPrice: tarifarioItem.ufPrice,
       factor: 1.0,
       quantity: 1,
-      subtotalUf: tarifarioItem.ufPrice,
-      subtotalClp: Math.round(tarifarioItem.ufPrice * ufValue),
+      subtotalUf,
+      subtotalClp,
+      subtotalUsd,
       sku: tarifarioItem.sku,
     };
 
@@ -1313,16 +1343,26 @@ function CotizadorContent() {
         const newQty = field === 'quantity' ? Math.max(0, numVal) : it.quantity;
         const newFactor = field === 'factor' ? Math.max(0, numVal) : it.factor;
         const newPrice = field === 'ufPrice' ? Math.max(0, numVal) : it.ufPrice;
-        const newSubtotalUf = Math.round(newPrice * newFactor * newQty * 100) / 100;
-        const newSubtotalClp = Math.round(newPrice * newFactor * newQty * ufValue);
+
+        const { subtotalUf, subtotalClp, subtotalUsd } = calculateItemSubtotals(
+          {
+            ufPrice: newPrice,
+            factor: newFactor,
+            quantity: newQty,
+          },
+          ufValue,
+          dollarValue,
+          currency
+        );
 
         return {
           ...it,
           quantity: newQty,
           factor: newFactor,
           ufPrice: newPrice,
-          subtotalUf: newSubtotalUf,
-          subtotalClp: newSubtotalClp,
+          subtotalUf,
+          subtotalClp,
+          subtotalUsd,
         };
       })
     );
@@ -1378,58 +1418,19 @@ function CotizadorContent() {
   };
 
   // Totals calculations
-  const totals = useMemo(() => {
-    let totalUf = 0;
-    let totalClp = 0;
-    let totalWeight = 0;
-    let totalUnitWeight = 0;
+  const totalsResult = useMemo(() => {
+    return calculateCotizacionTotals(items, ufValue, dollarValue, currency);
+  }, [items, ufValue, dollarValue, currency]);
 
-    items.forEach((it) => {
-      if (it.isDivider) return;
-      totalUf += it.subtotalUf;
-      totalClp += it.subtotalClp;
-      const w = typeof it.minWeightKg === 'number' ? it.minWeightKg : parseFloat(String(it.minWeightKg));
-      if (!isNaN(w) && w > 0) {
-        totalWeight += w * it.quantity;
-        totalUnitWeight += w;
-      }
-    });
+  const totals = useMemo(() => ({
+    totalUf: totalsResult.totalUf,
+    totalClp: totalsResult.totalClp,
+    totalWeight: totalsResult.totalWeight,
+    totalUnitWeight: totalsResult.totalUnitWeight,
+  }), [totalsResult]);
 
-    return {
-      totalUf: Math.round(totalUf * 100) / 100,
-      totalClp: Math.round(totalClp),
-      totalWeight: Math.round(totalWeight * 10) / 10,
-      totalUnitWeight: Math.round(totalUnitWeight * 10) / 10,
-    };
-  }, [items]);
-
-  // Subtotales acumulados por cada divisor / partida
-  const partidaTotals = useMemo(() => {
-    const totalsMap: Record<string, { count: number; subtotalUf: number; subtotalClp: number }> = {};
-    let currentDividerId = '';
-
-    items.forEach((it) => {
-      if (it.isDivider) {
-        currentDividerId = it.id;
-        totalsMap[currentDividerId] = { count: 0, subtotalUf: 0, subtotalClp: 0 };
-      } else if (currentDividerId) {
-        if (!totalsMap[currentDividerId]) {
-          totalsMap[currentDividerId] = { count: 0, subtotalUf: 0, subtotalClp: 0 };
-        }
-        totalsMap[currentDividerId].count += 1;
-        totalsMap[currentDividerId].subtotalUf += it.subtotalUf;
-        totalsMap[currentDividerId].subtotalClp += it.subtotalClp;
-      }
-    });
-
-    return totalsMap;
-  }, [items]);
-
-  const totalUsd = useMemo(() => {
-    const ufVal = ufValue || 40879.04;
-    const usdVal = dollarValue || 933.47;
-    return Math.round(((totals.totalUf * ufVal) / usdVal) * 100) / 100;
-  }, [totals.totalUf, ufValue, dollarValue]);
+  const partidaTotals = totalsResult.partidaTotals;
+  const totalUsd = totalsResult.totalUsd;
 
   // Build current cotizacion object
   const currentCotizacion: Cotizacion = useMemo(() => {
@@ -2156,18 +2157,27 @@ function CotizadorContent() {
 
             if (existingIdx !== -1) {
               const newQty = updated[existingIdx].quantity + qtyToAdd;
-              const subUf = tarifarioItem.ufPrice * factorToApply * newQty;
-              const subClp = Math.round(subUf * ufValue);
+              const { subtotalUf, subtotalClp, subtotalUsd } = calculateItemSubtotals(
+                { ufPrice: tarifarioItem.ufPrice, factor: factorToApply, quantity: newQty },
+                ufValue,
+                dollarValue,
+                currency
+              );
               updated[existingIdx] = {
                 ...updated[existingIdx],
                 quantity: newQty,
                 factor: factorToApply,
-                subtotalUf: subUf,
-                subtotalClp: subClp,
+                subtotalUf,
+                subtotalClp,
+                subtotalUsd,
               };
             } else {
-              const subUf = tarifarioItem.ufPrice * factorToApply * qtyToAdd;
-              const subClp = Math.round(subUf * ufValue);
+              const { subtotalUf, subtotalClp, subtotalUsd } = calculateItemSubtotals(
+                { ufPrice: tarifarioItem.ufPrice, factor: factorToApply, quantity: qtyToAdd },
+                ufValue,
+                dollarValue,
+                currency
+              );
               updated.push({
                 id: `cot-item-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
                 itemNumber: `1.1.${updated.length + 1}`,
@@ -2179,8 +2189,9 @@ function CotizadorContent() {
                 ufPrice: tarifarioItem.ufPrice,
                 factor: factorToApply,
                 quantity: qtyToAdd,
-                subtotalUf: subUf,
-                subtotalClp: subClp,
+                subtotalUf,
+                subtotalClp,
+                subtotalUsd,
                 sku: tarifarioItem.sku,
               });
             }
@@ -2188,13 +2199,18 @@ function CotizadorContent() {
         } else if (act.tipo === 'MODIFICAR_CANTIDAD' && act.codigo) {
           const idx = updated.findIndex((it) => it.code === act.codigo);
           if (idx !== -1 && act.cantidad && act.cantidad > 0) {
-            const subUf = updated[idx].ufPrice * updated[idx].factor * act.cantidad;
-            const subClp = Math.round(subUf * ufValue);
+            const { subtotalUf, subtotalClp, subtotalUsd } = calculateItemSubtotals(
+              { ufPrice: updated[idx].ufPrice, factor: updated[idx].factor, quantity: act.cantidad },
+              ufValue,
+              dollarValue,
+              currency
+            );
             updated[idx] = {
               ...updated[idx],
               quantity: act.cantidad,
-              subtotalUf: subUf,
-              subtotalClp: subClp,
+              subtotalUf,
+              subtotalClp,
+              subtotalUsd,
             };
           }
         } else if (act.tipo === 'ELIMINAR' && act.codigo) {
@@ -2204,28 +2220,43 @@ function CotizadorContent() {
           if (act.codigo) {
             const idx = updated.findIndex((it) => it.code === act.codigo);
             if (idx !== -1) {
-              const subUf = updated[idx].ufPrice * factorVal * updated[idx].quantity;
-              const subClp = Math.round(subUf * ufValue);
+              const { subtotalUf, subtotalClp, subtotalUsd } = calculateItemSubtotals(
+                { ufPrice: updated[idx].ufPrice, factor: factorVal, quantity: updated[idx].quantity },
+                ufValue,
+                dollarValue,
+                currency
+              );
               updated[idx] = {
                 ...updated[idx],
                 factor: factorVal,
-                subtotalUf: subUf,
-                subtotalClp: subClp,
+                subtotalUf,
+                subtotalClp,
+                subtotalUsd,
               };
             }
           } else {
             updated = updated.map((it) => {
-              const subUf = it.ufPrice * factorVal * it.quantity;
-              const subClp = Math.round(subUf * ufValue);
-              return { ...it, factor: factorVal, subtotalUf: subUf, subtotalClp: subClp };
+              if (it.isDivider) return it;
+              const { subtotalUf, subtotalClp, subtotalUsd } = calculateItemSubtotals(
+                { ufPrice: it.ufPrice, factor: factorVal, quantity: it.quantity },
+                ufValue,
+                dollarValue,
+                currency
+              );
+              return { ...it, factor: factorVal, subtotalUf, subtotalClp, subtotalUsd };
             });
           }
         } else if (act.tipo === 'APLICAR_FACTOR_GLOBAL') {
           const factorVal = act.factor !== undefined ? act.factor : 1.0;
           updated = updated.map((it) => {
-            const subUf = it.ufPrice * factorVal * it.quantity;
-            const subClp = Math.round(subUf * ufValue);
-            return { ...it, factor: factorVal, subtotalUf: subUf, subtotalClp: subClp };
+            if (it.isDivider) return it;
+            const { subtotalUf, subtotalClp, subtotalUsd } = calculateItemSubtotals(
+              { ufPrice: it.ufPrice, factor: factorVal, quantity: it.quantity },
+              ufValue,
+              dollarValue,
+              currency
+            );
+            return { ...it, factor: factorVal, subtotalUf, subtotalClp, subtotalUsd };
           });
         } else if (act.tipo === 'LIMPIAR_TODO') {
           updated = [];
@@ -2263,8 +2294,12 @@ function CotizadorContent() {
       const currentCount = items.length;
       const newItems: CotizacionItem[] = data.ensayos.map((e, idx) => {
         const itemNumber = `1.${currentCount + idx + 1}`;
-        const subtotalUf = e.precio_uf * e.cantidad_estimada;
-        const subtotalClp = Math.round(subtotalUf * ufValue);
+        const { subtotalUf, subtotalClp, subtotalUsd } = calculateItemSubtotals(
+          { ufPrice: e.precio_uf, factor: 1.0, quantity: e.cantidad_estimada },
+          ufValue,
+          dollarValue,
+          currency
+        );
 
         return {
           id: `ai-${Date.now()}-${idx}`,
@@ -2277,8 +2312,9 @@ function CotizadorContent() {
           ufPrice: e.precio_uf,
           factor: 1.0,
           quantity: e.cantidad_estimada,
-          subtotalUf: Number(subtotalUf.toFixed(2)),
+          subtotalUf,
           subtotalClp,
+          subtotalUsd,
           sku: e.sku,
         };
       });
@@ -2970,7 +3006,7 @@ function CotizadorContent() {
               </label>
               <select
                 value={currency}
-                onChange={(e) => setCurrency(e.target.value as 'UF' | 'USD' | 'CLP')}
+                onChange={(e) => handleCurrencyChange(e.target.value as 'UF' | 'USD' | 'CLP')}
                 className="w-full py-1.5 px-2.5 rounded-lg border border-emerald-300 bg-emerald-50/40 text-xs font-bold text-emerald-950 focus:ring-1 focus:ring-emerald-600 focus:outline-none"
               >
                 <option value="UF">UF (Unidad de Fomento)</option>
@@ -3612,7 +3648,7 @@ function CotizadorContent() {
                         {currency === 'USD' ? 'Subtotal USD' : currency === 'CLP' ? 'Subtotal CLP' : 'Subtotal UF'}
                       </th>
                       <th className="py-3 px-2 w-28 min-w-[95px] text-right">
-                        {currency === 'CLP' ? 'Equiv. UF' : 'Subtotal CLP'}
+                        {currency === 'CLP' || currency === 'USD' ? 'Equiv. UF' : 'Subtotal CLP'}
                       </th>
                       <th className="py-3 px-1 w-9 min-w-[36px] text-center"></th>
                     </tr>
@@ -3800,7 +3836,7 @@ function CotizadorContent() {
                             : finalUnitUf.toFixed(2);
                         const finalSubtotalDisplay =
                           currency === 'USD'
-                            ? `${((item.subtotalUf * ufValue) / dollarValue).toFixed(2)} USD`
+                            ? `${(item.subtotalUsd ?? Math.round(((item.subtotalUf * ufValue) / dollarValue) * 100) / 100).toFixed(2)} USD`
                             : currency === 'CLP'
                             ? `$${item.subtotalClp.toLocaleString('es-CL')}`
                             : `${item.subtotalUf.toFixed(2)} UF`;
@@ -4126,14 +4162,14 @@ function CotizadorContent() {
                                       ? Math.round(((item.ufPrice * ufValue) / dollarValue) * 100) / 100
                                       : currency === 'CLP'
                                       ? Math.round(item.ufPrice * ufValue)
-                                      : item.ufPrice
+                                      : Math.round(item.ufPrice * 100) / 100
                                   }
                                   onChange={(e) => {
                                     const val = parseFloat(e.target.value);
                                     const safeVal = isNaN(val) ? 0 : Math.max(0, val);
                                     if (currency === 'USD') {
                                       const convertedUf = (safeVal * dollarValue) / ufValue;
-                                      handleItemChange(item.id, 'ufPrice', Math.round(convertedUf * 100) / 100);
+                                      handleItemChange(item.id, 'ufPrice', convertedUf);
                                     } else if (currency === 'CLP') {
                                       const convertedUf = ufValue > 0 ? safeVal / ufValue : 0;
                                       handleItemChange(item.id, 'ufPrice', convertedUf);
@@ -4186,7 +4222,7 @@ function CotizadorContent() {
 
                             {/* Subtotal Referencial */}
                             <td className="py-2.5 px-2 text-right font-mono text-slate-700 align-top pt-3 text-xs">
-                              {currency === 'CLP'
+                              {currency === 'CLP' || currency === 'USD'
                                 ? `${item.subtotalUf.toFixed(2)} UF`
                                 : `$${item.subtotalClp.toLocaleString('es-CL')}`}
                             </td>
@@ -4227,15 +4263,15 @@ function CotizadorContent() {
                               </td>
                               <td className="py-2.5 px-2 text-right font-bold font-mono text-slate-900 text-xs">
                                 {currency === 'USD'
-                                  ? `${(((pTotal.subtotalUf * ufValue) / dollarValue)).toFixed(2)} USD`
+                                  ? `${(pTotal.subtotalUsd ?? 0).toFixed(2)} USD`
                                   : currency === 'CLP'
-                                  ? `$${pTotal.subtotalClp.toLocaleString('es-CL')}`
-                                  : `${pTotal.subtotalUf.toFixed(2)} UF`}
+                                  ? `$${(pTotal.subtotalClp ?? 0).toLocaleString('es-CL')}`
+                                  : `${(pTotal.subtotalUf ?? 0).toFixed(2)} UF`}
                               </td>
                               <td className="py-2.5 px-2 text-right font-mono text-slate-600 text-xs">
-                                {currency === 'CLP'
-                                  ? `${pTotal.subtotalUf.toFixed(2)} UF`
-                                  : `$${pTotal.subtotalClp.toLocaleString('es-CL')}`}
+                                {currency === 'CLP' || currency === 'USD'
+                                  ? `${(pTotal.subtotalUf ?? 0).toFixed(2)} UF`
+                                  : `$${(pTotal.subtotalClp ?? 0).toLocaleString('es-CL')}`}
                               </td>
                               <td className="py-2.5 px-1"></td>
                             </tr>
@@ -4260,15 +4296,15 @@ function CotizadorContent() {
                 </span>
                 <div className="text-xl font-bold font-mono mt-0.5">
                   {currency === 'USD'
-                    ? totalUsd.toFixed(2)
+                    ? `${totalUsd.toFixed(2)}`
                     : currency === 'CLP'
                     ? `$${totals.totalClp.toLocaleString('es-CL')}`
-                    : totals.totalUf.toFixed(2)}{' '}
+                    : `${totals.totalUf.toFixed(2)}`}{' '}
                   <span className="text-xs font-normal text-blue-200">{currency}</span>
                 </div>
                 <span className="text-[10px] text-blue-300">
                   {currency === 'USD'
-                    ? `Equivalente: ${totals.totalUf.toFixed(2)} UF`
+                    ? `Equivalente: ${totals.totalUf.toFixed(2)} UF | $${totals.totalClp.toLocaleString('es-CL')} CLP`
                     : currency === 'CLP'
                     ? `Equivalente: ${totals.totalUf.toFixed(2)} UF`
                     : 'Valor Neto de Ensayos'}
@@ -4283,21 +4319,23 @@ function CotizadorContent() {
             <div className="bg-slate-900 rounded-xl px-4 py-2.5 text-white shadow-xs flex items-center justify-between">
               <div>
                 <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
-                  {currency === 'CLP' ? 'Total Equivalente en UF' : 'Total Estimado en Pesos (CLP)'}
+                  {currency === 'CLP' || currency === 'USD' ? 'Total Equivalente en UF' : 'Total Estimado en Pesos (CLP)'}
                 </span>
                 <div className="text-xl font-bold font-mono mt-0.5">
-                  {currency === 'CLP'
+                  {currency === 'CLP' || currency === 'USD'
                     ? `${totals.totalUf.toFixed(2)} UF`
                     : `$${totals.totalClp.toLocaleString('es-CL')}`}
                 </div>
                 <span className="text-[10px] text-slate-400">
                   {currency === 'CLP'
-                    ? `Calculado a $${ufValue.toLocaleString('es-CL')} por UF`
-                    : `UF ref: $${ufValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | USD: $${dollarValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    ? `Calculado a $${ufValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} por UF`
+                    : currency === 'USD'
+                    ? `UF ref: $${ufValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Dólar: $${dollarValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                    : `UF ref: $${ufValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | Dólar: $${dollarValue.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 </span>
               </div>
               <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700/50 flex items-center justify-center text-slate-300 font-bold text-xs">
-                {currency === 'CLP' ? 'UF' : '$'}
+                {currency === 'CLP' || currency === 'USD' ? 'UF' : '$'}
               </div>
             </div>
 

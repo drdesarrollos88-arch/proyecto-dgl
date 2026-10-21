@@ -360,6 +360,7 @@ export interface CotizacionItem {
   quantity: number;
   subtotalUf: number;
   subtotalClp: number;
+  subtotalUsd?: number;
   sku?: string;
   isDivider?: boolean; // true si es una fila de separación/partida
   dividerTitle?: string; // Título de la partida (ej. "Ensayos para Calicatas")

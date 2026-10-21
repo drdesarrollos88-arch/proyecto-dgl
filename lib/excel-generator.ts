@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs';
 import { Cotizacion, isForeignRut } from './types';
+import { calculateItemSubtotals } from './cotizacion-calculations';
 
 function sanitizeForExcel(val: unknown): string {
   if (val === null || val === undefined) return '';
@@ -147,27 +148,27 @@ export async function generateCotizacionExcel(cotizacion: Cotizacion): Promise<E
       r.getCell('H').value = item.minWeightKg ? Number(item.minWeightKg) || item.minWeightKg : '';
       r.getCell('I').value = sanitizeForExcel(item.unit);
 
-      const unitPriceUf = Number(item.ufPrice) * Number(item.factor || 1);
-      const qty = Number(item.quantity);
-      const subtotalUf = unitPriceUf * qty;
+      const { subtotalUf, subtotalClp, subtotalUsd } = calculateItemSubtotals(
+        item,
+        ufVal,
+        usdVal,
+        cotizacion.currency || 'UF'
+      );
 
+      const qty = Number(item.quantity || 0);
       const unitPrice = isUsd
-        ? (unitPriceUf * ufVal) / usdVal
+        ? Math.round(((Number(item.ufPrice || 0) * Number(item.factor || 1) * ufVal) / usdVal) * 100) / 100
         : isClp
-        ? Math.round(unitPriceUf * ufVal)
-        : unitPriceUf;
+        ? Math.round(Number(item.ufPrice || 0) * Number(item.factor || 1) * ufVal)
+        : Math.round(Number(item.ufPrice || 0) * Number(item.factor || 1) * 100) / 100;
 
-      const subtotal = isUsd
-        ? (subtotalUf * ufVal) / usdVal
-        : isClp
-        ? Math.round(subtotalUf * ufVal)
-        : subtotalUf;
+      const subtotal = isUsd ? subtotalUsd : isClp ? subtotalClp : subtotalUf;
 
-      r.getCell('J').value = isClp ? unitPrice : Math.round(unitPrice * 100) / 100;
+      r.getCell('J').value = unitPrice;
       r.getCell('J').numFmt = isClp ? '$#,##0' : '#,##0.00';
 
       r.getCell('K').value = qty;
-      r.getCell('L').value = isClp ? subtotal : Math.round(subtotal * 100) / 100;
+      r.getCell('L').value = subtotal;
       r.getCell('L').numFmt = isClp ? '$#,##0' : '#,##0.00';
 
       // Thin borders
@@ -277,29 +278,28 @@ export async function generateCotizacionExcel(cotizacion: Cotizacion): Promise<E
         r.getCell('H').value = item.minWeightKg ? Number(item.minWeightKg) || item.minWeightKg : '';
         r.getCell('I').value = sanitizeForExcel(item.unit);
 
-        const unitPriceUf = Number(item.ufPrice) * Number(item.factor || 1);
-        const qty = Number(item.quantity);
-        const subtotalUf = unitPriceUf * qty;
+        const { subtotalUf, subtotalClp, subtotalUsd } = calculateItemSubtotals(
+          item,
+          ufVal,
+          usdVal,
+          cotizacion.currency || 'UF'
+        );
 
+        const qty = Number(item.quantity || 0);
         const unitPrice = isUsd
-          ? (unitPriceUf * ufVal) / usdVal
+          ? Math.round(((Number(item.ufPrice || 0) * Number(item.factor || 1) * ufVal) / usdVal) * 100) / 100
           : isClp
-          ? Math.round(unitPriceUf * ufVal)
-          : unitPriceUf;
+          ? Math.round(Number(item.ufPrice || 0) * Number(item.factor || 1) * ufVal)
+          : Math.round(Number(item.ufPrice || 0) * Number(item.factor || 1) * 100) / 100;
 
-        const subtotal = isUsd
-          ? (subtotalUf * ufVal) / usdVal
-          : isClp
-          ? Math.round(subtotalUf * ufVal)
-          : subtotalUf;
-
+        const subtotal = isUsd ? subtotalUsd : isClp ? subtotalClp : subtotalUf;
         currentPartidaSubtotal += subtotal;
 
-        r.getCell('J').value = isClp ? unitPrice : Math.round(unitPrice * 100) / 100;
+        r.getCell('J').value = unitPrice;
         r.getCell('J').numFmt = isClp ? '$#,##0' : '#,##0.00';
 
         r.getCell('K').value = qty;
-        r.getCell('L').value = isClp ? subtotal : Math.round(subtotal * 100) / 100;
+        r.getCell('L').value = subtotal;
         r.getCell('L').numFmt = isClp ? '$#,##0' : '#,##0.00';
 
         ['A', 'C', 'D', 'G', 'H', 'I', 'J', 'K', 'L'].forEach((c) => {

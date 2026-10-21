@@ -1,4 +1,5 @@
 import { Cotizacion, CotizacionItem, getDGLInfoByCC } from './types';
+import { calculateCotizacionTotals, DEFAULT_DOLLAR_VALUE, DEFAULT_UF_VALUE } from './cotizacion-calculations';
 import { isSupabaseConfigured, supabaseAdmin } from './supabase';
 import { saveCotizacion } from './db';
 import { advanceCorrelativoAsync } from './configuracion-db';
@@ -24,36 +25,16 @@ function ensureCache(): Cotizacion[] {
  */
 export function mapSupabaseToCotizacion(row: any): Cotizacion {
   const items: CotizacionItem[] = Array.isArray(row.items) ? row.items : [];
-  let calcUf = 0;
-  let calcClp = 0;
-  let totalWeightKg = 0;
-  let totalUnitWeightKg = 0;
+  const ufVal = typeof row.uf_value === 'number' && row.uf_value > 0 ? row.uf_value : DEFAULT_UF_VALUE;
+  const dollarVal = typeof row.dollar_value === 'number' && row.dollar_value > 0 ? row.dollar_value : DEFAULT_DOLLAR_VALUE;
+  const curr = ((row.currency as 'UF' | 'USD' | 'CLP') || 'UF');
 
-  if (items.length > 0) {
-    items.forEach((it: any) => {
-      if (it.isDivider) return;
-      const subUf =
-        typeof it.subtotalUf === 'number'
-          ? it.subtotalUf
-          : (it.ufPrice || 0) * (it.factor || 1) * (it.quantity || 1);
-      const subClp =
-        typeof it.subtotalClp === 'number' ? it.subtotalClp : subUf * (row.uf_value || 38000);
-      calcUf += subUf;
-      calcClp += subClp;
-      const w =
-        typeof it.minWeightKg === 'number' ? it.minWeightKg : parseFloat(String(it.minWeightKg || 0));
-      if (!isNaN(w) && w > 0) {
-        totalWeightKg += w * (it.quantity || 1);
-        totalUnitWeightKg += w;
-      }
-    });
-  }
-
-  const ufVal = typeof row.uf_value === 'number' && row.uf_value > 0 ? row.uf_value : 38000;
-  const totalUf = typeof row.total_neto === 'number' && row.total_neto > 0
-    ? row.total_neto
-    : Number(calcUf.toFixed(2));
-  const totalClp = calcClp > 0 ? Math.round(calcClp) : Math.round(totalUf * ufVal);
+  const totalsResult = calculateCotizacionTotals(items, ufVal, dollarVal, curr);
+  const totalUf = typeof row.total_neto === 'number' && row.total_neto > 0 ? row.total_neto : totalsResult.totalUf;
+  const totalClp = totalsResult.totalClp > 0 ? totalsResult.totalClp : Math.round(totalUf * ufVal);
+  const totalUsd = typeof row.total_usd === 'number' && row.total_usd > 0 ? row.total_usd : totalsResult.totalUsd;
+  const totalWeightKg = totalsResult.totalWeight;
+  const totalUnitWeightKg = totalsResult.totalUnitWeight;
 
   const rawDate =
     row.date ||
@@ -95,10 +76,11 @@ export function mapSupabaseToCotizacion(row: any): Cotizacion {
       'Asesor Comercial DGL',
     commercialInitials: row.user_initials || 'DRA',
     ufValue: ufVal,
-    dollarValue: 950,
+    dollarValue: dollarVal,
     items,
     totalUf: Number(totalUf.toFixed(2)),
     totalClp: Math.round(totalClp),
+    totalUsd: Number(totalUsd.toFixed(2)),
     totalWeightKg,
     totalUnitWeightKg,
     showTotalWeightPerItem:
@@ -157,26 +139,19 @@ export function mapCotizacionToSupabase(c: Partial<Cotizacion>): any {
   const rawDate = c.date || now.split('T')[0];
   const year = parseInt(rawDate.substring(0, 4), 10) || new Date().getFullYear();
 
+  const ufVal = c.ufValue || DEFAULT_UF_VALUE;
+  const dollarVal = c.dollarValue || DEFAULT_DOLLAR_VALUE;
+  const curr = c.currency || 'UF';
+
   let totalUf = typeof c.totalUf === 'number' && c.totalUf > 0 ? c.totalUf : 0;
   let totalClp = typeof c.totalClp === 'number' && c.totalClp > 0 ? c.totalClp : 0;
+  let totalUsd = typeof c.totalUsd === 'number' && c.totalUsd > 0 ? c.totalUsd : 0;
 
-  if (totalUf === 0 && Array.isArray(c.items) && c.items.length > 0) {
-    let calcUf = 0;
-    let calcClp = 0;
-    const ufVal = c.ufValue || 38000;
-    c.items.forEach((it: any) => {
-      if (it.isDivider) return;
-      const subUf =
-        typeof it.subtotalUf === 'number'
-          ? it.subtotalUf
-          : (it.ufPrice || 0) * (it.factor || 1) * (it.quantity || 1);
-      const subClp =
-        typeof it.subtotalClp === 'number' ? it.subtotalClp : subUf * ufVal;
-      calcUf += subUf;
-      calcClp += subClp;
-    });
-    totalUf = Number(calcUf.toFixed(2));
-    totalClp = Math.round(calcClp);
+  if (Array.isArray(c.items) && c.items.length > 0) {
+    const totalsResult = calculateCotizacionTotals(c.items as CotizacionItem[], ufVal, dollarVal, curr);
+    totalUf = totalsResult.totalUf;
+    totalClp = totalsResult.totalClp;
+    totalUsd = totalsResult.totalUsd;
   }
 
   // En Supabase, la tabla maneja subtotal_neto, total_neto, iva y total en UF (currency = 'UF')
@@ -203,11 +178,14 @@ export function mapCotizacionToSupabase(c: Partial<Cotizacion>): any {
     user_email: c.commercialEmail || 'diego.roman@idiem.cl',
     user_initials: c.commercialInitials || 'DRA',
     currency: c.currency || 'UF',
-    uf_value: c.ufValue || 38000,
+    uf_value: ufVal,
+    dollar_value: dollarVal,
     subtotal_neto: totalUf,
     descuento_porcentaje: 0,
     descuento_monto: 0,
     total_neto: totalUf,
+    total_usd: totalUsd,
+    total_clp: totalClp,
     iva: ivaUf,
     total: totalConIvaUf,
     status: c.status || 'Borrador',

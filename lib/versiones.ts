@@ -13,11 +13,29 @@ export interface VersionRegistro {
 
 export const HISTORIAL_VERSIONES: VersionRegistro[] = [
   {
+    version: '2.7.1',
+    tag: 'v2.7.1',
+    fecha: '2026-10-21',
+    fechaFormato: '21 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Motor Unificado de Cálculo y Cuadre Matemático Estricto de Cotizaciones (UF, CLP, USD)',
+    modulos: ['Cotizador', 'Motor de Cálculo', 'Generador PDF', 'Generador Excel', 'Supabase DB'],
+    descripcion:
+      'Refactorización exhaustiva del cálculo de montos en cotizaciones con biblioteca canónica centralizada (lib/cotizacion-calculations.ts). Garantiza cuadre aritmético exacto entre ítems, subtotales por partida y totales consolidados en UF, CLP y USD, eliminando descalces por variaciones de indicadores económicos, factores o cambios de moneda.',
+    detalles: [
+      'Librería Canónica de Cálculo: Centralización de reglas aritméticas en calculateItemSubtotals, recalculateCotizacionItems y calculateCotizacionTotals.',
+      'Sincronización Dinámica de Monedas: Al modificar el valor de la UF o del Dólar, o cambiar la divisa de la cotización, todos los ítems recalculan sus equivalencias preservando la integridad de los valores de referencia sin pérdidas de precisión.',
+      'Cuadre de Subtotales y Totales: Eliminación de desajustes de centavos en USD y pesos en CLP mediante sumatoria aditiva estricta (Total Partida = Suma de ítems; Total General = Suma de partidas).',
+      'Paridad Total en Exportaciones: Actualización de los generadores de PDF y Excel para compartir exactamente el mismo pipeline de cálculo que la interfaz web y la base de datos.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
     version: '2.7.0',
     tag: 'v2.7.0',
     fecha: '2026-10-19',
     fechaFormato: '19 de Octubre, 2026',
-    estado: 'activa',
+    estado: 'previa',
     titulo: 'Módulo de Tickets & Soporte Técnico y Paneles Detallados Salesforce DGL',
     modulos: ['Tickets & Soporte', 'Oportunidades & CRM', 'Salesforce Dashboards', 'Gestión Comercial'],
     descripcion:

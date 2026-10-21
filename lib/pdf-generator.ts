@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Cotizacion, FormatoSettings, isForeignRut } from './types';
+import { calculateItemSubtotals } from './cotizacion-calculations';
 
 const DEFAULT_FORMATO: FormatoSettings = {
   formatCode: 'DGL-FA-193 V3',
@@ -236,23 +237,21 @@ export function generateCotizacionPdf(
   if (!hasDividers) {
     cotizacion.items.forEach((item, idx) => {
       const itemNum = `1.1.${idx + 1}`;
-      const unitPriceUf = Number(item.ufPrice || 0);
-      const factor = Number(item.factor || 1);
-      const finalPriceUf = unitPriceUf * factor;
+      const { subtotalUf, subtotalClp, subtotalUsd } = calculateItemSubtotals(
+        item,
+        ufVal,
+        usdVal,
+        cotizacion.currency || 'UF'
+      );
+
       const qty = Number(item.quantity || 0);
-      const subtotalUf = finalPriceUf * qty;
-
       const unitPrice = isUsd
-        ? (finalPriceUf * ufVal) / usdVal
+        ? Math.round(((Number(item.ufPrice || 0) * Number(item.factor || 1) * ufVal) / usdVal) * 100) / 100
         : isClp
-        ? Math.round(finalPriceUf * ufVal)
-        : finalPriceUf;
+        ? Math.round(Number(item.ufPrice || 0) * Number(item.factor || 1) * ufVal)
+        : Math.round(Number(item.ufPrice || 0) * Number(item.factor || 1) * 100) / 100;
 
-      const subtotal = isUsd
-        ? (subtotalUf * ufVal) / usdVal
-        : isClp
-        ? Math.round(subtotalUf * ufVal)
-        : subtotalUf;
+      const subtotal = isUsd ? subtotalUsd : isClp ? subtotalClp : subtotalUf;
 
       const formattedUnitPrice = isClp
         ? `$${Math.round(unitPrice).toLocaleString('es-CL')}`
@@ -377,24 +376,21 @@ export function generateCotizacionPdf(
         itemInDividerIndex++;
         const itemNum = `1.1.${dividerIndex}.${itemInDividerIndex}`;
 
-        const unitPriceUf = Number(item.ufPrice || 0);
-        const factor = Number(item.factor || 1);
-        const finalPriceUf = unitPriceUf * factor;
+        const { subtotalUf, subtotalClp, subtotalUsd } = calculateItemSubtotals(
+          item,
+          ufVal,
+          usdVal,
+          cotizacion.currency || 'UF'
+        );
+
         const qty = Number(item.quantity || 0);
-        const subtotalUf = finalPriceUf * qty;
-
         const unitPrice = isUsd
-          ? (finalPriceUf * ufVal) / usdVal
+          ? Math.round(((Number(item.ufPrice || 0) * Number(item.factor || 1) * ufVal) / usdVal) * 100) / 100
           : isClp
-          ? Math.round(finalPriceUf * ufVal)
-          : finalPriceUf;
+          ? Math.round(Number(item.ufPrice || 0) * Number(item.factor || 1) * ufVal)
+          : Math.round(Number(item.ufPrice || 0) * Number(item.factor || 1) * 100) / 100;
 
-        const subtotal = isUsd
-          ? (subtotalUf * ufVal) / usdVal
-          : isClp
-          ? Math.round(subtotalUf * ufVal)
-          : subtotalUf;
-
+        const subtotal = isUsd ? subtotalUsd : isClp ? subtotalClp : subtotalUf;
         currentPartidaSubtotal += subtotal;
 
         const formattedUnitPrice = isClp
@@ -490,11 +486,17 @@ export function generateCotizacionPdf(
         7: { cellWidth: isClp ? 21 : 18, halign: 'right', fontStyle: 'bold' }, // Subtotal (UF/USD/CLP)
       };
 
-  const formattedTotalAmount = isUsd
-    ? `${(cotizacion.totalUsd ?? (cotizacion.totalUf * ufVal) / usdVal).toFixed(2)} USD`
+  const totalVal = isUsd
+    ? (cotizacion.totalUsd ?? Math.round(((cotizacion.totalUf || 0) * ufVal / usdVal) * 100) / 100)
     : isClp
-    ? `$${(cotizacion.totalClp || Math.round((cotizacion.totalUf || 0) * ufVal)).toLocaleString('es-CL')} CLP`
-    : `${(cotizacion.totalUf || 0).toFixed(2)} UF`;
+    ? (cotizacion.totalClp || Math.round((cotizacion.totalUf || 0) * ufVal))
+    : (cotizacion.totalUf || 0);
+
+  const formattedTotalAmount = isUsd
+    ? `${totalVal.toFixed(2)} USD`
+    : isClp
+    ? `$${Math.round(totalVal).toLocaleString('es-CL')} CLP`
+    : `${totalVal.toFixed(2)} UF`;
 
   const unitWeightFoot =
     showTableFootWeight && showSummaryUnitWeight && totalUnitWeightKg > 0

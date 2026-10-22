@@ -13,11 +13,30 @@ export interface VersionRegistro {
 
 export const HISTORIAL_VERSIONES: VersionRegistro[] = [
   {
+    version: '2.7.4',
+    tag: 'v2.7.4',
+    fecha: '2026-10-22',
+    fechaFormato: '22 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Recuperación Íntegra de Cotizaciones, Blindaje de Esquema Supabase y Persistencia Multi-Moneda',
+    modulos: ['Cotizaciones', 'Base de Datos Supabase', 'Auditoría', 'Resiliencia'],
+    descripcion:
+      'Diagnóstico y resolución de causa raíz en la persistencia de cotizaciones en Supabase: incorporación de columnas faltantes (total_usd, total_clp, dollar_value), blindaje del mapeo y manejo de errores con fallback resiliente. Recuperación al 100% de la cotización PR.DGL.2341.2026.0672 de Lundin Mining Chile Spa (4.695,59 UF, 13 ítems) y PR.DGL.2340.2026.0673 de AJGEOTECH SPA desde los documentos oficiales generados.',
+    detalles: [
+      'Recuperación Integral de Lundin Mining Chile Spa: Restauración completa de la cotización PR.DGL.2341.2026.0672 (Caserones - Ensayos Grandes Partículas) con sus 3 partidas, 10 ensayos de laboratorio, notas técnicas, condiciones particulares y total de 4.695,59 UF.',
+      'Recuperación de AJGEOTECH SPA: Restauración de la cotización PR.DGL.2340.2026.0673 (Minera Guanaco) con su ensayo triaxial y total de 44,85 UF.',
+      'Auditoría de Integridad Global: Verificación de todas las cotizaciones del sistema en Supabase, confirmando que ninguna otra cotización previa sufrió afectación ni pérdida de datos.',
+      'Sincronización de Esquema en Supabase: Creación de las columnas total_usd, total_clp y dollar_value en PostgreSQL con recarga de caché PostgREST.',
+      'Blindaje Resiliente en lib/cotizaciones-db.ts: Fallback automático ante inconsistencias de esquema y reporte explícito de excepciones para evitar fallos silenciosos.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
     version: '2.7.3',
     tag: 'v2.7.3',
     fecha: '2026-10-21',
     fechaFormato: '21 de Octubre, 2026',
-    estado: 'activa',
+    estado: 'previa',
     titulo: 'Sistema de Carga y Creación Masiva de Usuarios vía Excel con Matriz Integral de Permisos y Auditoría',
     modulos: ['Usuarios & RBAC', 'CRM & Ventas', 'Seguridad', 'Excel Engine', 'Auditoría'],
     descripcion:

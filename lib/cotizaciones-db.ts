@@ -172,11 +172,11 @@ export function mapCotizacionToSupabase(c: Partial<Cotizacion>): any {
     contact_phone: c.clientPhone || null,
     project_name: c.projectName || null,
     project_address: c.city || null,
-    centro_costo: c.centroCosto || getDGLInfoByCC(c.code || '2340').unitCode || '2340',
+    centro_costo: (c.centroCosto || getDGLInfoByCC(c.code || '2340').unitCode || '2340').trim() || '2340',
     user_id: c.createdById || 'usr-1',
-    user_name: c.commercialName || c.createdBy || 'Diego Román',
-    user_email: c.commercialEmail || 'diego.roman@idiem.cl',
-    user_initials: c.commercialInitials || 'DRA',
+    user_name: (c.commercialName || c.createdBy || 'Diego Román').trim() || 'Diego Román',
+    user_email: (c.commercialEmail || 'diego.roman@idiem.cl').trim() || 'diego.roman@idiem.cl',
+    user_initials: (c.commercialInitials || 'DRA').trim() || 'DRA',
     currency: c.currency || 'UF',
     uf_value: ufVal,
     dollar_value: dollarVal,
@@ -354,17 +354,32 @@ export async function saveCotizacionAsync(
   if (isSupabaseConfigured && supabaseAdmin) {
     try {
       const payload = mapCotizacionToSupabase(fullCotizacion);
-      const { error: supaErr } = await supabaseAdmin
+      let { error: supaErr } = await supabaseAdmin
         .from('cotizaciones')
         .upsert(payload, { onConflict: 'id' });
 
-      if (supaErr) {
-        console.error('Error al guardar cotización en Supabase:', supaErr.message);
-      } else {
-        console.log(`✓ Cotización ${fullCotizacion.code || fullCotizacion.id} persistida en Supabase.`);
+      // Fallback resiliente: si ocurre error por discrepancia de columnas en schema cache
+      if (supaErr && (supaErr.code === 'PGRST204' || supaErr.message?.includes('schema cache'))) {
+        console.warn('Advertencia en esquema de Supabase, reintentando con payload base sanitizado:', supaErr.message);
+        const fallbackPayload = { ...payload };
+        delete (fallbackPayload as any).dollar_value;
+        delete (fallbackPayload as any).total_usd;
+        delete (fallbackPayload as any).total_clp;
+        const retryResult = await supabaseAdmin
+          .from('cotizaciones')
+          .upsert(fallbackPayload, { onConflict: 'id' });
+        supaErr = retryResult.error;
       }
-    } catch (err) {
+
+      if (supaErr) {
+        console.error('CRÍTICO: Error al persistir cotización en Supabase:', supaErr.message, supaErr.details);
+        throw new Error(`Error en la base de datos Supabase: ${supaErr.message}`);
+      } else {
+        console.log(`✓ Cotización ${fullCotizacion.code || fullCotizacion.id} persistida exitosamente en Supabase.`);
+      }
+    } catch (err: any) {
       console.error('Excepción al persistir cotización en Supabase:', err);
+      throw err;
     }
   }
 

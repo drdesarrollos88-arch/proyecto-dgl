@@ -400,3 +400,47 @@ export async function importClientesFromExcel(buffer: ArrayBuffer): Promise<numb
   }
   return 0;
 }
+
+/**
+ * Busca una empresa o cliente por su RUT en Supabase (o base local).
+ */
+export async function getClienteByRut(rut: string): Promise<Cliente | null> {
+  const clean = rut.replace(/[^0-9kK]/g, '').toLowerCase();
+  if (!clean) return null;
+
+  if (isSupabaseConfigured && supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('clientes')
+        .select('*');
+
+      if (!error && Array.isArray(data)) {
+        const found = data.find(
+          (c) => (c.rut || '').replace(/[^0-9kK]/g, '').toLowerCase() === clean
+        );
+        if (found) {
+          return {
+            id: String(found.id),
+            name: String(found.name || ''),
+            rut: String(found.rut || ''),
+            comuna: String(found.comuna || ''),
+            address: String(found.address || ''),
+            giro: String(found.giro || ''),
+            phone: String(found.phone || ''),
+            paymentCondition: String(found.payment_condition || ''),
+            email: String(found.email || ''),
+            contactPerson: String(found.contact_person || ''),
+            createdAt: String(found.created_at || ''),
+            updatedAt: String(found.updated_at || ''),
+          };
+        }
+      }
+    } catch (e) {
+      console.error('Error buscando cliente por rut en Supabase:', e);
+    }
+  }
+
+  const all = await searchClientes('', 500);
+  return all.find((c: Cliente) => (c.rut || '').replace(/[^0-9kK]/g, '').toLowerCase() === clean) || null;
+}
+

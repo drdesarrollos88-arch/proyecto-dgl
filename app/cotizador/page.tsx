@@ -724,7 +724,10 @@ function CotizadorContent() {
           if (c.commercialSignature) setCommercialSignature(c.commercialSignature);
           if (c.ufValue) setUfValue(c.ufValue);
           if (c.dollarValue) setDollarValue(c.dollarValue);
-          if (c.paymentCondition) setPaymentCondition(c.paymentCondition);
+          if (c.paymentCondition) {
+      setPaymentCondition(c.paymentCondition);
+      setCondicionesComerciales((prev) => ({ ...prev, condicionVenta: c.paymentCondition }));
+    }
           if (Array.isArray(c.observations) && c.observations.length > 0) {
             setObservations(c.observations);
           } else {
@@ -836,7 +839,10 @@ function CotizadorContent() {
     if (c.phone) setClientPhone(c.phone);
     if (c.email) setClientEmail(c.email);
     if (c.contactPerson) setClientAttention(c.contactPerson);
-    if (c.paymentCondition) setPaymentCondition(c.paymentCondition);
+    if (c.paymentCondition) {
+      setPaymentCondition(c.paymentCondition);
+      setCondicionesComerciales((prev) => ({ ...prev, condicionVenta: c.paymentCondition }));
+    }
     setClientSearchQuery('');
     setClientDropdownOpen(false);
 
@@ -2663,7 +2669,11 @@ function CotizadorContent() {
                       <input
                         type="text"
                         value={paymentCondition}
-                        onChange={(e) => setPaymentCondition(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setPaymentCondition(val);
+                          setCondicionesComerciales((prev) => ({ ...prev, condicionVenta: val }));
+                        }}
                         className="w-full py-1 px-2 rounded border border-slate-200 text-xs font-semibold text-slate-800 bg-white focus:ring-1 focus:ring-blue-600 focus:outline-none"
                       />
                     </div>

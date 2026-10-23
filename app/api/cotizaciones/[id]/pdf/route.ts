@@ -4,6 +4,7 @@ import path from 'path';
 import { getCurrentUser } from '@/lib/auth';
 import { getFormatoSettings, getUsers } from '@/lib/db';
 import { getCotizacionByIdAsync } from '@/lib/cotizaciones-db';
+import { getClienteByRut } from '@/lib/clientes-db';
 import { generateCotizacionPdf } from '@/lib/pdf-generator';
 import { auditRequest } from '@/lib/audit-db';
 
@@ -47,6 +48,29 @@ export async function GET(
         finalCotizacion.commercialTitle === 'Analista Comercial')
     ) {
       finalCotizacion.commercialTitle = creatorUser.commercialTitle;
+    }
+  }
+
+  // Respaldo y resolución de condición de pago oficial desde Salesforce / Directorio por RUT
+  if (finalCotizacion.clientRut) {
+    try {
+      const clienteOficial = await getClienteByRut(finalCotizacion.clientRut);
+      if (clienteOficial?.paymentCondition && clienteOficial.paymentCondition.trim()) {
+        const condOficial = clienteOficial.paymentCondition.trim();
+        if (
+          !finalCotizacion.paymentCondition ||
+          finalCotizacion.paymentCondition === '50% AL CONTADO Y 50% CONTRA ENTREGA' ||
+          !finalCotizacion.condicionesComerciales?.condicionVenta ||
+          finalCotizacion.condicionesComerciales.condicionVenta === '50% AL CONTADO Y 50% CONTRA ENTREGA'
+        ) {
+          finalCotizacion.paymentCondition = condOficial;
+          if (finalCotizacion.condicionesComerciales) {
+            finalCotizacion.condicionesComerciales.condicionVenta = condOficial;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Error resolviendo condición de pago oficial por RUT:', err);
     }
   }
 

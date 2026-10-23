@@ -13,11 +13,29 @@ export interface VersionRegistro {
 
 export const HISTORIAL_VERSIONES: VersionRegistro[] = [
   {
+    version: '2.7.5',
+    tag: 'v2.7.5',
+    fecha: '2026-10-23',
+    fechaFormato: '23 de Octubre, 2026',
+    estado: 'activa',
+    titulo: 'Condición de Pago Inmediata al Monto Total, Notas Especiales al Pie del Presupuesto y Vinculación por RUT',
+    modulos: ['Generador PDF', 'Cotizador', 'Clientes & Salesforce', 'UI/UX'],
+    descripcion:
+      'Actualización del diseño oficial de cotizaciones en PDF: inclusión de franja destacada con la Condición de Pago / Venta inmediatamente tras la fila de Total Ensayos, impresión de las notas especiales y condiciones particulares ingresadas a mano al pie del presupuesto técnico, sincronización bidireccional de condiciones en el cotizador y resolución automática de la condición de pago oficial de la empresa desde el directorio de clientes y Salesforce según el RUT.',
+    detalles: [
+      'Franja Destacada de Condición de Pago: Bloque visual corporativo con acento azul marino IDIEM ubicado justo a continuación del monto Total Ensayos en la tabla principal.',
+      'Notas Especiales al Pie del Presupuesto: Impresión de cláusulas particulares y especificaciones acordadas a mano bajo la sección 1.2 del presupuesto con viñetas destacadas.',
+      'Resolución de Condición de Pago por RUT: Verificación y respaldo automático contra el directorio de clientes y cuentas Salesforce mediante getClienteByRut.',
+      'Sincronización Bidireccional en Cotizador: La edición de la condición de pago en la tarjeta de empresa vincula automáticamente la cláusula de venta en las condiciones comerciales.',
+    ],
+    autor: 'Equipo de Desarrollo DGL',
+  },
+  {
     version: '2.7.4',
     tag: 'v2.7.4',
     fecha: '2026-10-22',
     fechaFormato: '22 de Octubre, 2026',
-    estado: 'activa',
+    estado: 'previa',
     titulo: 'Recuperación Íntegra de Cotizaciones, Blindaje de Esquema Supabase y Persistencia Multi-Moneda',
     modulos: ['Cotizaciones', 'Base de Datos Supabase', 'Auditoría', 'Resiliencia'],
     descripcion:

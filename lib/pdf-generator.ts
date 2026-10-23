@@ -576,9 +576,44 @@ export function generateCotizacionPdf(
 
   // Posición vertical tras la tabla de ensayos
   const lastTable = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable;
-  currentY = (lastTable ? lastTable.finalY : currentY) + 5;
+  currentY = (lastTable ? lastTable.finalY : currentY) + 2.5;
 
   const maxContentY = pageHeight - 26; // 253.4 mm: margen inferior seguro antes del pie de página
+
+  // 5.1 Bloque Destacado de Condición de Pago / Venta (justo a continuación del Monto Total)
+  const customCond = cotizacion.condicionesComerciales;
+  const resolvedPayment =
+    cotizacion.paymentCondition ||
+    customCond?.condicionVenta ||
+    '50% AL CONTADO Y 50% CONTRA ENTREGA';
+
+  const bannerY = currentY;
+  const bannerH = 6.8;
+  const bannerW = pageWidth - marginX * 2;
+
+  // Contenedor suave con borde redondeado y franja izquierda azul IDIEM
+  doc.setFillColor(245, 248, 252);
+  doc.roundedRect(marginX, bannerY, bannerW, bannerH, 1, 1, 'F');
+  doc.setDrawColor(214, 226, 242);
+  doc.setLineWidth(0.25);
+  doc.roundedRect(marginX, bannerY, bannerW, bannerH, 1, 1, 'S');
+
+  doc.setFillColor(0, 68, 124); // Barra acento azul marino IDIEM
+  doc.rect(marginX, bannerY, 1.8, bannerH, 'F');
+
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(45, 55, 72);
+  const paymentPrefix = 'CONDICIÓN DE PAGO / VENTA: ';
+  doc.text(paymentPrefix, marginX + 4, bannerY + 4.6);
+
+  const prefixW = doc.getTextWidth(paymentPrefix);
+  doc.setFontSize(7.8);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(0, 68, 124);
+  doc.text(resolvedPayment.toUpperCase(), marginX + 4 + prefixW, bannerY + 4.6);
+
+  currentY = bannerY + bannerH + 4;
 
   // Comprobar si las observaciones de geotécnica caben en la página actual (~36 mm requeridas)
   const requiredObsHeight = 36;
@@ -617,6 +652,58 @@ export function generateCotizacionPdf(
     doc.text(lines, marginX, currentY);
     currentY += lines.length * 3.4;
   });
+
+  // 6.1 Notas Especiales y Condiciones Particulares ingresadas a mano
+  const clausulasParticulares =
+    customCond?.clausulasParticulares?.filter((p) => p && p.trim().length > 0) || [];
+
+  const extraObservations = (cotizacion.observations || []).filter((obs) => {
+    const lower = obs.toLowerCase().trim();
+    return (
+      !lower.startsWith('1.2.1') &&
+      !lower.startsWith('1.2.2') &&
+      !lower.startsWith('1.2.3') &&
+      !lower.includes('capacidad y recursos') &&
+      !lower.includes('le-304') &&
+      !lower.startsWith('condiciones particulares acordadas')
+    );
+  });
+
+  const todasNotasEspeciales = Array.from(
+    new Set([...clausulasParticulares, ...extraObservations])
+  ).map((n) => n.trim().replace(/^•\s*/, ''));
+
+  if (todasNotasEspeciales.length > 0) {
+    currentY += 1.8;
+    if (currentY + 14 > maxContentY) {
+      doc.addPage();
+      currentY = 28;
+    }
+
+    doc.setFontSize(7.8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(190, 20, 20); // Rojo IDIEM de sección destacada
+    doc.text('1.2.5 Notas Especiales y Condiciones Particulares Acordadas:', marginX, currentY);
+    currentY += 3.8;
+
+    doc.setFontSize(7.2);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(25, 25, 25);
+
+    todasNotasEspeciales.forEach((nota) => {
+      const bulletText = `• ${nota}`;
+      const lines = doc.splitTextToSize(bulletText, pageWidth - marginX * 2 - 3);
+      const neededH = lines.length * 3.2 + 0.8;
+
+      if (currentY + neededH > maxContentY) {
+        doc.addPage();
+        currentY = 28;
+      }
+
+      doc.text(lines, marginX + 2, currentY);
+      currentY += neededH;
+    });
+  }
 
   if (showObservationsWeight) {
     if (showSummaryUnitWeight && totalUnitWeightKg > 0) {
@@ -740,8 +827,6 @@ export function generateCotizacionPdf(
     condY += neededH;
   };
 
-  const customCond = cotizacion.condicionesComerciales;
-
   // Section 1: Condiciones Especiales
   renderSectionHeader('Condiciones Especiales:');
   if (customCond?.clausulasEspeciales && customCond.clausulasEspeciales.length > 0) {
@@ -752,10 +837,7 @@ export function generateCotizacionPdf(
     );
 
     // Dynamic payment condition matching company list / form / custom conditions
-    const resolvedPayment =
-      customCond?.condicionVenta ||
-      cotizacion.paymentCondition ||
-      '50% AL CONTADO Y 50% CONTRA ENTREGA';
+    renderParagraph('', false, 'La condición de venta a este servicio es: ', resolvedPayment);
     renderParagraph('', false, 'La condición de venta a este servicio es: ', resolvedPayment);
 
     renderParagraph(

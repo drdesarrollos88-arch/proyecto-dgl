@@ -3,6 +3,7 @@ import { getCotizacionByIdAsync, saveCotizacionAsync } from '@/lib/cotizaciones-
 import { syncCotizacionToSalesforce } from '@/lib/salesforce/salesforce-sync-service';
 import { getCurrentUser } from '@/lib/auth';
 import { auditRequest } from '@/lib/audit-db';
+import { sanitizeSectorProyecto, sanitizeSubsectorProyecto, sanitizeZonaProyecto } from '@/lib/types';
 
 export async function POST(req: Request) {
   try {
@@ -42,9 +43,9 @@ export async function POST(req: Request) {
         ...cotizacionToSync,
         ...(seccion ? { seccion } : {}),
         ...(centroCosto ? { centroCosto } : {}),
-        ...(sectorProyecto ? { sectorProyecto } : {}),
-        ...(subsectorProyecto ? { subsectorProyecto } : {}),
-        ...(zonaProyecto ? { zonaProyecto } : {}),
+        ...(sectorProyecto ? { sectorProyecto: sanitizeSectorProyecto(sectorProyecto) } : {}),
+        ...(subsectorProyecto ? { subsectorProyecto: sanitizeSubsectorProyecto(subsectorProyecto) } : {}),
+        ...(zonaProyecto ? { zonaProyecto: sanitizeZonaProyecto(zonaProyecto) } : {}),
       };
       await saveCotizacionAsync(cotizacionToSync);
     }

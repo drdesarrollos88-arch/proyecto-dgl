@@ -24,8 +24,8 @@ const cotizacionLundin = {
   centro_costo: '2341',
   seccion: 'SLGP - Sección Laboratorio Grandes Partículas',
   sector_proyecto: 'Minería',
-  subsector_proyecto: 'Cobre',
-  zona_proyecto: 'Región de Atacama',
+  subsector_proyecto: 'No Aplica',
+  zona_proyecto: 'Zona Norte',
   currency: 'UF',
   uf_value: 38500,
   dollar_value: 950,
@@ -66,8 +66,8 @@ const cotizacionLundin = {
       seccion: 'SLGP - Sección Laboratorio Grandes Partículas',
       centroCosto: '2341',
       sectorProyecto: 'Minería',
-      subsectorProyecto: 'Cobre',
-      zonaProyecto: 'Región de Atacama',
+      subsectorProyecto: 'No Aplica',
+      zonaProyecto: 'Zona Norte',
       reference: 'Ensayos Geotécnicos'
     }
   },
@@ -280,8 +280,8 @@ const cotizacionAjgeotech = {
   centro_costo: '2340',
   seccion: 'SGL - Sección Laboratorio de Geotecnia',
   sector_proyecto: 'Minería',
-  subsector_proyecto: 'Cobre',
-  zona_proyecto: 'Región de Antofagasta',
+  subsector_proyecto: 'No Aplica',
+  zona_proyecto: 'Zona Norte',
   currency: 'UF',
   uf_value: 38500,
   dollar_value: 950,
@@ -321,8 +321,8 @@ const cotizacionAjgeotech = {
       seccion: 'SGL - Sección Laboratorio de Geotecnia',
       centroCosto: '2340',
       sectorProyecto: 'Minería',
-      subsectorProyecto: 'Cobre',
-      zonaProyecto: 'Región de Antofagasta',
+      subsectorProyecto: 'No Aplica',
+      zonaProyecto: 'Zona Norte',
       reference: 'Ensayos Geotécnicos'
     }
   },

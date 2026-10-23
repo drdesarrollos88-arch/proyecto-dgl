@@ -14,6 +14,9 @@ import {
   ZONAS_PROYECTO,
   ZonaProyecto,
   getDGLInfoByCC,
+  sanitizeSectorProyecto,
+  sanitizeSubsectorProyecto,
+  sanitizeZonaProyecto,
 } from '@/lib/types';
 import {
   Cloud,
@@ -72,9 +75,9 @@ export default function SalesforceSyncButton({
 
   const [seccion, setSeccion] = useState<string>(initialSeccion);
   const [centroCosto, setCentroCosto] = useState<string>(initialUnitCode);
-  const [sectorProyecto, setSectorProyecto] = useState<string>(cotizacion.sectorProyecto || 'Inmobiliario');
-  const [subsectorProyecto, setSubsectorProyecto] = useState<string>(cotizacion.subsectorProyecto || 'No Aplica');
-  const [zonaProyecto, setZonaProyecto] = useState<string>(cotizacion.zonaProyecto || 'Región Metropolitana');
+  const [sectorProyecto, setSectorProyecto] = useState<string>(sanitizeSectorProyecto(cotizacion.sectorProyecto));
+  const [subsectorProyecto, setSubsectorProyecto] = useState<string>(sanitizeSubsectorProyecto(cotizacion.subsectorProyecto));
+  const [zonaProyecto, setZonaProyecto] = useState<string>(sanitizeZonaProyecto(cotizacion.zonaProyecto));
 
   const availableUnits = DGL_UNIDADES.filter((u) => u.seccion === seccion);
 
@@ -94,9 +97,9 @@ export default function SalesforceSyncButton({
     const sec = cotizacion.seccion || dgl.seccion;
     setSeccion(sec);
     setCentroCosto(currentCode);
-    setSectorProyecto(cotizacion.sectorProyecto || 'Inmobiliario');
-    setSubsectorProyecto(cotizacion.subsectorProyecto || 'No Aplica');
-    setZonaProyecto(cotizacion.zonaProyecto || 'Región Metropolitana');
+    setSectorProyecto(sanitizeSectorProyecto(cotizacion.sectorProyecto));
+    setSubsectorProyecto(sanitizeSubsectorProyecto(cotizacion.subsectorProyecto));
+    setZonaProyecto(sanitizeZonaProyecto(cotizacion.zonaProyecto));
     setErrorMsg(null);
     setModalStep('confirm');
     setIsModalOpen(true);

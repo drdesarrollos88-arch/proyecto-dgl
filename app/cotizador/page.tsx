@@ -26,6 +26,9 @@ import {
   ZonaProyecto,
   SeccionDGL,
   isForeignRut,
+  sanitizeSectorProyecto,
+  sanitizeSubsectorProyecto,
+  sanitizeZonaProyecto,
 } from '@/lib/types';
 import { generateCotizacionPdf } from '@/lib/pdf-generator';
 import {
@@ -712,9 +715,9 @@ function CotizadorContent() {
             }
           }
           if (c.seccion) setSeccion(c.seccion as SeccionDGL);
-          if (c.sectorProyecto) setSectorProyecto(c.sectorProyecto as SectorProyecto);
-          if (c.subsectorProyecto) setSubsectorProyecto(c.subsectorProyecto as SubsectorProyecto);
-          if (c.zonaProyecto) setZonaProyecto(c.zonaProyecto as ZonaProyecto);
+          if (c.sectorProyecto) setSectorProyecto(sanitizeSectorProyecto(c.sectorProyecto));
+          if (c.subsectorProyecto) setSubsectorProyecto(sanitizeSubsectorProyecto(c.subsectorProyecto));
+          if (c.zonaProyecto) setZonaProyecto(sanitizeZonaProyecto(c.zonaProyecto));
           if (c.currency) setCurrency(c.currency);
           if (c.commercialName) setCommercialName(c.commercialName);
           if (c.commercialTitle && c.commercialTitle !== 'Asesor Comercial DGL' && c.commercialTitle !== 'Analista Comercial') {

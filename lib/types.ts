@@ -269,6 +269,119 @@ export const ZONAS_PROYECTO = [
 ] as const;
 export type ZonaProyecto = typeof ZONAS_PROYECTO[number];
 
+/**
+ * Sanitiza y valida el Sector del Proyecto para la lista de selección restringida de Salesforce.
+ */
+export function sanitizeSectorProyecto(sector?: string | null): SectorProyecto {
+  if (!sector) return 'Inmobiliario';
+  const clean = String(sector).trim().toLowerCase();
+  const match = SECTORES_PROYECTO.find((s) => s.toLowerCase() === clean);
+  return match || 'Inmobiliario';
+}
+
+/**
+ * Sanitiza y valida el Subsector del Proyecto para la lista de selección restringida de Salesforce.
+ * Si el valor no coincide estrictamente (ej: 'Cobre', 'Litio', valores libres), retorna 'No Aplica'.
+ */
+export function sanitizeSubsectorProyecto(subsector?: string | null): SubsectorProyecto {
+  if (!subsector) return 'No Aplica';
+  const clean = String(subsector).trim().toLowerCase();
+  const match = SUBSECTORES_PROYECTO.find((s) => s.toLowerCase() === clean);
+  if (match) return match;
+
+  // Mapeos comunes hacia opciones válidas en Salesforce
+  if (clean.includes('vial') || clean.includes('carretera') || clean.includes('camino')) return 'Obras viales';
+  if (clean.includes('hidrául') || clean.includes('hidraul') || clean.includes('canal')) return 'Obras hidráulicas';
+  if (clean.includes('agua') || clean.includes('sanitar')) return 'Aguas';
+  if (clean.includes('puente')) return 'Puentes';
+  if (clean.includes('puerto')) return 'Puertos';
+  if (clean.includes('metro')) return 'Metro';
+  if (clean.includes('efe') || clean.includes('tren') || clean.includes('ferrocarril')) return 'EFE';
+  if (clean.includes('salud') || clean.includes('hospital') || clean.includes('clinica')) return 'Salud';
+  if (clean.includes('educ') || clean.includes('colegio') || clean.includes('universidad')) return 'Educación';
+  if (clean.includes('embalse') || clean.includes('represa')) return 'Embalse';
+  if (clean.includes('aeropuerto')) return 'Aeropuerto';
+  if (clean.includes('vivienda') || clean.includes('habitacion')) return 'Vivienda pública';
+  if (clean.includes('urbana') || clean.includes('parque') || clean.includes('estadio')) return 'Infraestructura urbana (parques, estadios, otros)';
+  if (clean.includes('judicial') || clean.includes('tribunal')) return 'Poder judicial';
+  if (clean.includes('fuerza') || clean.includes('militar') || clean.includes('armada')) return 'Fuerzas armadas';
+  if (clean.includes('opex')) return 'OPEX';
+  if (clean.includes('capex')) return 'CAPEX';
+
+  return 'No Aplica';
+}
+
+/**
+ * Sanitiza y normaliza la Zona del Proyecto hacia las 6 macrozonas oficiales de Salesforce.
+ * Mapea regiones administrativas de Chile a Zona Norte, Centro, Metropolitana o Sur.
+ */
+export function sanitizeZonaProyecto(zona?: string | null): ZonaProyecto {
+  if (!zona) return 'Región Metropolitana';
+  const clean = String(zona).trim().toLowerCase();
+  const match = ZONAS_PROYECTO.find((z) => z.toLowerCase() === clean);
+  if (match) return match;
+
+  if (
+    clean.includes('arica') ||
+    clean.includes('parinacota') ||
+    clean.includes('tarapacá') ||
+    clean.includes('tarapaca') ||
+    clean.includes('antofagasta') ||
+    clean.includes('atacama') ||
+    clean.includes('norte')
+  ) {
+    return 'Zona Norte';
+  }
+
+  if (
+    clean.includes('coquimbo') ||
+    clean.includes('valparaíso') ||
+    clean.includes('valparaiso') ||
+    clean.includes("o'higgins") ||
+    clean.includes('ohiggins') ||
+    clean.includes('maule') ||
+    clean.includes('centro')
+  ) {
+    return 'Zona Centro';
+  }
+
+  if (
+    clean.includes('metropolitana') ||
+    clean.includes('santiago') ||
+    clean.includes('rm')
+  ) {
+    return 'Región Metropolitana';
+  }
+
+  if (
+    clean.includes('ñuble') ||
+    clean.includes('nuble') ||
+    clean.includes('biobío') ||
+    clean.includes('biobio') ||
+    clean.includes('araucanía') ||
+    clean.includes('araucania') ||
+    clean.includes('ríos') ||
+    clean.includes('rios') ||
+    clean.includes('lagos') ||
+    clean.includes('aysén') ||
+    clean.includes('aysen') ||
+    clean.includes('magallanes') ||
+    clean.includes('sur')
+  ) {
+    return 'Zona Sur';
+  }
+
+  if (clean.includes('nacional') || clean.includes('todo chile') || clean.includes('varias')) {
+    return 'Nacional';
+  }
+
+  if (clean.includes('extranjero') || clean.includes('internacional') || clean.includes('exterior')) {
+    return 'Extranjero';
+  }
+
+  return 'Región Metropolitana';
+}
+
 export function getDGLInfoByCC(ccStr: string): {
   unitCode: string;
   seccion: SeccionDGL;

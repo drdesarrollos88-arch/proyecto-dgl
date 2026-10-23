@@ -1,4 +1,13 @@
-import { Cotizacion, getDGLInfoByCC, CuotaFacturacionDetalle, CierreNegocioData, isForeignRut } from '@/lib/types';
+import {
+  Cotizacion,
+  getDGLInfoByCC,
+  CuotaFacturacionDetalle,
+  CierreNegocioData,
+  isForeignRut,
+  sanitizeSectorProyecto,
+  sanitizeSubsectorProyecto,
+  sanitizeZonaProyecto,
+} from '@/lib/types';
 import { getValidSalesforceClient } from './salesforce-client';
 import { generateCotizacionPdf } from '@/lib/pdf-generator';
 import { getFormatoSettingsAsync } from '@/lib/configuracion-db';
@@ -352,6 +361,14 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
   const standardPricebook = await getServiciosEspecialesPricebookEntry(instanceUrl, accessToken, unitCode);
   const ufTotal = cotizacion.totalUf || (cotizacion.ufValue ? Number((amount / cotizacion.ufValue).toFixed(2)) : 0);
 
+  // Validación estricta y sanitización de campos con lista de selección restringida en Salesforce
+  const validSector = sanitizeSectorProyecto(cotizacion.sectorProyecto);
+  const validSubsector = sanitizeSubsectorProyecto(cotizacion.subsectorProyecto);
+  const validZona = sanitizeZonaProyecto(cotizacion.zonaProyecto);
+  cotizacion.sectorProyecto = validSector;
+  cotizacion.subsectorProyecto = validSubsector;
+  cotizacion.zonaProyecto = validZona;
+
   const isUpdate = Boolean(cotizacion.salesforceOpportunityId);
   let opportunityId: string | undefined = cotizacion.salesforceOpportunityId;
   let opportunityUrl: string | undefined = cotizacion.salesforceOpportunityUrl;
@@ -373,9 +390,9 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
       Seccion__c: seccionSfCode,
       Unidad__c: unitCode,
       Tipo_de_servicio_por_CC__c: 'Ensayos',
-      Sector_del_Proyecto__c: cotizacion.sectorProyecto || 'Inmobiliario',
-      Subsector_del_Proyecto__c: cotizacion.subsectorProyecto || 'No Aplica',
-      Zona_Proyecto__c: cotizacion.zonaProyecto || 'Región Metropolitana',
+      Sector_del_Proyecto__c: validSector,
+      Subsector_del_Proyecto__c: validSubsector,
+      Zona_Proyecto__c: validZona,
       Description: `Cotización IDIEM: ${cotizacion.code}\nCliente: ${cotizacion.clientName}\nProyecto: ${cotizacion.projectName || 'Sin especificar'}\nCentro de Costo: ${cotizacion.centroCosto || unitCode}\nTotal: ${amount} (${cotizacion.currency || 'UF'})`,
     };
 
@@ -501,9 +518,9 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
       Seccion__c: seccionSfCode,
       Unidad__c: unitCode,
       Tipo_de_servicio_por_CC__c: 'Ensayos',
-      Sector_del_Proyecto__c: cotizacion.sectorProyecto || 'Inmobiliario',
-      Subsector_del_Proyecto__c: cotizacion.subsectorProyecto || 'No Aplica',
-      Zona_Proyecto__c: cotizacion.zonaProyecto || 'Región Metropolitana',
+      Sector_del_Proyecto__c: validSector,
+      Subsector_del_Proyecto__c: validSubsector,
+      Zona_Proyecto__c: validZona,
       LeadSource: 'Directo División',
       Amount: amount,
       Description: `Cotización IDIEM: ${cotizacion.code}\nCliente: ${cotizacion.clientName}\nProyecto: ${cotizacion.projectName || 'Sin especificar'}\nCentro de Costo: ${cotizacion.centroCosto || unitCode}\nTotal: ${amount} (${cotizacion.currency || 'UF'})`,

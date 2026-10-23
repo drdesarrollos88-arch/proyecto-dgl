@@ -344,17 +344,14 @@ export async function syncCotizacionToSalesforce(cotizacion: Cotizacion): Promis
   const dglInfo = getDGLInfoByCC(cotizacion.centroCosto || cotizacion.code || '2340');
   const unitCode = dglInfo.unitCode;
 
-  // Determinar código API para Seccion__c ('SLG' | 'SLGP' | 'DGL')
-  let seccionSfCode = dglInfo.seccionSfCode;
-  if (cotizacion.seccion) {
-    if (cotizacion.seccion.includes('Sin sección') || cotizacion.seccion === 'DGL') {
-      seccionSfCode = 'DGL';
-    } else if (cotizacion.seccion.includes('SLGP') || cotizacion.seccion.includes('Geomecánico Prat')) {
-      seccionSfCode = 'SLGP';
-    } else if (cotizacion.seccion.includes('SGL') || cotizacion.seccion.includes('Geotecnia')) {
-      seccionSfCode = 'SLG';
-    }
-  }
+  // En Salesforce, Unidad__c es una lista dependiente controlada estrictamente por Seccion__c:
+  // - 2340, 2341, 2344 -> 'SLG' (SGL - Sección Laboratorio de Geotecnia)
+  // - 1817, 2339 -> 'SLGP' (SLGP - Sección Laboratorio de Geomecánico Prat)
+  // - 3340 -> 'DGL' (Sin sección DGL)
+  // dglInfo.seccionSfCode garantiza 100% la compatibilidad con el dependent picklist de Salesforce.
+  const seccionSfCode = dglInfo.seccionSfCode;
+  cotizacion.seccion = dglInfo.seccion;
+  cotizacion.centroCosto = unitCode;
 
   // 6. Obtener nombre unificado y lista de precios oficial Standard
   const unifiedName = buildUnifiedSalesforceName(cotizacion, unitCode);

@@ -71,7 +71,9 @@ export default function SalesforceSyncButton({
 
   const initialUnitCode = getCleanUnitCode(cotizacion.centroCosto, cotizacion.code);
   const initialDgl = getDGLInfoByCC(initialUnitCode);
-  const initialSeccion = cotizacion.seccion || initialDgl.seccion;
+  const initialSeccion = (cotizacion.seccion && SECCIONES_DGL.includes(cotizacion.seccion as any))
+    ? cotizacion.seccion
+    : initialDgl.seccion;
 
   const [seccion, setSeccion] = useState<string>(initialSeccion);
   const [centroCosto, setCentroCosto] = useState<string>(initialUnitCode);
@@ -80,6 +82,7 @@ export default function SalesforceSyncButton({
   const [zonaProyecto, setZonaProyecto] = useState<string>(sanitizeZonaProyecto(cotizacion.zonaProyecto));
 
   const availableUnits = DGL_UNIDADES.filter((u) => u.seccion === seccion);
+  const safeUnits = availableUnits.length > 0 ? availableUnits : DGL_UNIDADES;
 
   const handleOpenModal = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -94,9 +97,11 @@ export default function SalesforceSyncButton({
     // Refresh default values strictly based on current saved quote
     const currentCode = getCleanUnitCode(cotizacion.centroCosto, cotizacion.code);
     const dgl = getDGLInfoByCC(currentCode);
-    const sec = cotizacion.seccion || dgl.seccion;
+    const sec = (cotizacion.seccion && SECCIONES_DGL.includes(cotizacion.seccion as any))
+      ? cotizacion.seccion
+      : dgl.seccion;
     setSeccion(sec);
-    setCentroCosto(currentCode);
+    setCentroCosto(dgl.unitCode);
     setSectorProyecto(sanitizeSectorProyecto(cotizacion.sectorProyecto));
     setSubsectorProyecto(sanitizeSubsectorProyecto(cotizacion.subsectorProyecto));
     setZonaProyecto(sanitizeZonaProyecto(cotizacion.zonaProyecto));
@@ -396,7 +401,7 @@ export default function SalesforceSyncButton({
                         onChange={(e) => handleUnitChange(e.target.value)}
                         className="w-full max-w-full text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono truncate"
                       >
-                        {availableUnits.map((u) => (
+                        {safeUnits.map((u) => (
                           <option key={u.code} value={u.code}>
                             {u.code} - {u.name}
                           </option>
